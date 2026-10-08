@@ -7,14 +7,14 @@ const vm = require('node:vm');
 const crypto = require('node:crypto');
 const net = require('node:net');
 const http = require('node:http');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
 
 const root = path.resolve(__dirname, '..');
 const source = path.join(root, 'back');
 const original = path.join(source, 'data/app.db');
 const digest = () => crypto.createHash('sha256').update(fs.readFileSync(original)).digest('hex');
-const originalHash = digest();
+const originalHash = fs.existsSync(original) ? digest() : null;
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'courses-regression-'));
 let server;
 let db;
@@ -23,7 +23,15 @@ async function testBackend() {
   fs.cpSync(path.join(source, 'db'), path.join(temp, 'db'), { recursive: true });
   fs.copyFileSync(path.join(source, 'db.js'), path.join(temp, 'db.js'));
   fs.mkdirSync(path.join(temp, 'data'));
-  fs.copyFileSync(original, path.join(temp, 'data/app.db'));
+  if (originalHash !== null) {
+    fs.copyFileSync(original, path.join(temp, 'data/app.db'));
+  } else {
+    // A fresh checkout has no personal database. Seed an isolated v4 fixture
+    // to exercise the same migration checks without creating project data.
+    const seeded = spawnSync(process.execPath, ['-e', "require('./db.js')"],
+      { cwd: temp, windowsHide: true, encoding: 'utf8' });
+    assert.equal(seeded.status, 0, seeded.stderr);
+  }
   const before = new DatabaseSync(path.join(temp, 'data/app.db'), { readOnly: true });
   const existing = before.prepare('SELECT id, name FROM courses ORDER BY id').all();
   const snapshots = before.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map(({ name }) => {
@@ -286,8 +294,13 @@ async function testFrontend() {
     const backend = await testBackend();
     await testFrontend();
     await testBrowser(backend);
-    assert.equal(digest(), originalHash, 'original database remains unchanged');
-    console.log('PASS original database hash unchanged');
+    if (originalHash !== null) {
+      assert.equal(digest(), originalHash, 'original database remains unchanged');
+      console.log('PASS original database hash unchanged');
+    } else {
+      assert.equal(fs.existsSync(original), false, 'fresh checkout database remains absent');
+      console.log('PASS fresh checkout: all database writes isolated');
+    }
   } finally {
     if (db) db.close();
     if (server && server.exitCode === null) {
