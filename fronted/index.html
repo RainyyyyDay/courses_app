@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>课内</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!--
+    ============================================================
+    ★ 启动自检（排查用，正常时不显示任何东西）
+    出问题时会在页面顶部弹一条红色横条，写明是哪个文件、哪一行、什么错。
+    它是"内联"的，所以就算 js/ 目录整个没加载，它也能工作。
+    以后不需要了，把这一整段 <script> 删掉即可，删掉不影响功能。
+    ============================================================
+  -->
+  <script>
+  (function () {
+    function banner(text) {
+      try {
+        var box = document.getElementById('bootErrorBox');
+        if (!box) {
+          box = document.createElement('div');
+          box.id = 'bootErrorBox';
+          box.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:99999;background:#c0392b;' +
+            'color:#fff;font:13px/1.7 Consolas,monospace;padding:10px 44px 10px 14px;' +
+            'white-space:pre-wrap;word-break:break-all;box-shadow:0 2px 10px rgba(0,0,0,.3)';
+          var close = document.createElement('button');
+          close.textContent = '×';
+          close.style.cssText = 'position:absolute;right:10px;top:6px;background:transparent;' +
+            'border:0;color:#fff;font-size:20px;cursor:pointer;line-height:1';
+          close.onclick = function () { box.remove(); };
+          box.appendChild(close);
+          (document.body || document.documentElement).appendChild(box);
+        }
+        var line = document.createElement('div');
+        line.textContent = text;
+        box.appendChild(line);
+        console.error('[启动自检] ' + text);
+      } catch (e) { console.error('[启动自检] 连错误都显示不出来：', e, text); }
+    }
+
+    // 1) 脚本加载失败 / 运行时报错
+    window.addEventListener('error', function (e) {
+      var t = e.target;
+      if (t && t.tagName === 'SCRIPT') {
+        banner('✗ 脚本加载失败：' + (t.src || '（未知路径）') +
+          '\n    多半是文件不在 js/ 目录里，或者文件名对不上。');
+      } else if (e.message) {
+        banner('✗ JS 报错：' + e.message + '\n    位置：' + (e.filename || '?') +
+          '  第 ' + e.lineno + ' 行');
+      }
+    }, true);
+
+    // 2) Promise 里没被接住的错误
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e.reason;
+      banner('✗ 未处理的错误：' + (r && r.message ? r.message : String(r)));
+    });
+
+    // 3) 所有脚本都加载完之后：点名 + 检查列表到底有没有内容
+    window.addEventListener('load', function () {
+      var need = ['loadCourses', 'filterCourses', 'openCourseModal', 'addCourse',
+        'openCourse', 'backToList', 'switchTab', 'loadMaterials', 'loadNotes',
+        'loadAssessments', 'loadMistakes', 'openManualModal', 'openTagPicker',
+        'confirmTagPicker', 'showPageOnly', 'loadTree', 'renderTree', 'toggleSortMode'];
+      var missing = need.filter(function (n) { return typeof window[n] !== 'function'; });
+      if (missing.length) {
+        banner('✗ 这些函数没加载出来：' + missing.join('、') +
+          '\n    → 说明对应的 js 文件没成功加载（404 / 路径不对 / 文件有语法错误）。');
+      }
+
+      var box = document.getElementById('courseList');
+      if (!box) {
+        banner('✗ 页面上找不到 #courseList（课程列表容器），index.html 可能不是配套的那一份。');
+      } else if (!box.innerHTML.trim()) {
+        banner('✗ 课程列表区域是空的：loadCourses() 没有成功执行。' +
+          '\n    正常情况这里应该是课程列表，或至少显示"还没有课程，点右上角＋添加"。');
+      } else if (box.textContent.indexOf('无法连接课程服务') >= 0) {
+        banner('✗ 连不上后端：请在 back 目录执行 npm start，确认 3000 端口在跑。');
+      }
+    });
+  })();
+  </script>
+
+  <!-- 课程列表页 -->
+  <div id="listPage">
+    <div class="header">
+      <h1>课内</h1>
+      <button class="add-btn" onclick="openCourseModal()">＋</button>
+    </div>
+    <!-- 👇 新增：搜索框 -->
+    <div class="search-bar">
+      <input type="text" id="searchInput" placeholder="搜索课程名称..." oninput="filterCourses()" />
+    </div>
+    <!-- 👆 -->
+    <div class="course-list" id="courseList"></div>
+  </div>
+
+  <!-- 课程详情页 -->
+<div id="detailPage">
+  <div class="header">
+    <div class="header-left">
+      <button class="back-btn" onclick="backToList()">←</button>
+      <h1 id="detailTitle">课程</h1>
+    </div>
+    <button class="add-btn" id="treeBtn" onclick="event.stopPropagation();openAddMenu(null, event)" style="display:none;" title="添加内容">＋</button>
+  </div>
+
+  <div class="detail-tabs">
+    <div class="dtab active" onclick="switchTab('materials', this)">资料</div>
+    <div class="dtab" onclick="switchTab('notes', this)">笔记</div>
+    <div class="dtab" onclick="switchTab('assessments', this)">考核</div>
+    <div class="dtab" onclick="switchTab('mistakes', this)">错题</div>
+    <div class="dtab" onclick="switchTab('knowledge', this)">知识框架</div>
+  </div>
+
+  <div class="tab-content">
+    <div class="tab-pane active" id="pane-materials">
+      <input type="file" id="materialFile" style="display:none" onchange="uploadMaterial()" />
+      <div class="entry-btns">
+        <button class="upload-btn" onclick="document.getElementById('materialFile').click()">＋ 上传文件</button>
+        <button class="upload-btn upload-btn-plain" onclick="openManualModal('material')">＋ 手动输入</button>
+      </div>
+      <div id="materialList"></div>
+    </div>
+
+    <div class="tab-pane" id="pane-notes">
+      <input type="file" id="noteFile" style="display:none" onchange="uploadNote()" />
+      <div class="entry-btns">
+        <button class="upload-btn" onclick="document.getElementById('noteFile').click()">＋ 上传文件</button>
+        <button class="upload-btn upload-btn-plain" onclick="openManualModal('note')">＋ 手动输入</button>
+      </div>
+      <div id="noteList"></div>
+    </div>
+
+    <div class="tab-pane" id="pane-assessments">
+      <button class="upload-btn" onclick="openAssessmentModal()">＋ 添加考核</button>
+      <div id="assessmentList"></div>
+    </div>
+
+    <div class="tab-pane" id="pane-mistakes">
+      <!-- 不限制文件类型：题目的扫描件 / PDF 也能直接上传 -->
+      <input type="file" id="mistakeFile" style="display:none" onchange="uploadMistake()" />
+      <div class="entry-btns">
+        <button class="upload-btn" onclick="document.getElementById('mistakeFile').click()">＋ 上传文件</button>
+        <button class="upload-btn upload-btn-plain" onclick="openManualModal('mistake')">＋ 手动输入</button>
+      </div>
+      <div id="mistakeList"></div>
+    </div>
+
+    <div class="tab-pane" id="pane-knowledge">
+      <div id="treeContainer"></div>
+    </div>
+  </div>
+</div>
+
+  <!-- 节点详情页（folder / knowledge 通用） -->
+  <div id="nodeDetailPage">
+    <div class="header">
+      <div class="header-left">
+        <button class="back-btn" onclick="backFromDetail()">←</button>
+        <h1 id="nodeDetailTitle">节点详情</h1>
+      </div>
+    </div>
+    <div class="tab-content">
+      <div class="detail-card">
+        <div class="detail-name" id="nodeDetailName"></div>
+        <div class="detail-type" id="nodeDetailType"></div>
+        <div class="detail-course" id="nodeDetailCourse"></div>
+        <div class="detail-path" id="nodeDetailPath"></div>
+      </div>
+      <div class="detail-section-title" id="nodeDetailMistakeTitle">关联错题</div>
+      <div id="nodeDetailMistakeList"></div>
+      <div class="detail-section-title" id="nodeDetailMaterialTitle">关联资料</div>
+      <div id="nodeDetailMaterialList"></div>
+      <div class="detail-section-title" id="nodeDetailNoteTitle">关联笔记</div>
+      <div id="nodeDetailNoteList"></div>
+    </div>
+  </div>
+
+  <!-- 错题详情页 -->
+  <div id="mistakeDetailPage">
+    <div class="header">
+      <div class="header-left">
+        <button class="back-btn" onclick="backFromDetail()">←</button>
+        <h1 id="mistakeDetailTitle">错题详情</h1>
+      </div>
+    </div>
+    <div class="tab-content">
+      <div class="detail-card">
+        <div class="detail-name" id="mistakeDetailName"></div>
+        <div class="detail-meta" id="mistakeDetailMeta"></div>
+        <div class="mistake-tags" id="mistakeDetailTags"></div>
+      </div>
+      <div class="detail-section-title" id="mistakeDetailSectionTitle">错题图片</div>
+      <img id="mistakeDetailImage" class="mistake-detail-image" alt="错题图片" />
+      <div id="mistakeDetailImageError" class="empty" style="display:none;">图片不存在或已丢失</div>
+      <div id="mistakeDetailContent" class="detail-content"></div>
+      <!-- 上传的不是图片时（PDF 扫描件等），这里显示一个打开文件的入口 -->
+      <div id="mistakeDetailFile" class="detail-actions" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- 资源详情页（资料 / 笔记通用） -->
+  <div id="resourceDetailPage">
+    <div class="header">
+      <div class="header-left">
+        <button class="back-btn" onclick="backFromDetail()">←</button>
+        <h1 id="resourceDetailTitle">资源详情</h1>
+      </div>
+    </div>
+    <div class="tab-content">
+      <div class="detail-card">
+        <div class="detail-name" id="resourceDetailName"></div>
+        <div class="detail-type" id="resourceDetailType"></div>
+        <div class="detail-meta" id="resourceDetailMeta"></div>
+        <div class="mistake-tags" id="resourceDetailTags"></div>
+      </div>
+      <div class="detail-section-title" id="resourceDetailSectionTitle">文件</div>
+      <div id="resourceDetailPreview"></div>
+      <div class="detail-actions">
+        <a id="resourceDetailOpen" class="detail-link" href="#" target="_blank">打开文件</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 添加课程弹窗 -->
+  <div class="modal-mask" id="courseModal">
+    <div class="modal">
+      <h3>添加课程</h3>
+      <input id="courseNameInput" placeholder="输入课程名称" />
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeCourseModal()">取消</button>
+        <button class="btn-confirm" onclick="addCourse()">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 添加考核弹窗 -->
+  <div class="modal-mask" id="assessmentModal">
+    <div class="modal">
+      <h3>添加考核</h3>
+      <input id="assessTitle" placeholder="考核名称，如期中考试" />
+      <input id="assessDeadline" type="date" />
+      <textarea id="assessReq" placeholder="考核要求（可选）"></textarea>
+      <!-- 附件是可选的：不选就是一条纯文字考核 -->
+      <input type="file" id="assessFile" style="display:none"
+             onchange="showPickedFile('assessFile', 'assessFileName')" />
+      <button type="button" class="file-pick-btn" onclick="document.getElementById('assessFile').click()">
+        📎 选择附件（可选）
+      </button>
+      <div class="file-name-tip" id="assessFileName">未选择附件</div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeAssessmentModal()">取消</button>
+        <button class="btn-confirm" onclick="addAssessment()">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 手动输入弹窗（资料 / 笔记 / 错题共用，标题和提示词按类型变） -->
+  <div class="modal-mask" id="manualModal">
+    <div class="modal">
+      <h3 id="manualModalTitle">手动输入</h3>
+      <input id="manualTitle" placeholder="标题" />
+      <textarea id="manualContent" placeholder="内容"></textarea>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeManualModal()">取消</button>
+        <button class="btn-confirm" onclick="confirmManualModal()">下一步：选择标签</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 通用确认弹窗 -->
+  <div class="modal-mask" id="confirmModal">
+    <div class="modal">
+      <h3 id="confirmTitle">确认操作</h3>
+      <p id="confirmMsg"></p >
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeConfirm(false)">取消</button>
+        <button class="btn-confirm" onclick="closeConfirm(true)">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 容器 -->
+  <div id="toastBox"></div>
+
+  <!-- 知识点选择器（错题标签，上传新错题 / 编辑已有错题共用） -->
+  <div class="modal-mask" id="tagPickerModal">
+    <div class="modal modal-wide">
+      <h3 id="tagPickerTitle">选择错题标签</h3>
+      <!-- 上传 / 编辑时显示：名字随便改，但文件后缀固定，不能改 -->
+      <div class="tag-picker-name" id="tagPickerNameRow" style="display:none;">
+        <label for="tagPickerName">名称</label>
+        <div class="name-field">
+          <input id="tagPickerName" placeholder="给这条内容起个名字"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();confirmTagPicker();}" />
+          <span class="name-ext" id="tagPickerNameExt"></span>
+        </div>
+        <div class="name-tip" id="tagPickerNameTip">后缀由文件决定，不能修改</div>
+      </div>
+      <div class="tag-picker-tree" id="tagPickerTree"></div>
+      <div class="tag-picker-selected" id="tagPickerSelected"></div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeTagPicker()">取消</button>
+        <button class="btn-confirm" id="tagPickerConfirm" onclick="confirmTagPicker()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 知识框架：添加内容的二选一菜单（课程顶部 ＋ 和分类的 ＋ 共用） -->
+  <div class="add-menu" id="addMenu">
+    <div class="add-menu-item" onclick="chooseAddType('folder')">新建分类</div>
+    <div class="add-menu-item" onclick="chooseAddType('knowledge')">新建知识点</div>
+  </div>
+
+  <!-- 知识框架：排序模式下每个节点的移动菜单（触屏 / 键盘替代拖拽） -->
+  <div class="add-menu" id="moveMenu">
+    <div class="add-menu-item" onclick="moveNodeUp()">上移</div>
+    <div class="add-menu-item" onclick="moveNodeDown()">下移</div>
+    <div class="add-menu-item" onclick="openMoveTargetPicker()">移动到…</div>
+  </div>
+
+  <!-- 知识框架：选择“移动到”的目标位置 -->
+  <div class="modal-mask" id="moveTargetModal">
+    <div class="modal modal-wide">
+      <h3>移动到…</h3>
+      <div class="move-target-list" id="moveTargetList"></div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeMoveTargetPicker()">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!--
+    脚本按顺序加载（普通 <script>，不打包、不需要构建工具）。
+    顺序有讲究：先放"基础设施"（配置 / 状态 / 工具 / 标签），再放各页面，
+    最后放入口 app.js —— 因为它一加载就会去调用前面那些函数。
+
+    ★ 以后新增一个 js 文件，记得在这里按位置补一行，漏了就会出现
+      "xxx is not defined"（而且只在点某个按钮时才报错，不容易发现）。
+  -->
+
+  <!-- 基础设施 -->
+  <script src="js/config.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/utils.js"></script>
+
+  <!-- 课程 -->
+  <script src="js/courses.js"></script>
+  <script src="js/courseDetail.js"></script>
+
+  <!-- 四类资源（列表页） -->
+  <script src="js/tags.js"></script>
+  <script src="js/materials.js"></script>
+  <script src="js/notes.js"></script>
+  <script src="js/assessments.js"></script>
+  <script src="js/mistakes.js"></script>
+
+  <!-- 录入流程：手动输入 + 选标签 -->
+  <script src="js/manualEntry.js"></script>
+  <script src="js/tagPicker.js"></script>
+  <script src="js/tagPickerView.js"></script>
+
+  <!-- 详情页 -->
+  <script src="js/page.js"></script>
+  <script src="js/nodeDetail.js"></script>
+  <script src="js/resourceDetail.js"></script>
+  <script src="js/mistakeDetail.js"></script>
+
+  <!-- 知识框架 -->
+  <script src="js/knowledgeTree.js"></script>
+  <script src="js/treeNodeActions.js"></script>
+  <script src="js/treeView.js"></script>
+  <script src="js/treeMenus.js"></script>
+  <script src="js/dropPreview.js"></script>
+  <script src="js/knowledgeSort.js"></script>
+
+  <!-- 入口：放最后，它负责绑定事件并启动 -->
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,844 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, sans-serif;
+  background: #f5f5f5;
+  min-height: 100vh;
+}
+
+/* ===== 基础布局（只保证元素能排开，不美化） ===== */
+.header {
+  background: #fff;
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #eee;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.header h1 { font-size: 18px; }
+.header-left { display: flex; align-items: center; gap: 8px; }
+
+.add-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+}
+.back-btn {
+  border: none; background: none;
+  font-size: 22px; cursor: pointer;
+  padding: 0 4px;
+}
+
+.course-list { padding: 12px; }
+.course-item {
+  background: #fff;
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+.course-name { font-size: 16px; }
+.actions button {
+  border: none; background: none;
+  cursor: pointer; font-size: 14px;
+  margin-left: 8px;
+}
+
+.empty { text-align: center; color: #aaa; padding: 60px 20px; }
+
+#detailPage { display: none; }
+
+.detail-tabs {
+  display: flex;
+  background: #fff;
+  border-bottom: 1px solid #eee;
+  position: sticky;
+  top: 57px;
+  z-index: 9;
+}
+.detail-tabs .dtab {
+  flex: 1; text-align: center; padding: 12px;
+  cursor: pointer; font-size: 14px;
+}
+.detail-tabs .dtab.active {
+  border-bottom: 2px solid #4a6cf7;
+}
+
+.tab-content { padding: 12px; }
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+.item-row {
+  background: #fff; border-radius: 10px; padding: 12px;
+  margin-bottom: 10px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.item-row .info { flex: 1; min-width: 0; }
+.item-row .title { font-size: 14px; margin-bottom: 4px; word-break: break-all; }
+.item-row .meta { font-size: 12px; color: #999; }
+.item-row button {
+  border: none; background: none; cursor: pointer;
+  font-size: 13px; margin-left: 8px;
+}
+.item-row a { font-size: 13px; margin-left: 8px; text-decoration: none; }
+
+.upload-btn {
+  width: 100%; padding: 12px;
+  border: 1px dashed #ccc;
+  background: #fff;
+  border-radius: 10px; font-size: 14px;
+  cursor: pointer; margin-bottom: 12px;
+}
+
+/* ===== 功能必需：弹窗显隐 ===== */
+.modal-mask {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex; justify-content: center; align-items: center;
+  z-index: 100;
+  opacity: 0; visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+.modal-mask.show { opacity: 1; visibility: visible; }
+
+.modal {
+  background: #fff; border-radius: 12px; padding: 20px;
+  width: 80%; max-width: 340px;
+  transform: scale(0.8);
+  transition: transform 0.3s ease;
+}
+.modal-mask.show .modal { transform: scale(1); }
+.modal h3 { margin-bottom: 12px; font-size: 16px; }
+.modal input, .modal textarea {
+  width: 100%; padding: 10px;
+  border: 1px solid #ddd; border-radius: 8px;
+  font-size: 15px; margin-bottom: 12px;
+}
+.modal textarea { height: 70px; resize: none; }
+.modal-actions {
+  display: flex; justify-content: flex-end; gap: 10px;
+}
+.modal-actions button {
+  padding: 8px 16px; border-radius: 8px;
+  border: none; cursor: pointer; font-size: 14px;
+}
+#confirmMsg { margin-bottom: 16px; line-height: 1.5; }
+
+/* ===== 功能必需：Toast 定位与淡入淡出 ===== */
+#toastBox {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+}
+.toast {
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 0.3s, transform 0.3s;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+
+/* ===== 功能必需：加载状态位置 ===== */
+.loading-tip {
+  text-align: center;
+  padding: 40px 20px;
+}
+/* ===== 简陋版搜索框 ===== */
+.search-bar {
+  padding: 10px 12px;
+  background: #fff;
+  border-bottom: 1px solid #eee;
+}
+.search-bar input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+}
+.search-bar input:focus {
+  border-color: #4a6cf7;
+}
+/* ===== 知识框架（简陋版） ===== */
+.tree-node { padding: 4px 0; }
+
+.tree-node-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tree-root-name {
+  font-size: 15px;
+  font-weight: bold;
+  padding: 6px 10px;
+  background: #f0f4ff;
+  border-radius: 6px;
+  color: #4a6cf7;
+}
+
+.tree-input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+}
+.tree-input:focus { border-color: #4a6cf7; }
+
+.tree-add,
+.tree-del {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  flex-shrink: 0;
+}
+.tree-add { background: #f0f4ff; color: #4a6cf7; }
+.tree-del { background: #ffeaea; color: #e74c3c; }
+
+.tree-children {
+  margin-left: 22px;
+  border-left: 2px dashed #e0e0e0;
+  padding-left: 12px;
+}
+
+/* ===== 知识框架（Phase 2：数据来自后端） ===== */
+
+/* 展开 / 折叠箭头；没有子节点时用同样宽度的占位符对齐 */
+.tree-toggle {
+  width: 20px; height: 20px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none; background: none;
+  color: #888; font-size: 12px; line-height: 1;
+  cursor: pointer;
+}
+.tree-toggle-empty { display: inline-block; cursor: default; }
+
+/* 分类（folder）：普通输入框 */
+.tree-input-folder { background: #fff; }
+
+/* 知识点（knowledge）：更像一个标签 */
+.tree-input-knowledge {
+  background: #eef7ee;
+  border-color: #cfe8cf;
+  color: #2f7d32;
+}
+.tree-input-knowledge:focus { border-color: #2f7d32; }
+
+/* 添加内容菜单 */
+.add-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 130px;
+  padding: 6px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  display: none;
+}
+.add-menu.show { display: block; }
+.add-menu-item {
+  padding: 9px 12px;
+  font-size: 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.add-menu-item:hover { background: #f0f4ff; color: #4a6cf7; }
+
+/* ===== 错题标签（folder / knowledge）/ 标签选择器 ===== */
+
+/* 错题列表里的标签行 */
+.mistake-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.mistake-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* 标签 chip 基础样式（列表里是静态的，选择器里带一个 × ） */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: #f2f2f2;
+  border: 1px solid #ddd;
+  color: #666;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.tag-chip .tag-chip-icon { font-size: 10px; line-height: 1; }
+
+/* folder 标签：方形 + 琥珀色 + ▣ */
+.tag-chip.tag-folder {
+  border-radius: 4px;
+  background: #fff7e6;
+  border: 1px solid #f0d9a8;
+  color: #a06a00;
+}
+/* knowledge 标签：圆形 pill + 绿色 + ● */
+.tag-chip.tag-knowledge {
+  border-radius: 12px;
+  background: #eef7ee;
+  border: 1px solid #cfe8cf;
+  color: #2f7d32;
+}
+/* 未知类型兜底，保证不报错 */
+.tag-chip.tag-unknown { background: #f2f2f2; border: 1px solid #ddd; color: #777; }
+
+.tag-chip-x {
+  border: none; background: none; cursor: pointer;
+  color: inherit; font-size: 13px; line-height: 1;
+  padding: 0; margin: 0;
+}
+.tag-none { font-size: 12px; color: #aaa; }
+
+/* 选择器弹窗 */
+.modal-wide { max-width: 440px; }
+
+.tag-picker-tree {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 10px;
+  margin-bottom: 12px;
+  background: #fafafa;
+  border: 1px solid #eee;
+  border-radius: 8px;
+}
+.tag-picker-tree .empty { padding: 24px 10px; font-size: 13px; }
+
+/* 选择器里的树 */
+.tag-node { padding: 1px 0; }
+.tag-row { display: flex; align-items: center; gap: 6px; }
+
+/* 展开箭头：只有有子节点的 folder 才有；knowledge 用占位符对齐 */
+.tag-toggle {
+  width: 18px; height: 18px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none; background: none;
+  color: #888; font-size: 11px; line-height: 1;
+  cursor: pointer;
+}
+.tag-toggle-empty { display: inline-block; cursor: default; }
+
+/* 选择器里的复选框：
+   必须覆盖「.modal input { width:100%; padding:10px; margin-bottom:12px }」这条通用表单样式，
+   否则复选框会被撑满整行，把后面的节点名称右挤出可见区域（名称"看不见"的根因）。
+   注意选择器要写成 .tag-picker-tree .tag-check（0,2,0），
+   才能压过 .modal input（0,1,1）——只写 .tag-check 是压不过的。 */
+.tag-picker-tree .tag-check {
+  width: auto;
+  min-width: 13px;
+  height: 13px;
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.tag-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  font-size: 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.tag-label:hover { background: #eef2ff; }
+.tag-label .tag-icon { font-size: 11px; line-height: 1; }
+.tag-label.tag-folder { color: #a06a00; }
+.tag-label.tag-knowledge { color: #2f7d32; }
+.tag-label.tag-unknown { color: #777; }
+
+.tag-children {
+  margin-left: 16px;
+  border-left: 2px dashed #e8e8e8;
+  padding-left: 10px;
+}
+
+.tag-picker-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 26px;
+  margin-bottom: 14px;
+}
+
+/* ===== 知识框架：更改排序模式（Phase 4C-2） ===== */
+
+/* 课程标题行：左边课程名，右边“更改排序 / 完成排序” */
+.tree-title-row { justify-content: space-between; }
+
+.sort-mode-btn {
+  border: 1px solid #d6ddfb;
+  background: #f0f4ff;
+  color: #4a6cf7;
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.sort-mode-btn:hover { background: #e5ebff; }
+.sort-mode-btn.active { background: #4a6cf7; border-color: #4a6cf7; color: #fff; }
+
+#treeContainer.sort-mode { background: #f8faff; border-radius: 8px; padding: 8px 4px; }
+
+.sort-hint {
+  font-size: 12px;
+  color: #7a86a8;
+  background: #eef2ff;
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin: 6px 0 8px;
+}
+
+/* 拖拽手柄 */
+.tree-handle {
+  width: 20px;
+  flex-shrink: 0;
+  text-align: center;
+  color: #9aa4c0;
+  cursor: grab;
+  user-select: none;
+}
+.tree-node-row.drag-source .tree-handle { cursor: grabbing; }
+
+/* 排序模式下的节点名称（只读，不再是输入框） */
+.tree-name {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #fff;
+  border: 1px solid #e6e6e6;
+  cursor: grab;
+}
+.tree-name .tree-type-icon { font-size: 11px; line-height: 1; }
+.tree-name-folder { color: #a06a00; border-color: #f0d9a8; }
+.tree-name-knowledge { color: #2f7d32; border-color: #cfe8cf; }
+
+.tree-move-btn {
+  width: 26px; height: 26px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: #f0f4ff;
+  color: #4a6cf7;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* ===== 拖拽动效（Pointer Events 版） =====
+   设计原则：
+   - 位移只走 transform，颜色 / 阴影才走 paint，拖拽时不容易掉帧
+   - 220ms + cubic-bezier(.22, 1, .36, 1)：起步快、收尾稳，接近 Apple 的手感
+*/
+
+:root {
+  --drag-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --drag-dur: 220ms;
+}
+
+/* 排序模式下每一行都参与 transform 过渡，让“让位”是滑过去的，而不是跳过去的 */
+#treeContainer.sort-mode .tree-node-row {
+  position: relative;
+  touch-action: none; /* 触屏拖动时不要顺带滚动页面 */
+  transition: transform var(--drag-dur) var(--drag-ease),
+              opacity 160ms ease,
+              background var(--drag-dur) var(--drag-ease),
+              box-shadow var(--drag-dur) var(--drag-ease);
+}
+
+/* 被拿起来的那一行：原地留个淡淡的凹槽 */
+#treeContainer .tree-node-row.drag-source {
+  opacity: 0.28;
+  transform: scale(0.985);
+}
+
+/* ---- 跟手浮层：被“拎起来”的那张卡片 ---- */
+.drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 999;
+  pointer-events: none; /* 关键：不能让底下 elementFromPoint 取到它 */
+  will-change: transform;
+}
+.drag-ghost-inner {
+  transform-origin: 50% 50%;
+  transition: transform 180ms var(--drag-ease), opacity 180ms ease;
+  will-change: transform;
+}
+.drag-ghost .tree-name {
+  min-width: 120px;
+  background: #fff;
+  border-radius: 10px;
+  cursor: grabbing;
+  box-shadow: 0 12px 28px rgba(28, 44, 88, 0.2), 0 2px 6px rgba(28, 44, 88, 0.12);
+}
+/* 刚拎起来：轻轻放大 + 微倾，制造“离地”的感觉 */
+.drag-ghost.lifted .drag-ghost-inner {
+  transform: scale(1.04) rotate(-1.5deg);
+}
+
+/* ---- 效果一：同级换上下 → 上下两个同级向两侧让开，插入槽位呼吸发光 ---- */
+.tree-node-row.drop-before::before,
+.tree-node-row.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 26px;
+  right: 8px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #7b95ff, #4a6cf7);
+  box-shadow: 0 0 10px rgba(74, 108, 247, 0.55);
+  animation: dragSlotPulse 1.1s ease-in-out infinite;
+}
+.tree-node-row.drop-before::before { top: -1px; }
+.tree-node-row.drop-after::after   { bottom: -1px; }
+
+@keyframes dragSlotPulse {
+  0%, 100% { opacity: 0.7; }
+  50%      { opacity: 1; }
+}
+
+/* ---- 效果二：往上挪到上级 → 只让下方标签下沉，绿色引导线标出新层级 ---- */
+.tree-node-row.drop-level-up::before {
+  content: '';
+  position: absolute;
+  left: 26px;
+  right: 8px;
+  top: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #4fd08a, #0e8f57);
+  box-shadow: 0 0 10px rgba(14, 143, 87, 0.5);
+}
+
+/* ---- 效果三：挪进下一级 → 目标胀大 + 清透玻璃质感，把卡片“含住” ---- */
+.tree-node-row.drop-into {
+  transform: scale(1.035);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  border-radius: 12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px rgba(74, 108, 247, 0.35),
+    0 12px 28px rgba(74, 108, 247, 0.22);
+}
+/* 玻璃上斜着扫过的高光 */
+.tree-node-row.drop-into::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  pointer-events: none;
+  background: linear-gradient(118deg,
+      rgba(255, 255, 255, 0.75) 0%,
+      rgba(255, 255, 255, 0.18) 34%,
+      rgba(255, 255, 255, 0.00) 58%,
+      rgba(255, 255, 255, 0.35) 100%);
+}
+
+/* 非法落点：自己 / 自己的后代 */
+.tree-node-row.drop-invalid {
+  background: #ffecec;
+  border-radius: 8px;
+  outline: 2px dashed #e74c3c;
+}
+
+/* 课程顶层落区 */
+.root-drop-zone {
+  margin: 10px 0 4px;
+  padding: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: #7a86a8;
+  border: 2px dashed #ccd4ea;
+  border-radius: 8px;
+  background: #fff;
+}
+.root-drop-zone.drop-into {
+  border-color: #4a6cf7;
+  background: #e8f0ff;
+  color: #4a6cf7;
+}
+
+/* “移动到…”目标列表 */
+.move-target-list {
+  max-height: 260px;
+  overflow-y: auto;
+  margin-bottom: 14px;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  background: #fafafa;
+  padding: 6px;
+}
+.move-target {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #a06a00;
+  cursor: pointer;
+}
+.move-target:hover { background: #eef2ff; }
+.move-target-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.move-target-cur { font-size: 12px; color: #999; flex-shrink: 0; }
+.move-target.current { background: #f0f4ff; }
+
+/* ===== 节点详情 / 错题详情（Phase 4D） ===== */
+
+#nodeDetailPage,
+#mistakeDetailPage { display: none; }
+
+.detail-card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.detail-name { font-size: 17px; font-weight: bold; margin-bottom: 8px; word-break: break-all; }
+.detail-meta { font-size: 13px; color: #888; margin-bottom: 8px; }
+
+/* 类型徽标：和标签 chip 用同一套视觉语言 */
+.detail-type {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 8px;
+  margin-bottom: 10px;
+  background: #f2f2f2;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  color: #666;
+}
+.detail-type.tag-folder {
+  border-radius: 4px;
+  background: #fff7e6;
+  border: 1px solid #f0d9a8;
+  color: #a06a00;
+}
+.detail-type.tag-knowledge {
+  border-radius: 12px;
+  background: #eef7ee;
+  border: 1px solid #cfe8cf;
+  color: #2f7d32;
+}
+
+.detail-course { font-size: 13px; color: #666; margin-bottom: 6px; }
+.detail-path { font-size: 13px; color: #888; line-height: 1.7; }
+.path-sep { margin: 0 6px; color: #c4c4c4; }
+
+.detail-section-title { font-size: 14px; color: #666; margin: 6px 2px 8px; }
+
+/* 关联错题 / 错题列表里可点的行 */
+.detail-link-row { cursor: pointer; }
+.detail-link-row:hover { background: #f7f9ff; }
+.row-arrow { color: #c4c4c4; font-size: 18px; flex-shrink: 0; margin-left: 8px; }
+
+/* 可点击的标签 chip */
+.tag-chip-link { cursor: pointer; }
+.tag-chip-link:hover {
+  filter: brightness(0.96);
+  box-shadow: 0 0 0 2px rgba(74, 108, 247, 0.22);
+}
+
+/* 错题详情的图片 */
+.mistake-detail-image {
+  width: 100%;
+  border-radius: 10px;
+  display: block;
+  background: #fff;
+}
+.detail-actions { margin-top: 10px; }
+.detail-link { font-size: 13px; }
+
+/* ===== 资源详情（资料 / 笔记）与知识框架节点交互（Phase 4F） ===== */
+
+#resourceDetailPage { display: none; }
+
+/* PDF 预览 */
+.resource-pdf {
+  width: 100%;
+  height: 420px;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  background: #fff;
+}
+
+/* 知识框架里可点击的节点名称（点它看详情，改名走 ✎） */
+.tree-name-link {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #fff;
+  border: 1px solid #e6e6e6;
+  cursor: pointer;
+}
+.tree-name-link:hover { background: #f7f9ff; border-color: #d6ddfb; }
+.tree-name-link .tree-type-icon { font-size: 11px; line-height: 1; }
+.tree-name-link.tree-name-folder { color: #a06a00; border-color: #f0d9a8; }
+.tree-name-link.tree-name-knowledge { color: #2f7d32; border-color: #cfe8cf; }
+
+/* 改名按钮 */
+.tree-edit {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: #fff6e6;
+  color: #a06a00;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+.tree-edit:hover { background: #ffefd6; }
+
+/* ===== 手动输入 / 上传文件 两种录入方式 + 系统分类“未分类”（Phase 5） ===== */
+
+/* 每个 Tab 顶部并排放两个录入按钮 */
+.entry-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.entry-btns .upload-btn { margin-bottom: 0; }
+.upload-btn-plain {
+  background: #fff;
+  color: #4a6cf7;
+  border: 1px solid #d6ddfb;
+}
+
+/* 列表里显示手动输入的内容摘要（最多两行） */
+.row-content {
+  font-size: 12px;
+  color: #5b6478;
+  margin-top: 4px;
+  white-space: pre-wrap;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* 详情页里的正文块 */
+.detail-content {
+  font-size: 14px;
+  line-height: 1.7;
+  color: #333;
+  background: #fafbfd;
+  border: 1px solid #eef0f5;
+  border-radius: 8px;
+  padding: 12px 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 考核弹窗里的“选择附件” */
+.file-pick-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px dashed #ccd4ea;
+  border-radius: 8px;
+  background: #fbfcff;
+  color: #4a6cf7;
+  font-size: 13px;
+  cursor: pointer;
+}
+.file-pick-btn:hover { background: #f2f6ff; }
+.file-name-tip {
+  font-size: 12px;
+  color: #7a86a8;
+  margin-top: 6px;
+  word-break: break-all;
+}
+
+/* 系统分类“未分类”：整体灰色，和普通分类区分开 */
+.tree-name.tree-name-uncategorized,
+.tree-name-link.tree-name-uncategorized {
+  color: #8a90a0;
+  border-color: #dcdee5;
+  background: #f6f7f9;
+}
+.tag-label.tag-uncategorized,
+.tag-chip.tag-uncategorized {
+  color: #8a90a0;
+  border-color: #dcdee5;
+  background: #f6f7f9;
+}
+
+/* 排序模式下系统分类不参与拖动，用手柄占位保持对齐 */
+.tree-handle-empty { width: 20px; flex-shrink: 0; }
+
+/* 选择器顶部的“名称”输入框：只有上传文件时才出现，用来给上传的内容改名 */
+.tag-picker-name { margin-bottom: 10px; }
+.tag-picker-name label {
+  display: block;
+  font-size: 12px;
+  color: #7a86a8;
+  margin-bottom: 4px;
+}
+.tag-picker-name input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+}
+.tag-picker-name input:focus { border-color: #4a6cf7; }
+
+/* 名字 + 固定后缀：后缀在输入框外面，用户改不到 */
+.name-field { display: flex; align-items: center; gap: 8px; }
+.name-field input { flex: 1; min-width: 0; }
+.name-ext {
+  flex-shrink: 0;
+  font-size: 14px;
+  color: #5b6478;
+  background: #eef1f6;
+  border: 1px solid #e0e4ec;
+  border-radius: 8px;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+.name-tip { font-size: 12px; color: #9aa4c0; margin-top: 4px; }
