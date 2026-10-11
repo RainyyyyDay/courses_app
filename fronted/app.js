@@ -75,6 +75,7 @@ loadCourses();
 
     if (stillThere) {
       openCourse(Number(savedCourseId), savedCourseName, savedTab || 'materials');
+      if (savedTab === 'mistakes') await restoreMistakeLocation(Number(savedCourseId));
     } else {
       console.warn('上次打开的那门课已经不存在了，留在课程列表');
       forgetLastPage();

@@ -366,21 +366,142 @@ app.delete('/api/assessments/:id', (req, res) => {
 
 // ==================== 错题接口 ====================
 
-app.get('/api/courses/:id/mistakes', (req, res) => {
-  const courseId = Number(req.params.id);
-  res.json(db.listMistakes(courseId));
-});
+function mistakeError(status, code, message) {
+  throw Object.assign(new Error(message), { status, code });
+}
+
+function mistakeApi(handler) {
+  return (req, res) => {
+    try { handler(req, res); }
+    catch (err) {
+      // 失败的创建请求只清理本次新上传的文件。
+      if (req.file) fs.rm(path.join(uploadDir, req.file.filename), { force: true }, () => {});
+      if (!err.status) console.error('错题接口失败', err);
+      res.status(err.status || 500).json({ code: err.code || 'INTERNAL_ERROR',
+        message: err.status ? err.message : '错题操作失败', details: {} });
+    }
+  };
+}
+
+function positiveId(value) {
+  if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value))) {
+    mistakeError(400, 'INVALID_ARGUMENT', 'id 必须是正整数');
+  }
+  return Number(value);
+}
+
+function mistakeCourse(value) {
+  const id = positiveId(value);
+  if (!db.findCourse(id)) mistakeError(404, 'COURSE_NOT_FOUND', '找不到课程');
+  return id;
+}
+
+function scopedMistake(req) {
+  const courseId = mistakeCourse(req.params.courseId);
+  const id = positiveId(req.params.mistakeId);
+  const row = db.getMistakeDetail(id);
+  if (!row || row.course_id !== courseId) mistakeError(404, 'MISTAKE_NOT_FOUND', '找不到当前课程的错题');
+  return row;
+}
+
+app.get('/api/courses/:id/mistakes', mistakeApi((req, res) => {
+  const courseId = mistakeCourse(req.params.id);
+  const filters = {};
+  const query = req.query;
+  if (Object.keys(query).some(key => !['mistakeType', 'reviewStatus', 'favorite', 'nodeIds', 'q'].includes(key))) {
+    mistakeError(400, 'INVALID_ARGUMENT', '存在不支持的筛选参数');
+  }
+  if (query.mistakeType !== undefined) {
+    if (!['knowledge', 'thinking', 'execution', 'unclassified'].includes(query.mistakeType)) mistakeError(400, 'INVALID_ARGUMENT', 'mistakeType 不合法');
+    filters.mistakeType = query.mistakeType;
+  }
+  if (query.reviewStatus !== undefined) {
+    if (!['unreviewed', 'reviewed'].includes(query.reviewStatus)) mistakeError(400, 'INVALID_ARGUMENT', 'reviewStatus 不合法');
+    filters.reviewStatus = query.reviewStatus;
+  }
+  if (query.favorite !== undefined) {
+    if (!['true', 'false', '1', '0'].includes(query.favorite)) mistakeError(400, 'INVALID_ARGUMENT', 'favorite 只能是 true、false、1 或 0');
+    filters.favorite = ['true', '1'].includes(query.favorite) ? 1 : 0;
+  }
+  if (query.q !== undefined) {
+    if (typeof query.q !== 'string' || query.q.length > 500) mistakeError(400, 'INVALID_ARGUMENT', 'q 必须是最多 500 字符的字符串');
+    filters.q = query.q.trim();
+  }
+  if (query.nodeIds !== undefined) {
+    if (typeof query.nodeIds !== 'string' || !/^[1-9]\d*(,[1-9]\d*)*$/.test(query.nodeIds)) mistakeError(400, 'INVALID_ARGUMENT', 'nodeIds 使用逗号分隔的正整数');
+    filters.nodeIds = [...new Set(query.nodeIds.split(',').map(positiveId))];
+    if (filters.nodeIds.length > 100) mistakeError(400, 'INVALID_ARGUMENT', '最多筛选 100 个标签');
+    const bad = checkNodeIds(courseId, filters.nodeIds);
+    if (bad) mistakeError(400, 'INVALID_ARGUMENT', bad);
+  }
+  res.json(db.listMistakes(courseId, filters));
+}));
+
+// 编辑与复习入口均带课程 ID，防止前端课程切换后误操作另一课程的错题。
+app.patch('/api/courses/:courseId/mistakes/:mistakeId', mistakeApi((req, res) => {
+  const row = scopedMistake(req);
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) mistakeError(400, 'INVALID_ARGUMENT', '请求必须是 JSON 对象');
+  const allowed = ['title', 'content', 'mistakeType', 'answerContent', 'explanation', 'favorite', 'expectedRevision'];
+  if (Object.keys(body).some(key => !allowed.includes(key))) mistakeError(400, 'INVALID_ARGUMENT', '存在不支持的编辑字段');
+  const changes = {};
+  for (const [key, column] of [['title', 'title'], ['content', 'content'], ['answerContent', 'answer_content'], ['explanation', 'explanation']]) {
+    if (body[key] !== undefined) {
+      if (typeof body[key] !== 'string') mistakeError(400, 'INVALID_ARGUMENT', `${key} 必须是字符串`);
+      if (key === 'title' && !body[key].trim()) mistakeError(400, 'INVALID_ARGUMENT', '标题不能为空');
+      changes[column] = key === 'title' ? keepFileExtension(body[key], row.image_url) : body[key];
+    }
+  }
+  if (body.mistakeType !== undefined) {
+    if (!['knowledge', 'thinking', 'execution', 'unclassified'].includes(body.mistakeType)) mistakeError(400, 'INVALID_ARGUMENT', 'mistakeType 不合法');
+    changes.mistake_type = body.mistakeType;
+  }
+  if (body.favorite !== undefined) {
+    if (typeof body.favorite !== 'boolean') mistakeError(400, 'INVALID_ARGUMENT', 'favorite 必须是布尔值');
+    changes.favorite = body.favorite ? 1 : 0;
+  }
+  if (body.expectedRevision !== undefined && (!Number.isSafeInteger(body.expectedRevision) || body.expectedRevision < 1)) mistakeError(400, 'INVALID_ARGUMENT', 'expectedRevision 必须是正整数');
+  if (!Object.keys(changes).length) mistakeError(400, 'INVALID_ARGUMENT', '至少提交一个编辑字段');
+  res.json(db.updateMistake(row.id, changes, body.expectedRevision));
+}));
+
+app.get('/api/courses/:courseId/mistakes/:mistakeId/review', mistakeApi((req, res) => {
+  res.json(db.getMistakeReview(scopedMistake(req).id));
+}));
+
+app.post('/api/courses/:courseId/mistakes/:mistakeId/review', mistakeApi((req, res) => {
+  res.json(db.applyMistakeReview(scopedMistake(req).id, req.body, true));
+}));
+
+app.post('/api/courses/:courseId/mistakes/:mistakeId/review/events', mistakeApi((req, res) => {
+  res.json(db.applyMistakeReview(scopedMistake(req).id, req.body));
+}));
+
+app.get('/api/courses/:courseId/mistakes/:mistakeId/review/events', mistakeApi((req, res) => {
+  const row = scopedMistake(req);
+  const beforeId = req.query.beforeId === undefined ? Number.MAX_SAFE_INTEGER : positiveId(req.query.beforeId);
+  const limit = req.query.limit === undefined ? 20 : positiveId(req.query.limit);
+  if (limit > 100) mistakeError(400, 'INVALID_ARGUMENT', 'limit 最大为 100');
+  res.json(db.listMistakeReviewEvents(row.id, beforeId, limit));
+}));
 
 // 同样两种方式二选一：上传图片，或者手动输入题目内容
-app.post('/api/courses/:id/mistakes', upload.single('file'), (req, res) => {
-  const courseId = Number(req.params.id);
+app.post('/api/courses/:id/mistakes', upload.single('file'), mistakeApi((req, res) => {
+  const courseId = mistakeCourse(req.params.id);
   const body = req.body || {};
+
+  if (!['knowledge', 'thinking', 'execution'].includes(body.mistakeType)) {
+    mistakeError(400, 'INVALID_ARGUMENT', '新建错题必须选择 knowledge、thinking 或 execution');
+  }
+  for (const key of ['title', 'content', 'answerContent', 'explanation']) {
+    if (body[key] !== undefined && typeof body[key] !== 'string') mistakeError(400, 'INVALID_ARGUMENT', `${key} 必须是字符串`);
+  }
 
   const title = typeof body.title === 'string' ? body.title.trim() : '';
   const content = typeof body.content === 'string' ? body.content : '';
 
   if (!req.file && !title) {
-    return res.status(400).json({ message: '请上传图片，或者填写标题' });
+    mistakeError(400, 'INVALID_ARGUMENT', '请上传文件，或者填写标题');
   }
 
   // 可选：录入的同时顺便打标签。两个字段名都认，老前端不受影响。
@@ -388,11 +509,8 @@ app.post('/api/courses/:id/mistakes', upload.single('file'), (req, res) => {
   if (knowledgeIds.length > 0) {
     const bad = checkNodeIds(courseId, knowledgeIds);
     if (bad) {
-      // 标签不合法，这道错题不会入库。
-      // 刚上传的这个文件不会被任何记录引用，顺手删掉，避免在 uploads 里留下垃圾文件。
-      // 只删“本次请求刚写入”的那一个文件，不会碰其它任何已上传文件。
-      if (req.file) fs.rm(path.join(uploadDir, req.file.filename), { force: true }, () => {});
-      return res.status(400).json({ message: bad });
+      // mistakeApi 统一清理本次上传，不触碰原有附件。
+      mistakeError(400, 'INVALID_ARGUMENT', bad);
     }
   }
 
@@ -407,11 +525,12 @@ app.post('/api/courses/:id/mistakes', upload.single('file'), (req, res) => {
     req.file ? '/uploads/' + req.file.filename : '',
     content,
     req.file ? req.file.mimetype : '',
-    knowledgeIds
+    knowledgeIds,
+    { mistakeType: body.mistakeType, answerContent: body.answerContent, explanation: body.explanation }
   );
 
   res.status(201).json(newItem);
-});
+}));
 
 app.delete('/api/mistakes/:id', (req, res) => {
   db.deleteMistake(Number(req.params.id));

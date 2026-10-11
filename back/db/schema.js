@@ -8,7 +8,7 @@
 const { db } = require('./connection');
 
 // ===== 当前程序支持的数据库版本 =====
-const CURRENT_DB_VERSION = 6;
+const CURRENT_DB_VERSION = 7;
 
 // 判断某张表是否已经存在
 function tableExists(name) {
@@ -92,6 +92,61 @@ function migrate() {
     setUserVersion(6);
     version = 6;
   }
+  if (version === 6) {
+    db.exec('BEGIN');
+    try {
+      upgradeToV7();
+      setUserVersion(7);
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+}
+
+// 只增加字段和单题复习结构，不改写旧题目、附件或标签。
+function upgradeToV7() {
+  const columns = new Set(db.prepare('PRAGMA table_info(mistakes)').all().map(c => c.name));
+  const additions = {
+    mistake_type: "TEXT NOT NULL DEFAULT 'unclassified' CHECK (mistake_type IN ('knowledge','thinking','execution','unclassified'))",
+    answer_content: "TEXT NOT NULL DEFAULT ''",
+    explanation: "TEXT NOT NULL DEFAULT ''",
+    favorite: 'INTEGER NOT NULL DEFAULT 0 CHECK (favorite IN (0,1))',
+    review_status: "TEXT NOT NULL DEFAULT 'unreviewed' CHECK (review_status IN ('unreviewed','reviewed'))",
+    review_revision: 'INTEGER NOT NULL DEFAULT 1',
+  };
+  for (const [name, ddl] of Object.entries(additions)) {
+    if (!columns.has(name)) db.exec(`ALTER TABLE mistakes ADD COLUMN ${name} ${ddl}`);
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_mistakes_filters ON mistakes(course_id, mistake_type, review_status);
+    CREATE TABLE IF NOT EXISTS mistake_review_progress (
+      mistake_id INTEGER PRIMARY KEY REFERENCES mistakes(id) ON DELETE CASCADE,
+      stage TEXT NOT NULL DEFAULT 'idle' CHECK (stage IN ('idle','question','answer','completed')),
+      recall TEXT CHECK (recall IN ('clear','vague','forgotten')),
+      round INTEGER NOT NULL DEFAULT 0,
+      version INTEGER NOT NULL DEFAULT 0,
+      review_revision INTEGER NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS mistake_review_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mistake_id INTEGER NOT NULL REFERENCES mistakes(id) ON DELETE CASCADE,
+      request_id TEXT NOT NULL,
+      request_json TEXT NOT NULL,
+      action TEXT NOT NULL,
+      round INTEGER NOT NULL,
+      mistake_type TEXT NOT NULL,
+      recall TEXT,
+      result TEXT,
+      from_status TEXT NOT NULL CHECK (from_status IN ('unreviewed','reviewed')),
+      to_status TEXT NOT NULL CHECK (to_status IN ('unreviewed','reviewed')),
+      response_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE (mistake_id, request_id)
+    );
+  `);
 }
 
 // ===== v5 → v6 的迁移 =====

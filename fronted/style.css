@@ -831,6 +831,28 @@ body {
 /* 名字 + 固定后缀：后缀在输入框外面，用户改不到 */
 .name-field { display: flex; align-items: center; gap: 8px; }
 .name-field input { flex: 1; min-width: 0; }
+
+/* 第一版错题功能界面，样式仅限定在错题区域。 */
+.mistake-categories { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 16px 0; }
+.mistake-categories button { padding: 20px 12px; background: #fff; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; font-size: 15px; }
+.mistake-categories small { display: block; color: #777; margin-top: 8px; }
+.mistake-workspace { padding: 16px; background: #fff; border: 1px solid #e3e3e3; border-radius: 8px; margin: 12px 0; }
+.mistake-toolbar, .mistake-filter-form, .mistake-review-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 10px 0; }
+.mistake-toolbar h2, .mistake-workspace h2 { font-size: 16px; margin: 8px 0; }
+.mistake-filter-form label, .mistake-edit-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.mistake-filter-form input, .mistake-filter-form select, .mistake-edit-form input, .mistake-edit-form select, .mistake-edit-form textarea { padding: 9px; border: 1px solid #ccc; border-radius: 5px; font: inherit; max-width: 100%; box-sizing: border-box; }
+.mistake-filter-form input { width: min(260px, 65vw); }
+.mistake-edit-form { display: grid; gap: 12px; margin-top: 14px; }
+.mistake-edit-form textarea { width: 100%; resize: vertical; }
+.mistake-workspace button, .mistake-toolbar button { padding: 9px 12px; border: 1px solid #ccc; border-radius: 5px; background: #f7f8fa; cursor: pointer; }
+.mistake-workspace button:disabled { cursor: wait; opacity: .55; }
+.mistake-tag-filter summary, #mistakeEditor summary { cursor: pointer; padding: 8px 0; }
+.mistake-filter-tag { display: inline-flex; align-items: center; gap: 5px; margin: 6px 12px 6px 0; font-size: 13px; }
+.mistake-inline-error { color: #b42318; white-space: pre-wrap; }
+.mistake-state { display: inline-block; border-radius: 4px; background: #f1f3f5; padding: 3px 7px; margin: 5px 6px 5px 0; font-size: 12px; }
+.mistake-state-reviewed { color: #28743c; background: #eaf6ed; }
+#pane-mistakes .mistake-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+@media (max-width: 600px) { #pane-mistakes .item-row { align-items: flex-start; flex-direction: column; gap: 10px; } }
 .name-ext {
   flex-shrink: 0;
   font-size: 14px;

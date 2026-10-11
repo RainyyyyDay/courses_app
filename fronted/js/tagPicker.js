@@ -51,6 +51,15 @@ async function openTagPicker(mode, resourceType, resourceId) {
     (mode === 'edit' || mode === 'manual') ? '保存' : '上传';
   document.getElementById('tagPickerConfirm').disabled = false;
 
+  const mistakeFields = document.getElementById('tagPickerMistakeFields');
+  mistakeFields.style.display = resourceType === 'mistake' && mode !== 'edit' ? 'grid' : 'none';
+  if (resourceType === 'mistake' && mode !== 'edit') {
+    ensureMistakeUi();
+    document.getElementById('mistakeCreateType').value = mistakeUi.type && mistakeUi.type !== 'unclassified' ? mistakeUi.type : '';
+    document.getElementById('mistakeCreateAnswer').value = '';
+    document.getElementById('mistakeCreateExplanation').value = '';
+  }
+
   // 名称那一行：上传和编辑时都显示，可以改名字。
   // 后缀单独做成一块固定文字（不进输入框），所以用户改不到它。
   const nameRow = document.getElementById('tagPickerNameRow');
@@ -162,6 +171,9 @@ function closeTagPicker() {
 async function confirmTagPicker() {
   const state = tagPickerState;
   if (!state || state.saving) return;
+  if (state.resourceType === 'mistake' && state.mode !== 'edit') {
+    try { mistakeCreationFields(); } catch (err) { showToast(err.message); return; }
+  }
 
   const nodeIds = [...state.selected];
   const mode = state.mode;
@@ -227,6 +239,9 @@ async function saveResourceTags(resourceType, resourceId, nodeIds, title) {
     });
     showToast('已保存');
     await cfg.reload();
+    if (resourceType === 'mistake' && currentView.type === 'mistake' && currentView.id === resourceId) {
+      await renderMistakeDetailPage(resourceId, !!currentView.review);
+    }
     return true;
   } catch (err) {
     console.error('保存标签失败:', err);

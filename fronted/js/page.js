@@ -18,6 +18,7 @@ function showPageOnly(pageId) {
 
 // 详情页的返回：回到进入这一页之前的页面
 async function backFromDetail() {
+  if (currentView.type === 'mistake') forgetMistakeDetailLocation();
   const prev = navStack.pop();
 
   if (!prev) {
@@ -30,8 +31,8 @@ async function backFromDetail() {
     currentView = { type: 'node', id: prev.id };
     await renderNodeDetailPage(prev.id);
   } else if (prev.type === 'mistake') {
-    currentView = { type: 'mistake', id: prev.id };
-    await renderMistakeDetailPage(prev.id);
+    currentView = { type: 'mistake', id: prev.id, review: !!prev.review };
+    await renderMistakeDetailPage(prev.id, !!prev.review);
   } else if (prev.type === 'resource') {
     currentView = { type: 'resource', resourceType: prev.resourceType, id: prev.id };
     await renderResourceDetailPage(prev.resourceType, prev.id);

@@ -148,6 +148,21 @@
         <button class="upload-btn" onclick="document.getElementById('mistakeFile').click()">＋ 上传文件</button>
         <button class="upload-btn upload-btn-plain" onclick="openManualModal('mistake')">＋ 手动输入</button>
       </div>
+      <div id="mistakeCategories" class="mistake-categories"></div>
+      <div id="mistakeFilters" class="mistake-workspace" style="display:none;">
+        <div class="mistake-toolbar">
+          <button type="button" onclick="openMistakeCategory(null)">← 错题分类</button>
+          <h2 id="mistakeCategoryTitle"></h2>
+        </div>
+        <form class="mistake-filter-form" onsubmit="event.preventDefault();applyMistakeFilters();">
+          <label>搜索<input id="mistakeSearch" type="search" maxlength="500" placeholder="标题、题目文字" /></label>
+          <label>收藏<select id="mistakeFavoriteFilter"><option value="">全部</option><option value="true">已收藏</option><option value="false">未收藏</option></select></label>
+          <label>复习状态<select id="mistakeStatusFilter"><option value="">全部</option><option value="reviewed">已复习</option><option value="unreviewed">未复习</option></select></label>
+          <button type="submit">筛选</button>
+          <button type="button" onclick="clearMistakeFilters()">清空筛选</button>
+        </form>
+        <details class="mistake-tag-filter"><summary>知识点标签（匹配任一所选标签）</summary><div id="mistakeFilterTags"></div></details>
+      </div>
       <div id="mistakeList"></div>
     </div>
 
@@ -201,6 +216,28 @@
       <div id="mistakeDetailContent" class="detail-content"></div>
       <!-- 上传的不是图片时（PDF 扫描件等），这里显示一个打开文件的入口 -->
       <div id="mistakeDetailFile" class="detail-actions" style="display:none;"></div>
+      <div class="mistake-toolbar">
+        <button id="mistakeReviewToggle" type="button" onclick="toggleMistakeReviewMode()">进入复习</button>
+      </div>
+      <div id="mistakeReviewPanel" class="mistake-workspace" style="display:none;" aria-live="polite"></div>
+      <div id="mistakeReadPanel" class="mistake-workspace">
+        <h2>参考答案</h2><div id="mistakeAnswerText" class="detail-content"></div>
+        <h2>解析 / 错误原因</h2><div id="mistakeExplanationText" class="detail-content"></div>
+        <details id="mistakeEditor">
+          <summary>编辑题目、分类和答案</summary>
+          <form class="mistake-edit-form" onsubmit="event.preventDefault();saveMistakeDetail();">
+            <label>标题<input id="mistakeEditTitle" required /></label>
+            <label>类型<select id="mistakeEditType"><option value="knowledge">知识类</option><option value="thinking">思维类</option><option value="execution">执行类</option><option value="unclassified">待分类</option></select></label>
+            <label>题目文字<textarea id="mistakeEditContent" rows="4"></textarea></label>
+            <label>参考答案<textarea id="mistakeEditAnswer" rows="4"></textarea></label>
+            <label>解析 / 错误原因（可选）<textarea id="mistakeEditExplanation" rows="3"></textarea></label>
+            <p class="detail-meta">修改题目、分类、答案或解析后，会变为未复习；原附件保留。</p>
+            <button id="mistakeEditSave" type="submit">保存修改</button>
+            <button type="button" onclick="editMistakeDetailTags()">编辑标签</button>
+            <div id="mistakeEditError" class="mistake-inline-error" role="alert"></div>
+          </form>
+        </details>
+      </div>
     </div>
   </div>
 
@@ -303,6 +340,11 @@
         <div class="name-tip" id="tagPickerNameTip">后缀由文件决定，不能修改</div>
       </div>
       <div class="tag-picker-tree" id="tagPickerTree"></div>
+      <div id="tagPickerMistakeFields" class="mistake-edit-form" style="display:none;">
+        <label>错题类型（必选）<select id="mistakeCreateType"><option value="">请选择类型</option><option value="knowledge">知识类</option><option value="thinking">思维类</option><option value="execution">执行类</option></select></label>
+        <label>参考答案<textarea id="mistakeCreateAnswer" rows="3" placeholder="可后续补齐，补齐后才能复习"></textarea></label>
+        <label>解析 / 错误原因（可选）<textarea id="mistakeCreateExplanation" rows="2"></textarea></label>
+      </div>
       <div class="tag-picker-selected" id="tagPickerSelected"></div>
       <div class="modal-actions">
         <button class="btn-cancel" onclick="closeTagPicker()">取消</button>

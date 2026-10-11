@@ -31,4 +31,5 @@ module.exports = {
   ...require('./notes'),
   ...require('./assessments'),
   ...require('./mistakes'),
+  ...require('./mistakeReview'),
 };

@@ -9,6 +9,8 @@ const net = require('node:net');
 const http = require('node:http');
 const { spawn, spawnSync } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
+const { testMistakeMigrations, testMistakeApi } = require('./mistake-backend.cjs');
+const { mistakeBrowserPrelude, mistakeBrowserScenario } = require('./mistake-frontend.cjs');
 
 const root = path.resolve(__dirname, '..');
 const source = path.join(root, 'back');
@@ -42,7 +44,7 @@ async function testBackend() {
   before.close();
   const store = require(path.join(temp, 'db/index.js'));
   db = store.db;
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 6);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 7);
   assert.deepEqual(db.prepare('SELECT id, name FROM courses ORDER BY id').all(), existing);
   for (const snapshot of snapshots) assert.deepEqual(db.prepare(snapshot.sql).all(), snapshot.rows);
   const course = store.createCourse('regression course');
@@ -54,7 +56,7 @@ async function testBackend() {
   const cases = [
     ['material', store.createMaterial(course.id, 'material', '', '', [child.id], 'material body'), store.replaceMaterialNodes, store.findMaterial, store.listMaterialNodes, store.listMaterialsByNode],
     ['note', store.createNote(course.id, 'note', '', '', 'manual', [child.id], 'note body'), store.replaceNoteNodes, store.findNote, store.listNoteNodes, store.listNotesByNode],
-    ['mistake', store.createMistake(course.id, 'mistake', '', 'mistake body', '', [child.id]), store.replaceMistakeNodes, store.getMistakeDetail, store.listMistakeNodes, store.listMistakesByNode]
+    ['mistake', store.createMistake(course.id, 'mistake', '', 'mistake body', '', [child.id], { mistakeType: 'knowledge' }), store.replaceMistakeNodes, store.getMistakeDetail, store.listMistakeNodes, store.listMistakesByNode]
   ];
   for (const [kind, row, replace, find, nodes, byNode] of cases) {
     assert.equal(row.content, kind + ' body');
@@ -67,7 +69,7 @@ async function testBackend() {
     assert.ok(byNode(system.id).some(r => r.id === row.id), kind + ': unclassified resources');
   }
   const count = db.prepare('SELECT count(*) AS n FROM mistakes').get().n;
-  assert.throws(() => store.createMistake(course.id, 'must rollback', '', '', '', [999999999]));
+  assert.throws(() => store.createMistake(course.id, 'must rollback', '', '', '', [999999999], { mistakeType: 'knowledge' }));
   assert.equal(db.prepare('SELECT count(*) AS n FROM mistakes').get().n, count);
   db.close();
   db = null;
@@ -86,12 +88,15 @@ async function testBackend() {
   let logs = '';
   server.stdout.on('data', chunk => { logs += chunk; });
   server.stderr.on('data', chunk => { logs += chunk; });
+  server.on('error', err => { logs += err.stack; });
+  server.on('exit', (code, signal) => { logs += `\nserver exited: ${code}, ${signal}`; });
   const base = `http://127.0.0.1:${port}/api`;
   let ready = false;
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 300; i++) {
     try { ready = (await fetch(base + '/courses')).ok; } catch {}
     if (ready) break;
-    await new Promise(resolve => setTimeout(resolve, 50));
+    if (server.exitCode !== null) break;
+    await new Promise(resolve => setTimeout(resolve, 100));
   }
   assert.ok(ready, logs);
   for (const [kind, row] of cases) {
@@ -110,6 +115,7 @@ async function testBackend() {
     const form = new FormData();
     form.set('title', 'manual test');
     form.set('content', '正文保存测试');
+    if (kind === 'mistakes') form.set('mistakeType', 'knowledge');
     form.set(kind === 'mistakes' ? 'knowledgeIds' : 'nodeIds', JSON.stringify([child.id]));
     const response = await fetch(`${base}/courses/${course.id}/${kind}`, { method: 'POST', body: form });
     assert.equal(response.status, 201);
@@ -118,6 +124,7 @@ async function testBackend() {
   for (const kind of ['mistakes', 'assessments']) {
     const form = new FormData();
     form.set('title', 'PDF test.pdf');
+    if (kind === 'mistakes') form.set('mistakeType', 'execution');
     form.set('file', new Blob(['%PDF-test'], { type: 'application/pdf' }), 'test.pdf');
     const response = await fetch(`${base}/courses/${course.id}/${kind}`, { method: 'POST', body: form });
     assert.equal(response.status, 201);
@@ -128,7 +135,21 @@ async function testBackend() {
     assert.equal(rows.find(r => r.id === row.id).file_type, 'application/pdf');
   }
   console.log('PASS backend: migration preserves courses, all tag APIs, rollback, body, attachments, parent aggregation, unclassified');
-  return { base, course, child, other, cases };
+  const restart = async () => {
+    await new Promise(resolve => { server.once('exit', resolve); server.kill(); });
+    server = spawn(process.execPath, ['server.js'], { cwd: temp, windowsHide: true,
+      env: { ...process.env, NODE_PATH: path.join(source, 'node_modules') }, stdio: ['ignore', 'pipe', 'pipe'] });
+    server.stdout.on('data', chunk => { logs += chunk; });
+    server.stderr.on('data', chunk => { logs += chunk; });
+    server.on('error', err => { logs += err.stack; });
+    for (let i = 0; i < 300; i++) {
+      try { if ((await fetch(base + '/courses')).ok) return; } catch {}
+      if (server.exitCode !== null) break;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.fail(logs);
+  };
+  return { base, course, child, other, cases, restart };
 }
 
 async function testBrowser(data) {
@@ -145,6 +166,7 @@ async function testBrowser(data) {
       result.id = 'regressionResult';
       function check(ok, text) { if (!ok) throw new Error(text); }
       try {
+        ${mistakeBrowserPrelude()}
         await loadCourses();
         check(document.querySelectorAll('#courseList .course-item').length > 0, 'course render');
         openCourse(${data.course.id}, 'browser course');
@@ -177,6 +199,7 @@ async function testBrowser(data) {
         for (const id of ['materialList','noteList','mistakeList','assessmentList']) check(document.getElementById(id).textContent.includes('暂无'), 'empty state '+id);
         window.fetch = originalFetch;
         check(!document.getElementById('bootErrorBox'), 'unexpected JS or boot error');
+        ${mistakeBrowserScenario(data)}
         result.dataset.result = 'passed';
         result.textContent = 'browser interactions passed';
       } catch (err) {
@@ -185,6 +208,7 @@ async function testBrowser(data) {
       }
       document.body.appendChild(result);
     });`;
+  new vm.Script(script, { filename: 'browser-regression.js' });
   const index = path.join(front, 'index.html');
   fs.writeFileSync(index, fs.readFileSync(index, 'utf8').replace('</body>', `<script>${script}</script></body>`));
   const staticServer = http.createServer((req, res) => {
@@ -199,14 +223,16 @@ async function testBrowser(data) {
     const url = `http://127.0.0.1:${staticServer.address().port}/`;
     const html = await new Promise((resolve, reject) => {
       const browser = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-        '--user-data-dir=' + path.join(temp, 'chrome-profile'), '--virtual-time-budget=10000', '--dump-dom', url], { windowsHide: true });
+        '--window-size=1280,960',
+        ...(process.env.COURSES_TEST_SCREENSHOT ? ['--screenshot=' + process.env.COURSES_TEST_SCREENSHOT] : []),
+        '--user-data-dir=' + path.join(temp, 'chrome-profile'), '--virtual-time-budget=30000', '--dump-dom', url], { windowsHide: true });
       let output = '';
       browser.stdout.on('data', chunk => { output += chunk; });
       browser.on('error', reject);
       browser.on('exit', () => resolve(output));
     });
     assert.match(html, /<pre id="regressionResult" data-result="passed">/, html.match(/<pre id="regressionResult"[^>]*>[\s\S]*?<\/pre>/)?.[0] || 'browser did not complete');
-    console.log('PASS Chrome: real page startup, three tag editors, checked labels, save success/failure, empty/error states, no boot errors');
+    console.log('PASS Chrome: existing pages/tags, mistake creation/categories/filters/edit, three review flows, lost-response retry, actual reload recovery');
   } finally { await new Promise(resolve => staticServer.close(resolve)); }
 }
 
@@ -273,6 +299,7 @@ async function testFrontend() {
   assert.equal(vm.runInContext('tagPickerState', context), null);
   for (const kind of ['material', 'note', 'mistake']) {
     for (const mode of ['upload', 'manual']) {
+      if (kind === 'mistake') get('mistakeCreateType').value = 'knowledge';
       vm.runInContext(`tagPickerState = {mode:'${mode}',resourceType:'${kind}',selected:new Set([2])}; pendingUploadFile = new File(['test'], 'test.pdf'); pendingManual = {type:'${kind}',title:'manual',content:'body'}`, context);
       context.fetch = failure;
       await context.confirmTagPicker();
@@ -291,9 +318,13 @@ async function testFrontend() {
 
 (async () => {
   try {
+    testMistakeMigrations(source, temp);
     const backend = await testBackend();
-    await testFrontend();
-    await testBrowser(backend);
+    await testMistakeApi(backend);
+    if (!process.argv.includes('--backend-only')) {
+      await testFrontend();
+      await testBrowser(backend);
+    }
     if (originalHash !== null) {
       assert.equal(digest(), originalHash, 'original database remains unchanged');
       console.log('PASS original database hash unchanged');

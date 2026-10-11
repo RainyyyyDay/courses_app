@@ -11,14 +11,29 @@ const { findKnowledgeNode, SUBTREE_CTE } = require('./knowledge');
 // ==================== 错题 ====================
 
 const MISTAKE_COLUMNS =
-  'id, course_id, title, image_url, file_type, ocr_text, content, created_at';
+  'id, course_id, title, image_url, file_type, ocr_text, content, created_at, mistake_type, answer_content, explanation, favorite, review_status, review_revision';
 
 // 错题列表：字段和原来完全一样，按加入的先后顺序返回（没有额外排序）。
 // 额外给每条错题补一个 knowledge 数组（知识点标签）；新增字段不影响老前端。
-function listMistakes(courseId) {
+function listMistakes(courseId, filters = {}) {
+  const conditions = ['course_id = ?'];
+  const params = [courseId];
+  for (const [key, column] of [['mistakeType', 'mistake_type'], ['reviewStatus', 'review_status'], ['favorite', 'favorite']]) {
+    if (filters[key] !== undefined) { conditions.push(`${column} = ?`); params.push(filters[key]); }
+  }
+  if (filters.q) {
+    // 用户输入作为普通子串，% 和 _ 不作为 SQL 通配符。
+    const q = '%' + filters.q.replace(/[\\%_]/g, '\\$&') + '%';
+    conditions.push("(title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' OR ocr_text LIKE ? ESCAPE '\\')");
+    params.push(q, q, q);
+  }
+  if (filters.nodeIds?.length) {
+    conditions.push(`EXISTS (SELECT 1 FROM mistake_node_links l WHERE l.mistake_id = mistakes.id AND l.node_id IN (${filters.nodeIds.map(() => '?').join(',')}))`);
+    params.push(...filters.nodeIds);
+  }
   const rows = db
-    .prepare(`SELECT ${MISTAKE_COLUMNS} FROM mistakes WHERE course_id = ? ORDER BY id`)
-    .all(courseId);
+    .prepare(`SELECT ${MISTAKE_COLUMNS} FROM mistakes WHERE ${conditions.join(' AND ')} ORDER BY id`)
+    .all(...params);
   return attachNodes(rows, courseId);
 }
 
@@ -33,14 +48,17 @@ function getMistakeDetail(id) {
 
 // content 是“手动输入”的题目内容；上传文件录入时传空字符串
 // fileType 是文件的 MIME 类型；创建记录与初始标签共用事务。
-function createMistake(courseId, title, imageUrl, content, fileType, nodeIds) {
+function createMistake(courseId, title, imageUrl, content, fileType, nodeIds, options = {}) {
+  if (!['knowledge', 'thinking', 'execution'].includes(options.mistakeType)) {
+    throw new Error('新建错题必须选择知识类、思维类或执行类');
+  }
   db.exec('BEGIN');
   try {
     const info = db
       .prepare(
-        'INSERT INTO mistakes (course_id, title, image_url, file_type, ocr_text, content, created_at) VALUES (?, ?, ?, ?, \'\', ?, ?)'
+        'INSERT INTO mistakes (course_id, title, image_url, file_type, ocr_text, content, created_at, mistake_type, answer_content, explanation) VALUES (?, ?, ?, ?, \'\', ?, ?, ?, ?, ?)'
       )
-      .run(courseId, title, imageUrl, fileType || '', content || '', nowText());
+      .run(courseId, title, imageUrl, fileType || '', content || '', nowText(), options.mistakeType, options.answerContent || '', options.explanation || '');
     const id = Number(info.lastInsertRowid);
     const insert = db.prepare(
       'INSERT OR IGNORE INTO mistake_node_links (mistake_id, node_id) VALUES (?, ?)'
@@ -65,6 +83,34 @@ function deleteMistake(id) {
 function renameMistake(id, title) {
   db.prepare('UPDATE mistakes SET title = ? WHERE id = ?').run(title, id);
   return getMistakeDetail(id);
+}
+
+function updateMistake(id, changes, expectedRevision) {
+  db.exec('BEGIN');
+  try {
+    const old = getMistakeDetail(id);
+    if (expectedRevision !== undefined && old.review_revision !== expectedRevision) {
+      const err = new Error('错题内容已修改，请重新加载');
+      Object.assign(err, { status: 409, code: 'VERSION_CONFLICT' });
+      throw err;
+    }
+    const changed = Object.entries(changes).filter(([key, value]) => old[key] !== value);
+    const invalidates = changed.some(([key]) => ['mistake_type', 'content', 'answer_content', 'explanation'].includes(key));
+    if (changed.length) {
+      const assignments = changed.map(([key]) => `${key} = ?`);
+      if (invalidates) assignments.push("review_revision = review_revision + 1", "review_status = 'unreviewed'");
+      db.prepare(`UPDATE mistakes SET ${assignments.join(', ')} WHERE id = ?`).run(...changed.map(([, value]) => value), id);
+      if (invalidates) {
+        db.prepare("UPDATE mistake_review_progress SET stage = 'idle', recall = NULL, version = version + 1, review_revision = ?, updated_at = ? WHERE mistake_id = ?")
+          .run(old.review_revision + 1, new Date().toISOString(), id);
+      }
+    }
+    db.exec('COMMIT');
+    return getMistakeDetail(id);
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
 }
 
 // ==================== 错题 ↔ 知识树节点 关联 ====================
@@ -175,6 +221,7 @@ function replaceMistakeNodes(mistakeId, nodeIds, title) {
 module.exports = {
   listMistakes,
   createMistake,
+  updateMistake,
   renameMistake,
   getMistakeDetail,
   listMistakeNodes,
