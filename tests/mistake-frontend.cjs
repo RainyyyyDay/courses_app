@@ -16,13 +16,29 @@ function mistakeBrowserPrelude() {
       check(document.getElementById('mistakeReviewAnswer').textContent === '浏览器答案', 'restored answer');
       await submitMistakeReview('judge', 'correct', true);
       check(mistakeDetailState.progress.reviewStatus === 'reviewed', 'reviewed saved after refresh');
+      if (restored.queueIds) {
+        check(mistakeQueue && JSON.stringify(mistakeQueue.ids) === JSON.stringify(restored.queueIds), 'fixed queue restored');
+        check(mistakeQueue.index === 0 && !document.getElementById('mistakeQueueNext').disabled, 'restored completed first item');
+        const savedFetch = window.fetch;
+        window.fetch = async url => { if (String(url).endsWith('/review')) throw new TypeError('offline'); return savedFetch(url); };
+        await nextMistakeQueueItem();
+        check(mistakeQueue.index === 0, 'failed confirmation never skips');
+        window.fetch = savedFetch;
+        await nextMistakeQueueItem();
+        check(currentView.id === restored.queueIds[1] && mistakeDetailState.progress.stage === 'question', 'next item starts');
+        check(document.getElementById('mistakeQueueBanner').textContent.includes('已完成 1'), 'completed count');
+        await submitMistakeReview('recall', 'recall', 'forgotten');
+        check(mistakeDetailState.progress.reviewStatus === 'unreviewed', 'queue forgotten stays unreviewed');
+        await nextMistakeQueueItem();
+        check(currentView.type === 'mistakeQueueComplete' && document.getElementById('mistakeQueueComplete').textContent.includes('2 道'), 'queue completion page');
+      }
       await backFromDetail();
       await loadMistakes();
       check(document.querySelector('[data-mistake-id="' + restored.id + '"]').textContent.includes('已复习'), 'list status updated');
       check(!mistakeStorageGet('mistake-detail:' + currentCourseId), 'back clears detail restoration');
       sessionStorage.removeItem('mistake-regression-refresh');
       result.dataset.result = 'passed';
-      result.textContent = 'browser interactions and mistake refresh passed';
+      result.textContent = 'browser interactions, selection, continuous review and queue refresh passed';
       document.body.appendChild(result);
       return;
     }
@@ -157,11 +173,74 @@ function mistakeBrowserScenario(data) {
     await openMistakeCategory('unclassified');
     check(currentMistakes.some(r => r.id === execution.id), 'unclassified query');
 
-    await openMistakeCategory('knowledge');
-    await openMistakeDetail(knowledge.id, true);
-    await submitMistakeReview('start');
+    // 连续复习：测试三类队列，以及已复习题重新开轮。
+    for (const [row, type, key] of [[thinking, 'thinking', 'mastered'], [execution, 'execution', 'correct']]) {
+      if (type === 'execution') {
+        await requestApi(API + '/courses/' + currentCourseId + '/mistakes/' + row.id, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mistakeType:type})});
+      }
+      await openMistakeCategory(type); await clearMistakeFilters();
+      await enterMistakeSelection();
+      chooseMistake(row.id, true);
+      await startMistakeQueue();
+      check(mistakeDetailState.progress.stage === 'question', 'queue automatic start ' + type);
+      await submitMistakeReview('reveal_answer');
+      await submitMistakeReview('judge', key, true);
+      await nextMistakeQueueItem();
+      check(currentView.type === 'mistakeQueueComplete', 'single queue completes ' + type);
+      await backFromDetail(); await loadMistakes();
+      await enterMistakeSelection(); chooseMistake(row.id, true); await startMistakeQueue();
+      check(mistakeDetailState.progress.stage === 'question' && mistakeDetailState.progress.reviewStatus === 'reviewed', 'reviewed allowed new round ' + type);
+      await submitMistakeReview('reveal_answer'); await submitMistakeReview('judge', key, false);
+      check(mistakeDetailState.progress.reviewStatus === 'unreviewed', 'repeat wrong updates state ' + type);
+      await nextMistakeQueueItem(); await backFromDetail();
+    }
+    const secondForm = new FormData();
+    secondForm.set('title','队列第二题'); secondForm.set('content','队列第二题正文');
+    secondForm.set('mistakeType','knowledge'); secondForm.set('answerContent','第二答案');
+    secondForm.set('knowledgeIds',JSON.stringify([${data.child.id}]));
+    const second = await (await requestApi(API + '/courses/' + currentCourseId + '/mistakes', {method:'POST',body:secondForm})).json();
+    secondForm.set('title','队列缺答案'); secondForm.set('answerContent','');
+    const missing = await (await requestApi(API + '/courses/' + currentCourseId + '/mistakes', {method:'POST',body:secondForm})).json();
+    await openMistakeCategory('knowledge'); await clearMistakeFilters();
+    await enterMistakeSelection();
+    check(document.getElementById('mistakeQueueStart').disabled, 'empty selection disabled');
+    check(document.querySelector('[data-mistake-id="' + missing.id + '"] .mistake-select-check').disabled, 'missing answer disabled');
+    check(document.querySelector('[data-mistake-id="' + missing.id + '"]').textContent.includes('补齐内容'), 'missing answer repair entry');
+    document.getElementById('mistakeSearch').value = '浏览器知识'; await applyMistakeFilters();
+    selectAllVisibleMistakes(true);
+    check(mistakeSelection.ids.size === 1 && mistakeSelection.ids.has(knowledge.id), 'all only filtered result');
+    document.getElementById('mistakeSearch').value = '队列第二'; await applyMistakeFilters();
+    selectAllVisibleMistakes(true); selectAllVisibleMistakes(true);
+    check(mistakeSelection.ids.size === 2, 'retains hidden selections and deduplicates');
+    selectAllVisibleMistakes(false);
+    check(mistakeSelection.ids.size === 1 && mistakeSelection.ids.has(knowledge.id), 'unselect all preserves hidden');
+    await clearMistakeFilters();
+    check(document.getElementById('mistakeSelectAll').indeterminate, 'partial select indicator');
+    clearMistakeSelection(); check(mistakeSelection.ids.size === 0, 'clear selected');
+    document.querySelector('[data-mistake-id="' + knowledge.id + '"] .info').click();
+    check(mistakeSelection.ids.has(knowledge.id) && currentView.type === 'course', 'card selects instead of detail');
+    const checkbox = document.querySelector('[data-mistake-id="' + second.id + '"] .mistake-select-check');
+    checkbox.click(); check(mistakeSelection.ids.size === 2, 'checkbox multiselect');
+    checkbox.click(); check(mistakeSelection.ids.size === 1, 'checkbox deselect');
+    document.getElementById('mistakeSearch').value = '浏览器搜索';
+    document.getElementById('mistakeFavoriteFilter').value = 'true';
+    document.getElementById('mistakeStatusFilter').value = 'unreviewed';
+    await changeMistakeTagFilter(${data.child.id}, true);
+    check(currentMistakes.length === 1 && currentMistakes[0].id === knowledge.id, 'selection combined search favorite status tags');
+    await cancelMistakeSelection();
+    check(!mistakeSelection && document.getElementById('mistakeSelectionFooter').style.display === 'none', 'cancel restores ordinary list');
+    await enterMistakeSelection(); await clearMistakeFilters();
+    chooseMistake(second.id, true); chooseMistake(knowledge.id, true);
+    check(document.getElementById('mistakeSelectedCount').textContent === '2', 'unique count displayed');
+    await startMistakeQueue();
+    check(JSON.stringify(mistakeQueue.ids) === JSON.stringify([knowledge.id,second.id]), 'queue follows list order rather than click order');
+    check(mistakeDetailState.progress.stage === 'question' && !document.getElementById('mistakeReviewAnswer'), 'queue starts with hidden answer');
     await submitMistakeReview('recall', 'recall', 'clear');
-    sessionStorage.setItem('mistake-regression-refresh', JSON.stringify({id:knowledge.id}));
+    await pauseMistakeQueue();
+    check(!mistakeQueue && readMistakeQueue().index === 0, 'pause retains queue');
+    await resumeMistakeQueue();
+    check(mistakeDetailState.progress.stage === 'answer', 'resume reads backend unfinished step');
+    sessionStorage.setItem('mistake-regression-refresh', JSON.stringify({id:knowledge.id,queueIds:mistakeQueue.ids}));
     location.reload();
     return;
   `;

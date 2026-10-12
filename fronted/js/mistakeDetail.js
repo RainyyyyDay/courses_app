@@ -12,11 +12,21 @@ function forgetMistakeDetailLocation() { mistakeStorageSet('mistake-detail:' + c
 async function restoreMistakeLocation(courseId) {
   const saved = mistakeStorageGet('mistake-detail:' + courseId);
   if (saved && Number.isSafeInteger(saved.id) && saved.id > 0 && currentCourseId === courseId) {
+    if (typeof readMistakeQueue === 'function') {
+      const queue = readMistakeQueue();
+      if (saved.queue && saved.review && queue && !queue.finished && queue.ids[queue.index] === saved.id) mistakeQueue = queue;
+    }
     await openMistakeDetail(saved.id, saved.review === true);
   }
 }
 async function toggleMistakeReviewMode() {
   if (!mistakeDetailState || mistakeReviewBusy) return;
+  if (typeof mistakeQueueCurrent === 'function' && mistakeQueueCurrent()) {
+    const id = mistakeDetailState.id;
+    await pauseMistakeQueue();
+    await openMistakeDetail(id, false);
+    return;
+  }
   currentView.review = !mistakeDetailState.review;
   await renderMistakeDetailPage(mistakeDetailState.id, currentView.review);
 }
@@ -30,7 +40,13 @@ async function renderMistakeDetailPage(mistakeId, review = false) {
   const state = { id: mistakeId, courseId, review, row: null, progress: null };
   mistakeDetailState = state;
   showPageOnly('mistakeDetailPage');
-  mistakeStorageSet('mistake-detail:' + courseId, { id: mistakeId, review });
+  const detailBody = document.getElementById('mistakeDetailBody');
+  if (detailBody) detailBody.style.display = 'block';
+  const complete = document.getElementById('mistakeQueueComplete');
+  if (complete) complete.style.display = 'none';
+  if (typeof renderMistakeQueueBanner === 'function') renderMistakeQueueBanner();
+  mistakeStorageSet('mistake-detail:' + courseId, { id: mistakeId, review,
+    queue: typeof mistakeQueueCurrent === 'function' && !!mistakeQueueCurrent(state) });
   document.getElementById('mistakeDetailTitle').textContent = review ? '错题复习' : '错题详情';
   document.getElementById('mistakeDetailName').textContent = '加载中…';
   document.getElementById('mistakeDetailMeta').textContent = '';
@@ -56,7 +72,10 @@ async function renderMistakeDetailPage(mistakeId, review = false) {
     state.row = row;
     renderMistakeDetail(row, review);
     document.getElementById('mistakeReviewToggle').disabled = false;
-    if (review) await refreshMistakeReview(state);
+    if (review) {
+      await refreshMistakeReview(state);
+      if (typeof prepareMistakeQueueItem === 'function') await prepareMistakeQueueItem(state);
+    }
   } catch (err) {
     if (request !== mistakeDetailRequest || !mistakeDetailIsCurrent(state)) return;
     document.getElementById('mistakeDetailName').textContent = '加载失败';
@@ -196,19 +215,38 @@ function renderMistakeReview(state) {
     }
   } else {
     message = p.recall === 'forgotten' ? '已记录“不记得”，这道题仍为未复习。' : `本轮已保存：${mistakeStatusText(p.reviewStatus)}。`;
-    actions = button('再次复习', 'start');
+    actions = typeof mistakeQueueCurrent === 'function' && mistakeQueueCurrent(state) && p.round === mistakeQueue.rounds[state.id]
+      ? '' : button('再次复习', 'start');
   }
-  panel.innerHTML = `<p>${escapeHtml(message)}</p>${p.answerVisible && p.answer ?
+  // 队列新开一轮时，不短暂展示上次已完成复习的答案。
+  const answerVisible = p.answerVisible && (typeof mistakeQueueCurrent !== 'function' || !mistakeQueueCurrent(state)
+    || p.round === mistakeQueue.rounds[state.id]);
+  panel.innerHTML = `<p>${escapeHtml(message)}</p>${answerVisible && p.answer ?
     `<h2>参考答案</h2><div id="mistakeReviewAnswer" class="detail-content">${escapeHtml(p.answer.content || '')}</div><h2>解析 / 错误原因</h2><div class="detail-content">${escapeHtml(p.answer.explanation || '暂无解析或错误原因')}</div>` : ''}
     <div class="mistake-review-actions">${pending ? '<span>有一次操作待确认，请先重试。</span><button onclick="retryMistakeReview()">重试上次操作</button>' : actions}</div>
     <div id="mistakeReviewError" class="mistake-inline-error" role="alert"></div>`;
   if (mistakeReviewBusy) panel.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  panel.querySelectorAll('[data-review-action]').forEach(b => {
+    const action = b.dataset.reviewAction.split('-')[0];
+    if (!p.allowedActions.includes(action)) b.disabled = true;
+  });
+  if (typeof mistakeQueueCurrent === 'function' && mistakeQueueCurrent(state)
+    && (p.mistakeType !== mistakeQueue.type || !p.reviewable)) {
+    panel.querySelectorAll('[data-review-action]').forEach(b => { b.disabled = true; });
+  }
+  if (typeof renderMistakeQueueBanner === 'function') renderMistakeQueueBanner();
 }
 
 async function submitMistakeReview(action, key, value) {
   const state = mistakeDetailState;
   if (!state?.progress || mistakeReviewBusy || !state.progress.allowedActions.includes(action)) return;
+  if (typeof mistakeQueueCurrent === 'function' && mistakeQueueCurrent(state)
+    && (state.progress.mistakeType !== mistakeQueue.type || !state.progress.reviewable)) return;
   if (mistakeStorageGet(mistakePendingKey(state)) || state.pending) return;
+  if (action === 'start' && typeof mistakeQueueCurrent === 'function' && mistakeQueueCurrent(state)) {
+    mistakeQueue.rounds[state.id] = state.progress.round + 1;
+    saveMistakeQueue();
+  }
   const requestId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2);
   const body = { action, requestId, expectedVersion: state.progress.version };
   if (key) body[key] = value;

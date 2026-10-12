@@ -163,7 +163,9 @@
         </form>
         <details class="mistake-tag-filter"><summary>知识点标签（匹配任一所选标签）</summary><div id="mistakeFilterTags"></div></details>
       </div>
+      <div id="mistakeSelectionHeader" class="mistake-toolbar" style="display:none;"></div>
       <div id="mistakeList"></div>
+      <div id="mistakeSelectionFooter" class="mistake-selection-footer" style="display:none;" aria-live="polite"></div>
     </div>
 
     <div class="tab-pane" id="pane-knowledge">
@@ -205,6 +207,9 @@
       </div>
     </div>
     <div class="tab-content">
+      <div id="mistakeQueueComplete" class="mistake-workspace" style="display:none;"></div>
+      <div id="mistakeDetailBody">
+      <div id="mistakeQueueBanner" class="mistake-workspace" style="display:none;" aria-live="polite"></div>
       <div class="detail-card">
         <div class="detail-name" id="mistakeDetailName"></div>
         <div class="detail-meta" id="mistakeDetailMeta"></div>
@@ -238,6 +243,7 @@
           </form>
         </details>
       </div>
+      </div><!-- mistakeDetailBody -->
     </div>
   </div>
 
@@ -412,6 +418,7 @@
   <script src="js/nodeDetail.js"></script>
   <script src="js/resourceDetail.js"></script>
   <script src="js/mistakeDetail.js"></script>
+  <script src="js/mistakeQueue.js"></script>
 
   <!-- 知识框架 -->
   <script src="js/knowledgeTree.js"></script>

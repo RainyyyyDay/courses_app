@@ -15,7 +15,6 @@ function getMistakeReview(id) {
   const mistake = getMistakeDetail(id);
   const progress = progressFor(mistake);
   const blockedReasons = [];
-  if (mistake.mistake_type === 'unclassified') blockedReasons.push('unclassified');
   if (!mistake.answer_content.trim()) blockedReasons.push('missing_answer');
   if (!mistake.content.trim() && !mistake.image_url && !mistake.ocr_text.trim()) blockedReasons.push('missing_question');
   const answerVisible = ['answer', 'completed'].includes(progress.stage);
@@ -81,7 +80,7 @@ function applyMistakeReview(id, body, startOnly = false) {
     const progress = progressFor(mistake);
     if (progress.version !== operation.expectedVersion) fail(409, 'VERSION_CONFLICT', '复习步骤已改变，请重新查询');
     const view = getMistakeReview(id);
-    if (!view.reviewable) fail(422, 'REVIEW_CONFIG_INCOMPLETE', '请先完成分类，并补充题目和参考答案');
+    if (!view.reviewable) fail(422, 'REVIEW_CONFIG_INCOMPLETE', '请先补充题目和参考答案');
     if (!view.allowedActions.includes(operation.action)) fail(409, 'INVALID_REVIEW_STEP', '当前步骤不允许此操作');
     let stage = progress.stage;
     let recall = progress.recall;
@@ -97,13 +96,14 @@ function applyMistakeReview(id, body, startOnly = false) {
     } else if (operation.action === 'reveal_answer') {
       stage = 'answer';
     } else {
-      const thinking = mistake.mistake_type === 'thinking';
-      if (thinking ? typeof operation.mastered !== 'boolean' : typeof operation.correct !== 'boolean') {
-        fail(400, 'INVALID_ARGUMENT', thinking ? '思维类判断使用 mastered' : '知识类和执行类判断使用 correct');
+      // 思维类与待分类共用掌握判断，其余类型仍使用正确/错误判断。
+      const usesMastered = ['thinking', 'unclassified'].includes(mistake.mistake_type);
+      if (usesMastered ? typeof operation.mastered !== 'boolean' : typeof operation.correct !== 'boolean') {
+        fail(400, 'INVALID_ARGUMENT', usesMastered ? '思维类和待分类判断使用 mastered' : '知识类和执行类判断使用 correct');
       }
-      const positive = thinking ? operation.mastered : operation.correct;
+      const positive = usesMastered ? operation.mastered : operation.correct;
       status = positive ? 'reviewed' : 'unreviewed';
-      result = thinking ? (positive ? 'mastered' : 'needs_review') : (positive ? 'correct' : 'incorrect');
+      result = usesMastered ? (positive ? 'mastered' : 'needs_review') : (positive ? 'correct' : 'incorrect');
       stage = 'completed';
     }
     const now = new Date().toISOString();

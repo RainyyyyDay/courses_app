@@ -232,7 +232,7 @@ async function testBrowser(data) {
       browser.on('exit', () => resolve(output));
     });
     assert.match(html, /<pre id="regressionResult" data-result="passed">/, html.match(/<pre id="regressionResult"[^>]*>[\s\S]*?<\/pre>/)?.[0] || 'browser did not complete');
-    console.log('PASS Chrome: existing pages/tags, mistake creation/categories/filters/edit, three review flows, lost-response retry, actual reload recovery');
+    console.log('PASS Chrome: existing pages/tags/CRUD, mistake filters, filtered selection/dedup/partial state, three review queues/repeat, failed request never skips, pause/resume and actual reload recovery');
   } finally { await new Promise(resolve => staticServer.close(resolve)); }
 }
 

@@ -1,0 +1,185 @@
+// 分类内选择与固定队列；仅保存导航，不代替后端单题步骤/状态。
+let mistakeSelection = null;
+let mistakeQueue = null;
+let mistakeQueueLoading = false;
+
+function mistakeSelectionCurrent() {
+  return mistakeSelection && mistakeSelection.courseId === currentCourseId && mistakeSelection.type === mistakeUi.type;
+}
+function mistakeQueueCurrent(state = mistakeDetailState) {
+  return mistakeQueue && !mistakeQueue.finished && state?.review && mistakeQueue.courseId === currentCourseId
+    && mistakeQueue.ids[mistakeQueue.index] === state.id;
+}
+function mistakeCannotReview(row) {
+  if (row.mistake_type === 'unclassified') return '请先分类';
+  if (!String(row.answer_content || '').trim()) return '缺少参考答案';
+  if (!String(row.content || '').trim() && !row.image_url && !String(row.ocr_text || '').trim()) return '缺少题目内容';
+  return '';
+}
+function saveMistakeQueue() { mistakeStorageSet('mistake-queue:' + currentCourseId, mistakeQueue); }
+function readMistakeQueue() {
+  const saved = mistakeStorageGet('mistake-queue:' + currentCourseId);
+  if (!saved || saved.courseId !== currentCourseId || !['knowledge','thinking','execution'].includes(saved.type)
+    || !Array.isArray(saved.ids) || !saved.ids.length || saved.ids.some(id => !Number.isSafeInteger(id) || id < 1)
+    || new Set(saved.ids).size !== saved.ids.length || !Number.isInteger(saved.index) || saved.index < 0 || saved.index > saved.ids.length
+    || !saved.rounds || typeof saved.rounds !== 'object' || Array.isArray(saved.rounds)) return null;
+  return saved;
+}
+function renderMistakeSelectionControls() {
+  const header = document.getElementById('mistakeSelectionHeader');
+  const footer = document.getElementById('mistakeSelectionFooter');
+  if (!header || !footer) return;
+  const selecting = mistakeSelectionCurrent();
+  const formal = ['knowledge','thinking','execution'].includes(mistakeUi.type);
+  const saved = readMistakeQueue();
+  header.style.display = formal ? 'flex' : 'none';
+  header.innerHTML = selecting
+    ? '<label><input id="mistakeSelectAll" type="checkbox" onchange="selectAllVisibleMistakes(this.checked)" /> 全选当前筛选结果</label><button onclick="clearMistakeSelection()">清空已选</button><button onclick="cancelMistakeSelection()">取消选择</button>'
+    : '<button onclick="enterMistakeSelection()">复习：选择题目</button>' + (saved && !saved.finished && saved.type === mistakeUi.type ? '<button onclick="resumeMistakeQueue()">继续上次复习</button>' : '');
+  footer.style.display = selecting ? 'flex' : 'none';
+  footer.innerHTML = selecting ? `<span>已选择 <strong id="mistakeSelectedCount">${mistakeSelection.ids.size}</strong> 道题</span><button id="mistakeQueueStart" onclick="startMistakeQueue()">开始复习</button><span id="mistakeSelectionError" class="mistake-inline-error" role="alert"></span>` : '';
+  updateMistakeSelectionControls();
+}
+function updateMistakeSelectionControls() {
+  if (!mistakeSelectionCurrent()) return;
+  const rows = currentMistakes.filter(row => !mistakeCannotReview(row));
+  const count = rows.filter(row => mistakeSelection.ids.has(row.id)).length;
+  const all = document.getElementById('mistakeSelectAll');
+  if (all) {
+    all.checked = rows.length > 0 && count === rows.length;
+    all.indeterminate = count > 0 && count < rows.length;
+    all.disabled = mistakeQueueLoading || mistakeSelection.listLoading || rows.length === 0;
+  }
+  const countEl = document.getElementById('mistakeSelectedCount');
+  if (countEl) countEl.textContent = mistakeSelection.ids.size;
+  const start = document.getElementById('mistakeQueueStart');
+  if (start) start.disabled = mistakeSelection.ids.size === 0 || mistakeQueueLoading || mistakeSelection.listLoading;
+  document.querySelectorAll('#mistakeList .mistake-select-check').forEach(input => { input.checked = mistakeSelection.ids.has(Number(input.value)); });
+}
+async function enterMistakeSelection() {
+  if (!['knowledge','thinking','execution'].includes(mistakeUi.type)) return;
+  mistakeSelection = { courseId: currentCourseId, type: mistakeUi.type, ids: new Set(), listLoading: false };
+  await loadMistakes();
+}
+async function cancelMistakeSelection() { mistakeSelection = null; await loadMistakes(); }
+function clearMistakeSelection() { if (mistakeSelectionCurrent() && !mistakeQueueLoading) { mistakeSelection.ids.clear(); updateMistakeSelectionControls(); } }
+function chooseMistake(id, checked) {
+  if (!mistakeSelectionCurrent() || mistakeQueueLoading || mistakeSelection.listLoading) return;
+  const row = currentMistakes.find(r => r.id === id);
+  if (!row || mistakeCannotReview(row)) return;
+  if (checked) mistakeSelection.ids.add(id); else mistakeSelection.ids.delete(id);
+  updateMistakeSelectionControls();
+}
+function toggleMistakeCard(event, id) {
+  if (event.target.closest('a,button,input,label')) return;
+  chooseMistake(id, !mistakeSelection.ids.has(id));
+}
+function selectAllVisibleMistakes(checked) {
+  if (!mistakeSelectionCurrent() || mistakeSelection.listLoading || mistakeQueueLoading) return;
+  for (const row of currentMistakes) {
+    if (mistakeCannotReview(row)) continue;
+    if (checked) mistakeSelection.ids.add(row.id); else mistakeSelection.ids.delete(row.id);
+  }
+  updateMistakeSelectionControls();
+}
+async function startMistakeQueue() {
+  if (!mistakeSelectionCurrent() || !mistakeSelection.ids.size || mistakeQueueLoading || mistakeSelection.listLoading) return;
+  const selection = mistakeSelection;
+  mistakeQueueLoading = true; updateMistakeSelectionControls();
+  try {
+    const rows = await requestList(`${API}/courses/${selection.courseId}/mistakes?mistakeType=${selection.type}`);
+    const selected = rows.filter(row => selection.ids.has(row.id)); // 全分类当前顺序（后端统一按 ID 升序），包含其他筛选下的已选题。
+    if (selected.length !== selection.ids.size) throw new Error('部分已选题目已删除或改变分类，请清空已选后重新选择');
+    for (const row of selected) {
+      if (mistakeCannotReview(row)) throw new Error(`${row.title}：${mistakeCannotReview(row)}，请先补齐`);
+      const p = await mistakeReviewRequest(`${API}/courses/${selection.courseId}/mistakes/${row.id}/review`);
+      if (!p.reviewable || p.courseId !== selection.courseId || p.mistakeType !== selection.type) throw new Error(`${row.title}：当前无法复习，请先检查分类和答案`);
+    }
+    if (mistakeSelection !== selection || currentCourseId !== selection.courseId) return;
+    mistakeQueue = { courseId: selection.courseId, type: selection.type, ids: selected.map(row => row.id), index: 0, rounds: {}, finished: false };
+    saveMistakeQueue(); mistakeSelection = null;
+    await openMistakeDetail(mistakeQueue.ids[0], true);
+  } catch (err) {
+    const el = document.getElementById('mistakeSelectionError');
+    if (el) el.textContent = err.message;
+  } finally { mistakeQueueLoading = false; updateMistakeSelectionControls(); renderMistakeQueueBanner(); }
+}
+async function resumeMistakeQueue() {
+  const saved = readMistakeQueue();
+  if (!saved || saved.finished) return;
+  mistakeQueue = saved; mistakeSelection = null;
+  if (saved.index === saved.ids.length) { showMistakeQueueComplete(); return; }
+  await openMistakeDetail(saved.ids[saved.index], true);
+}
+async function prepareMistakeQueueItem(state) {
+  if (!mistakeQueueCurrent(state) || !state.progress) return;
+  const p = state.progress;
+  if (p.courseId !== mistakeQueue.courseId || p.mistakeType !== mistakeQueue.type || !p.reviewable) {
+    renderMistakeQueueBanner();
+    return;
+  }
+  if (mistakeQueue.rounds[state.id] === undefined) {
+    // completed 可能是以前的复习，必须新开一轮；未完成步骤则继续。
+    mistakeQueue.rounds[state.id] = p.stage === 'idle' || p.stage === 'completed' ? p.round + 1 : p.round;
+    saveMistakeQueue();
+    if (p.allowedActions.includes('start')) await submitMistakeReview('start');
+  }
+  if (mistakeDetailIsCurrent(state) && mistakeQueueCurrent(state)) renderMistakeReview(state);
+}
+function renderMistakeQueueBanner() {
+  const box = document.getElementById('mistakeQueueBanner');
+  if (!box) return;
+  const state = mistakeDetailState;
+  box.style.display = mistakeQueueCurrent(state) ? 'block' : 'none';
+  if (!mistakeQueueCurrent(state)) return;
+  const p = state.progress;
+  const valid = p?.reviewable && p.courseId === mistakeQueue.courseId && p.mistakeType === mistakeQueue.type;
+  const completed = valid && p.stage === 'completed' && p.round === mistakeQueue.rounds[state.id];
+  const pending = mistakeStorageGet(mistakePendingKey(state)) || state.pending;
+  box.innerHTML = `<strong>第 ${mistakeQueue.index + 1} / ${mistakeQueue.ids.length} 题</strong> · 已完成 ${mistakeQueue.index + (completed ? 1 : 0)} 题
+    <div class="mistake-toolbar"><button id="mistakeQueueNext" onclick="nextMistakeQueueItem()" ${!completed || pending || mistakeReviewBusy || mistakeQueueLoading ? 'disabled' : ''}>${mistakeQueue.index + 1 === mistakeQueue.ids.length ? '完成本轮' : '下一题'}</button><button onclick="pauseMistakeQueue()">返回列表，稍后继续</button><button onclick="endMistakeQueue()">结束本轮</button></div>${p && !valid ? '<p class="mistake-inline-error">本题已改变分类或缺少内容，请退出并补齐；不会自动跳过。</p>' : ''}`;
+}
+async function nextMistakeQueueItem() {
+  const state = mistakeDetailState;
+  if (!mistakeQueueCurrent(state) || mistakeReviewBusy || mistakeQueueLoading) return;
+  mistakeQueueLoading = true;
+  try {
+    const p = await mistakeReviewRequest(mistakeReviewUrl(state));
+    if (!mistakeDetailIsCurrent(state)) return;
+    state.progress = p;
+    if (!p.reviewable || p.courseId !== mistakeQueue.courseId || p.stage !== 'completed' || p.round !== mistakeQueue.rounds[state.id] || p.mistakeType !== mistakeQueue.type
+      || mistakeStorageGet(mistakePendingKey(state)) || state.pending) throw new Error('请先完成并确认本题复习');
+    mistakeQueue.index += 1; saveMistakeQueue();
+    if (mistakeQueue.index === mistakeQueue.ids.length) {
+      mistakeQueue.finished = true; saveMistakeQueue(); showMistakeQueueComplete();
+    } else {
+      currentView = { type: 'mistake', id: mistakeQueue.ids[mistakeQueue.index], review: true };
+      await renderMistakeDetailPage(currentView.id, true);
+    }
+  } catch (err) { showToast(err.message); }
+  finally { mistakeQueueLoading = false; renderMistakeQueueBanner(); }
+}
+function showMistakeQueueComplete() {
+  showPageOnly('mistakeDetailPage');
+  currentView = { type: 'mistakeQueueComplete' };
+  document.getElementById('mistakeDetailTitle').textContent = '本轮复习完成';
+  document.getElementById('mistakeDetailBody').style.display = 'none';
+  const box = document.getElementById('mistakeQueueComplete');
+  box.style.display = 'block';
+  box.innerHTML = `<h2>本轮 ${mistakeQueue.ids.length} 道题已全部处理</h2><p>判断结果已保存。答错或不记得的题目仍为未复习。</p><button onclick="pauseMistakeQueue()">返回错题列表</button>`;
+  forgetMistakeDetailLocation();
+}
+async function pauseMistakeQueue() {
+  if (mistakeReviewBusy) return;
+  forgetMistakeDetailLocation();
+  ensureMistakeUi();
+  if (mistakeQueue?.courseId === currentCourseId) { mistakeUi.type = mistakeQueue.type; rememberMistakeUi(); }
+  mistakeQueue = null;
+  navStack = []; currentView = { type: 'course', tab: 'mistakes' };
+  showPageOnly('detailPage'); switchTab('mistakes');
+}
+async function endMistakeQueue() {
+  if (mistakeReviewBusy) return;
+  mistakeStorageSet('mistake-queue:' + currentCourseId, null); mistakeQueue = null;
+  await pauseMistakeQueue();
+}

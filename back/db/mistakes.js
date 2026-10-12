@@ -49,8 +49,8 @@ function getMistakeDetail(id) {
 // content 是“手动输入”的题目内容；上传文件录入时传空字符串
 // fileType 是文件的 MIME 类型；创建记录与初始标签共用事务。
 function createMistake(courseId, title, imageUrl, content, fileType, nodeIds, options = {}) {
-  if (!['knowledge', 'thinking', 'execution'].includes(options.mistakeType)) {
-    throw new Error('新建错题必须选择知识类、思维类或执行类');
+  if (!['knowledge', 'thinking', 'execution', 'unclassified'].includes(options.mistakeType)) {
+    throw new Error('新建错题必须选择知识类、思维类、执行类或待分类');
   }
   db.exec('BEGIN');
   try {

@@ -45,6 +45,7 @@ function renderMistakeCategories(rows = null) {
 async function openMistakeCategory(type) {
   ensureMistakeUi();
   mistakeUi.type = Object.hasOwn(MISTAKE_TYPES, type) ? type : null;
+  if (typeof mistakeSelection !== 'undefined') mistakeSelection = null;
   rememberMistakeUi();
   mistakeStorageSet('mistake-detail:' + currentCourseId, null);
   await loadMistakes();
@@ -56,6 +57,10 @@ async function loadMistakes() {
   const request = ++mistakeListRequest;
   const box = document.getElementById('mistakeList');
   renderMistakeCategories();
+  if (typeof mistakeSelectionCurrent === 'function') {
+    if (mistakeSelectionCurrent()) mistakeSelection.listLoading = true;
+    renderMistakeSelectionControls();
+  }
   box.innerHTML = '<div class="loading-tip">加载中…</div>';
   const filters = mistakeUi.type ? {
     mistakeType: mistakeUi.type, q: mistakeUi.q, favorite: mistakeUi.favorite,
@@ -67,6 +72,9 @@ async function loadMistakes() {
     const rows = await requestList(`${API}/courses/${courseId}/mistakes${query ? '?' + query : ''}`);
     if (request !== mistakeListRequest || courseId !== currentCourseId) return;
     currentMistakes = rows;
+    const selecting = typeof mistakeSelectionCurrent === 'function' && mistakeSelectionCurrent();
+    if (selecting) mistakeSelection.listLoading = false;
+    if (typeof renderMistakeSelectionControls === 'function') renderMistakeSelectionControls();
     if (!mistakeUi.type) {
       renderMistakeCategories(rows);
       box.innerHTML = `<div class="empty">${rows.length ? '选择一个分类查看错题' : '暂无错题，可上传文件或手动输入'}</div>`;
@@ -74,16 +82,18 @@ async function loadMistakes() {
     }
     if (!rows.length) { box.innerHTML = '<div class="empty">暂无符合条件的错题</div>'; return; }
     box.innerHTML = rows.map(r => `
-      <div class="item-row" data-mistake-id="${r.id}">
+      <div class="item-row ${selecting ? 'mistake-selectable' : ''}" data-mistake-id="${r.id}" ${selecting ? `onclick="toggleMistakeCard(event, ${r.id})"` : ''}>
+        ${selecting ? `<input class="mistake-select-check" type="checkbox" value="${r.id}" aria-label="选择 ${escapeHtml(r.title)}" ${mistakeSelection.ids.has(r.id) ? 'checked' : ''} ${mistakeCannotReview(r) ? 'disabled' : ''} onchange="chooseMistake(${r.id}, this.checked)" />` : ''}
         <div class="info">
           <div class="title">${escapeHtml(r.title)}</div>
           <span class="mistake-state ${r.review_status === 'reviewed' ? 'mistake-state-reviewed' : ''}">${mistakeStatusText(r.review_status)}</span>
           <span class="mistake-state">${MISTAKE_TYPES[r.mistake_type] || '待分类'}</span>${r.favorite ? '<span class="mistake-state">★ 已收藏</span>' : ''}
           <div class="meta">${!r.image_url ? '手动输入' : (isImageFile(r.file_type, r.image_url) ? '图片' : '文件')} · ${escapeHtml(r.created_at || '')}</div>
           ${r.content ? `<div class="row-content">${escapeHtml(r.content)}</div>` : ''}
-          <div class="mistake-tags">${nodeChipsHtml(r)}</div>
+          <div class="mistake-tags">${selecting ? (r.knowledge || []).map(k => `<span class="mistake-state">${escapeHtml(k.name)}</span>`).join('') : nodeChipsHtml(r)}</div>
+          ${selecting && mistakeCannotReview(r) ? `<div class="mistake-inline-error">${mistakeCannotReview(r)}，暂不能勾选。<button onclick="openMistakeDetail(${r.id})">补齐内容</button></div>` : ''}
         </div>
-        <div class="mistake-actions">
+        <div class="mistake-actions" ${selecting ? 'style="display:none;"' : ''}>
           <button onclick="openMistakeDetail(${r.id})">详情 / 编辑</button>
           ${r.mistake_type !== 'unclassified' ? `<button onclick="openMistakeDetail(${r.id}, true)">复习</button>` : ''}
           <button onclick="toggleMistakeFavorite(${r.id}, ${!r.favorite}, this)">${r.favorite ? '取消收藏' : '收藏'}</button>
@@ -94,6 +104,10 @@ async function loadMistakes() {
   } catch (err) {
     if (request !== mistakeListRequest || courseId !== currentCourseId) return;
     currentMistakes = [];
+    if (typeof mistakeSelectionCurrent === 'function' && mistakeSelectionCurrent()) {
+      mistakeSelection.listLoading = true; // 加载失败时禁止以旧结果全选或开始。
+      updateMistakeSelectionControls();
+    }
     showListError(box, err);
     box.insertAdjacentHTML?.('beforeend', '<button type="button" onclick="loadMistakes()">重试</button>');
   }

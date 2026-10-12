@@ -18,6 +18,10 @@ function showPageOnly(pageId) {
 
 // 详情页的返回：回到进入这一页之前的页面
 async function backFromDetail() {
+  if (typeof mistakeQueueCurrent === 'function' && (mistakeQueueCurrent() || currentView.type === 'mistakeQueueComplete')) {
+    await pauseMistakeQueue();
+    return;
+  }
   if (currentView.type === 'mistake') forgetMistakeDetailLocation();
   const prev = navStack.pop();
 

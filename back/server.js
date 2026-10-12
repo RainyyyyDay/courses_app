@@ -490,8 +490,8 @@ app.post('/api/courses/:id/mistakes', upload.single('file'), mistakeApi((req, re
   const courseId = mistakeCourse(req.params.id);
   const body = req.body || {};
 
-  if (!['knowledge', 'thinking', 'execution'].includes(body.mistakeType)) {
-    mistakeError(400, 'INVALID_ARGUMENT', '新建错题必须选择 knowledge、thinking 或 execution');
+  if (!['knowledge', 'thinking', 'execution', 'unclassified'].includes(body.mistakeType)) {
+    mistakeError(400, 'INVALID_ARGUMENT', '新建错题必须选择 knowledge、thinking、execution 或 unclassified');
   }
   for (const key of ['title', 'content', 'answerContent', 'explanation']) {
     if (body[key] !== undefined && typeof body[key] !== 'string') mistakeError(400, 'INVALID_ARGUMENT', `${key} 必须是字符串`);
