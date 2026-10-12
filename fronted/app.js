@@ -20,9 +20,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('assessmentModal').addEventListener('click', e => {
     if (e.target.id === 'assessmentModal') closeAssessmentModal();
   });
-  // 点选择器外面的遮罩 = 取消，不提交任何东西
-  document.getElementById('tagPickerModal').addEventListener('click', e => {
-    if (e.target.id === 'tagPickerModal') closeTagPicker();
+  // 点选择器外面的遮罩 = 取消，不提交任何东西。
+  // 但要排除"在弹窗里按住、滑到遮罩上才松手"这种情况：手机上滚动时很容易发生，
+  // 那属于误触，不能把用户刚挑好的文件 / 标签清掉。所以按下和抬起都要落在遮罩上才算。
+  const tagPickerMask = document.getElementById('tagPickerModal');
+  let tagMaskPressing = false;
+  tagPickerMask.addEventListener('pointerdown', e => { tagMaskPressing = e.target === tagPickerMask; });
+  tagPickerMask.addEventListener('click', e => {
+    if (tagMaskPressing && e.target === tagPickerMask) closeTagPicker();
+    tagMaskPressing = false;
   });
   // 点页面任何其它地方，关闭“添加内容”菜单
   document.addEventListener('click', closeAddMenu);

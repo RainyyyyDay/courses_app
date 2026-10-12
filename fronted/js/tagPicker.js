@@ -34,6 +34,7 @@ async function openTagPicker(mode, resourceType, resourceId) {
     nodeMeta: new Map(),   // id -> { name, type }
     expanded: new Set(),   // 选择器内展开的 folder id（纯前端临时状态）
     parentMap: new Map(),  // 子节点 id -> 父节点 id（顶层为 null）
+    search: '',            // 搜索关键词（只影响显示，不影响已选）
     tree: []
   };
 
@@ -103,6 +104,19 @@ async function openTagPicker(mode, resourceType, resourceId) {
 
   document.getElementById('tagPickerTree').innerHTML = '<div class="loading-tip">加载中…</div>';
   document.getElementById('tagPickerSelected').innerHTML = '';
+
+  // 搜索框每次打开都清空；树还没加载出来之前先不显示它
+  const searchRow = document.getElementById('tagPickerSearchRow');
+  const searchInput = document.getElementById('tagPickerSearch');
+  if (searchInput) searchInput.value = '';
+  if (searchRow) searchRow.style.display = 'none';
+
+  // 中间滚动区复位到顶部 + 锁住背景页面滚动 + 绑定 Esc 关闭（只绑一次）
+  const pickerBody = document.getElementById('tagPickerBody');
+  if (pickerBody) pickerBody.scrollTop = 0;
+  setTagPickerBodyLock(true);
+  bindTagPickerKeys();
+
   document.getElementById('tagPickerModal').classList.add('show');
 
   try {
@@ -162,9 +176,45 @@ function initTagPickerExpanded() {
 function closeTagPicker() {
   const modal = document.getElementById('tagPickerModal');
   if (modal) modal.classList.remove('show');
+
+  // 背景滚动锁和搜索框都恢复干净，下一次打开不会带着上一次的状态
+  setTagPickerBodyLock(false);
+  const searchInput = document.getElementById('tagPickerSearch');
+  if (searchInput) searchInput.value = '';
+
   tagPickerState = null;
   pendingUploadFile = null;
   pendingManual = null;
+}
+
+// 选择器打开时锁住背景页面，别让它跟着一起滚。
+// （没有真实 body / classList 的环境直接跳过，不影响其它功能）
+function setTagPickerBodyLock(on) {
+  const body = document.body;
+  if (!body || !body.classList) return;
+  if (on) body.classList.add('tag-picker-open');
+  else body.classList.remove('tag-picker-open');
+}
+
+// 桌面习惯：按 Esc 关掉选择器。只绑一次。
+let tagPickerKeysBound = false;
+function bindTagPickerKeys() {
+  if (tagPickerKeysBound || typeof document.addEventListener !== 'function') return;
+  tagPickerKeysBound = true;
+  document.addEventListener('keydown', event => {
+    if (!tagPickerState || event.key !== 'Escape') return;
+    const modal = document.getElementById('tagPickerModal');
+    if (!modal || !modal.classList.contains('show')) return;
+    event.preventDefault();
+    closeTagPicker();
+  });
+}
+
+// 搜索框输入：只改显示用的关键词，重新画树；已选标签一个都不动
+function onTagSearchInput(value) {
+  if (!tagPickerState) return;
+  tagPickerState.search = (value || '').trim();
+  renderTagPicker();
 }
 
 // 点“上传 / 保存”

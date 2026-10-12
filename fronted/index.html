@@ -331,30 +331,54 @@
   <!-- Toast 容器 -->
   <div id="toastBox"></div>
 
-  <!-- 知识点选择器（错题标签，上传新错题 / 编辑已有错题共用） -->
+  <!-- 知识点选择器（错题标签，上传新错题 / 编辑已有错题共用）
+       结构分三段：固定的头部（标题 + 关闭）/ 中间整体滚动的内容区 / 固定的底部（已选 + 按钮）。
+       这样内容再多也只在中间滚，标题和按钮永远在看得见的地方，不会再被挤出屏幕。
+       窄屏（≤640px）会自动变成从底部升起的抽屉，样式见 style.css 里的 .tag-sheet。 -->
   <div class="modal-mask" id="tagPickerModal">
-    <div class="modal modal-wide">
-      <h3 id="tagPickerTitle">选择错题标签</h3>
-      <!-- 上传 / 编辑时显示：名字随便改，但文件后缀固定，不能改 -->
-      <div class="tag-picker-name" id="tagPickerNameRow" style="display:none;">
-        <label for="tagPickerName">名称</label>
-        <div class="name-field">
-          <input id="tagPickerName" placeholder="给这条内容起个名字"
-                 onkeydown="if(event.key==='Enter'){event.preventDefault();confirmTagPicker();}" />
-          <span class="name-ext" id="tagPickerNameExt"></span>
+    <div class="modal modal-wide tag-sheet" role="dialog" aria-modal="true" aria-labelledby="tagPickerTitle">
+      <div class="tag-sheet-grip" aria-hidden="true"></div>
+
+      <div class="tag-sheet-head">
+        <h3 id="tagPickerTitle">选择错题标签</h3>
+        <button type="button" class="tag-sheet-close" onclick="closeTagPicker()" title="关闭" aria-label="关闭">×</button>
+      </div>
+
+      <div class="tag-sheet-body" id="tagPickerBody">
+        <!-- 上传 / 编辑时显示：名字随便改，但文件后缀固定，不能改 -->
+        <div class="tag-picker-name" id="tagPickerNameRow" style="display:none;">
+          <label for="tagPickerName">名称</label>
+          <div class="name-field">
+            <input id="tagPickerName" placeholder="给这条内容起个名字"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault();confirmTagPicker();}" />
+            <span class="name-ext" id="tagPickerNameExt"></span>
+          </div>
+          <div class="name-tip" id="tagPickerNameTip">后缀由文件决定，不能修改</div>
         </div>
-        <div class="name-tip" id="tagPickerNameTip">后缀由文件决定，不能修改</div>
+        <!-- 分类 / 知识点一多，光靠翻很累：给个搜索框，只过滤显示，不动已选 -->
+        <div class="tag-picker-search" id="tagPickerSearchRow" style="display:none;">
+          <input id="tagPickerSearch" type="search" maxlength="100" autocomplete="off"
+                 placeholder="搜索分类 / 知识点"
+                 oninput="onTagSearchInput(this.value)"
+                 onkeydown="if(event.key==='Escape'){event.stopPropagation();this.value='';onTagSearchInput('');}" />
+        </div>
+
+        <div class="tag-picker-tree" id="tagPickerTree"></div>
+
+        <div id="tagPickerMistakeFields" class="mistake-edit-form" style="display:none;">
+          <div class="tag-sheet-section-title">错题信息</div>
+          <label>错题类型（必选）<select id="mistakeCreateType"><option value="">请选择类型</option><option value="knowledge">知识类</option><option value="thinking">思维类</option><option value="execution">执行类</option></select></label>
+          <label>参考答案<textarea id="mistakeCreateAnswer" rows="3" placeholder="可后续补齐，补齐后才能复习"></textarea></label>
+          <label>解析 / 错误原因（可选）<textarea id="mistakeCreateExplanation" rows="2"></textarea></label>
+        </div>
       </div>
-      <div class="tag-picker-tree" id="tagPickerTree"></div>
-      <div id="tagPickerMistakeFields" class="mistake-edit-form" style="display:none;">
-        <label>错题类型（必选）<select id="mistakeCreateType"><option value="">请选择类型</option><option value="knowledge">知识类</option><option value="thinking">思维类</option><option value="execution">执行类</option></select></label>
-        <label>参考答案<textarea id="mistakeCreateAnswer" rows="3" placeholder="可后续补齐，补齐后才能复习"></textarea></label>
-        <label>解析 / 错误原因（可选）<textarea id="mistakeCreateExplanation" rows="2"></textarea></label>
-      </div>
-      <div class="tag-picker-selected" id="tagPickerSelected"></div>
-      <div class="modal-actions">
-        <button class="btn-cancel" onclick="closeTagPicker()">取消</button>
-        <button class="btn-confirm" id="tagPickerConfirm" onclick="confirmTagPicker()">保存</button>
+
+      <div class="tag-sheet-foot">
+        <div class="tag-picker-selected" id="tagPickerSelected"></div>
+        <div class="modal-actions">
+          <button class="btn-cancel" onclick="closeTagPicker()">取消</button>
+          <button class="btn-confirm" id="tagPickerConfirm" onclick="confirmTagPicker()">保存</button>
+        </div>
       </div>
     </div>
   </div>

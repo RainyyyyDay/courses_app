@@ -11,15 +11,57 @@ function renderTagPicker() {
   if (!state) return;
 
   const treeBox = document.getElementById('tagPickerTree');
+  const body = document.getElementById('tagPickerBody');
+  const searchRow = document.getElementById('tagPickerSearchRow');
+  // 展开 / 收起会把整棵树重画一遍：先记住滚动位置，画完还回去，不然会弹回顶部
+  const keepScroll = body ? body.scrollTop : 0;
+  const keyword = (state.search || '').trim();
+  const nodes = keyword ? filterTagTree(state.tree, keyword) : state.tree;
+
+  // 树是空的（或加载失败）时，搜索框没有意义，不显示
+  if (searchRow) searchRow.style.display = state.tree.length ? 'block' : 'none';
 
   if (!state.tree.length) {
     treeBox.innerHTML =
       '<div class="empty">当前课程还没有分类或知识点，请先在「知识框架」中创建。</div>';
+  } else if (!nodes.length) {
+    treeBox.innerHTML =
+      '<div class="empty">没有匹配「' + escapeHtml(keyword) + '」的分类或知识点。</div>';
   } else {
-    treeBox.innerHTML = state.tree.map(node => renderTagNode(node)).join('');
+    treeBox.innerHTML = nodes.map(node => renderTagNode(node)).join('');
   }
 
   renderTagSelected();
+
+  if (body && keepScroll) body.scrollTop = keepScroll;
+}
+
+// 搜索过滤：命中的节点往下整棵留着；只有子节点命中时，保留它的父级路径，
+// 否则用户搜到了也看不到。返回浅拷贝（只换 children），勾选状态不受影响。
+function filterTagTree(nodes, keyword) {
+  const needle = keyword.toLowerCase();
+  const kept = [];
+
+  for (const node of nodes || []) {
+    if (String(node.name || '').toLowerCase().includes(needle)) {
+      kept.push(node);
+      continue;
+    }
+    const children = Array.isArray(node.children) ? node.children : [];
+    const matched = filterTagTree(children, keyword);
+    if (matched.length) kept.push(Object.assign({}, node, { children: matched }));
+  }
+
+  return kept;
+}
+
+// 勾选状态变了以后，顺手把这一行刷成高亮，不用整棵树重画
+function syncTagRowHighlight(id) {
+  const box = document.getElementById('tagchk-' + id);
+  const row = box && box.closest ? box.closest('.tag-row') : null;
+  if (!row) return;
+  if (tagPickerState && tagPickerState.selected.has(id)) row.classList.add('tag-row-selected');
+  else row.classList.remove('tag-row-selected');
 }
 
 // 递归渲染选择器：folder 和 knowledge 都可以勾选；
@@ -29,8 +71,11 @@ function renderTagNode(node) {
   const isFolder = node.type === 'folder';
   const children = Array.isArray(node.children) ? node.children : [];
   const hasChildren = children.length > 0;
-  const isExpanded = isFolder && state.expanded.has(node.id);
-  const checked = state.selected.has(node.id) ? 'checked' : '';
+  // 搜索时把命中的层级全部摊开，省得用户再一层层点开
+  const searching = !!(state.search || '').trim();
+  const isExpanded = isFolder && hasChildren && (searching || state.expanded.has(node.id));
+  const isSelected = state.selected.has(node.id);
+  const checked = isSelected ? 'checked' : '';
   // 系统分类“未分类”在选择器里也显示成灰色
   const base = tagVisual(node.type);
   const v = node.is_system ? { cls: 'tag-uncategorized', icon: base.icon } : base;
@@ -47,7 +92,7 @@ function renderTagNode(node) {
 
   return `
     <div class="tag-node">
-      <div class="tag-row">
+      <div class="tag-row${isSelected ? ' tag-row-selected' : ''}">
         ${toggleHtml}
         <input type="checkbox" id="tagchk-${node.id}" class="tag-check" ${checked}
           onchange="onTagCheckChange(${node.id}, this.checked)" />
@@ -74,6 +119,7 @@ function onTagCheckChange(id, checked) {
   if (!state) return;
   if (checked) state.selected.add(id);
   else state.selected.delete(id);
+  syncTagRowHighlight(id);
   renderTagSelected();
 }
 
@@ -87,6 +133,7 @@ function toggleTagSelect(id) {
 
   const box = document.getElementById('tagchk-' + id);
   if (box) box.checked = state.selected.has(id);
+  syncTagRowHighlight(id);
 
   renderTagSelected();
 }
@@ -116,6 +163,7 @@ function removeTagSelection(id) {
 
   const box = document.getElementById('tagchk-' + id);
   if (box) box.checked = false;
+  syncTagRowHighlight(id);
 
   renderTagSelected();
 }

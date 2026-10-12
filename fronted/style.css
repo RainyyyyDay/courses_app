@@ -104,6 +104,11 @@ body {
   background: rgba(0,0,0,0.4);
   display: flex; justify-content: center; align-items: center;
   z-index: 100;
+  /* 兜底：万一某个弹窗比屏幕还高，遮罩层自己也能滚，
+     不会出现"上面看不到、下面够不着"（配合下面 .modal 的 margin: auto） */
+  padding: 20px 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   opacity: 0; visibility: hidden;
   transition: opacity 0.3s ease, visibility 0.3s ease;
 }
@@ -112,6 +117,9 @@ body {
 .modal {
   background: #fff; border-radius: 12px; padding: 20px;
   width: 80%; max-width: 340px;
+  /* margin: auto 是关键：内容比屏幕高时，上下外边距自动收成 0，
+     再配合遮罩层的 overflow-y: auto，顶部也滚得到（只靠 align-items: center 做不到） */
+  margin: auto;
   transform: scale(0.8);
   transition: transform 0.3s ease;
 }
@@ -319,14 +327,14 @@ body {
 /* 选择器弹窗 */
 .modal-wide { max-width: 440px; }
 
+/* 标签树：高度不再写死（旧版这里的 max-height: 240px 就是"看不全"的直接原因），
+   树有多高就多高，滚动交给外面的 .tag-sheet-body。 */
 .tag-picker-tree {
-  max-height: 240px;
-  overflow-y: auto;
-  padding: 10px;
-  margin-bottom: 12px;
-  background: #fafafa;
-  border: 1px solid #eee;
-  border-radius: 8px;
+  padding: 6px;
+  margin-bottom: 0;
+  background: #fafbfd;
+  border: 1px solid #eef0f5;
+  border-radius: 12px;
 }
 .tag-picker-tree .empty { padding: 24px 10px; font-size: 13px; }
 
@@ -869,3 +877,222 @@ body {
 .mistake-select-check { flex: 0 0 auto; width: 20px; height: 20px; margin: 8px 12px 0 0; }
 .mistake-selection-footer { position: sticky; bottom: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 14px; background: #fff; border: 1px solid #ddd; border-radius: 8px; z-index: 2; }
 .mistake-selection-footer button:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ============================================================
+   标签选择器（错题 / 资料 / 笔记 的上传与编辑共用）
+   ------------------------------------------------------------
+   结构见 index.html 里的 #tagPickerModal：头部固定 / 中间滚动 / 底部固定。
+     · 弹窗整体限高：桌面 86vh（最多 820px），手机 92dvh；
+     · 只有中间 .tag-sheet-body 滚动，所以内容再多也滚得到、点得到；
+     · 中间区必须 flex:1 配 min-height:0 —— 少了 min-height，flex 子项会被
+       内容撑高，滚动条根本不出现（旧版"看不全"就是这个原因）；
+     · 手机上整体变成从底部升起的抽屉，底部留出 iPhone 安全区的空白。
+   ============================================================ */
+
+/* 打开选择器时锁住背景页面，别让底下的列表跟着一起滚 */
+body.tag-picker-open { overflow: hidden; }
+
+#tagPickerModal { padding: 0; }          /* 抽屉要贴边，间距交给内部各区块自己管 */
+
+/* ---------- 弹窗本体：桌面 = 居中弹窗 ---------- */
+#tagPickerModal .tag-sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 560px;
+  max-height: 86vh;                       /* 老浏览器忽略下一行时用这个 */
+  max-height: min(86dvh, 820px);
+  padding: 0;                             /* 覆盖 .modal 的 20px，三段式各自管内边距 */
+  border-radius: 16px;
+  overflow: hidden;                       /* 圆角要裁住内部的滚动区 */
+  box-shadow: 0 18px 48px rgba(21, 30, 60, 0.18);
+  transform: translateY(12px) scale(0.98);
+  transition: transform 0.26s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+#tagPickerModal.show .tag-sheet { transform: none; }
+
+/* 抽屉抓手：只在手机形态出现 */
+#tagPickerModal .tag-sheet-grip { display: none; position: relative; flex: 0 0 auto; height: 18px; }
+#tagPickerModal .tag-sheet-grip::after {
+  content: '';
+  position: absolute;
+  left: 50%; top: 8px;
+  width: 40px; height: 4px;
+  margin-left: -20px;
+  border-radius: 2px;
+  background: #dfe3ec;
+}
+
+/* ---------- 头部：固定不动 ---------- */
+#tagPickerModal .tag-sheet-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 14px 12px 20px;
+  border-bottom: 1px solid #eef0f5;
+}
+#tagPickerModal .tag-sheet-head h3 {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #232a3d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#tagPickerModal .tag-sheet-close {
+  flex: 0 0 auto;
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 50%;
+  background: #f3f4f8; color: #5b6478;
+  font-size: 20px; line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+#tagPickerModal .tag-sheet-close:hover { background: #e8eaf1; color: #232a3d; }
+
+/* ---------- 中间：唯一的滚动区 ---------- */
+#tagPickerModal .tag-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;                          /* ★ 关键：不加这句，flex 子项按内容撑高，永远不出现滚动条 */
+  overflow-y: auto;
+  overscroll-behavior: contain;            /* 滚到头别带着背景一起滚 */
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 20px 14px;
+  scrollbar-gutter: stable;               /* 有没有滚动条都别让内容左右跳 */
+}
+
+/* ---------- 底部：固定不动（已选标签 + 按钮） ---------- */
+#tagPickerModal .tag-sheet-foot {
+  flex: 0 0 auto;
+  padding: 12px 20px 16px;
+  border-top: 1px solid #eef0f5;
+  background: #fff;
+  box-shadow: 0 -8px 18px rgba(21, 30, 60, 0.05);
+}
+
+/* 已选标签最多占两行高，再多自己滚，绝不把下面的按钮挤没 */
+#tagPickerModal .tag-picker-selected {
+  max-height: 84px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  align-content: flex-start;
+  margin-bottom: 12px;
+}
+
+/* ---------- 名称 / 搜索框 ---------- */
+#tagPickerModal .tag-picker-name { margin-bottom: 14px; }
+#tagPickerModal .tag-picker-name input { padding: 10px 12px; font-size: 15px; margin-bottom: 0; }
+
+#tagPickerModal .tag-picker-search { margin-bottom: 12px; }
+#tagPickerModal .tag-picker-search input {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #dfe3ec;
+  border-radius: 10px;
+  background: #fbfcfe;
+  font-size: 14px;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+#tagPickerModal .tag-picker-search input:focus {
+  border-color: #4a6cf7;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(74, 108, 247, 0.12);
+}
+
+/* ---------- 树里的每一行：整行好点，行高够手指用 ---------- */
+#tagPickerModal .tag-picker-tree .empty { padding: 22px 12px; text-align: center; color: #9aa4c0; }
+#tagPickerModal .tag-node { padding: 0; }
+#tagPickerModal .tag-row {
+  gap: 8px;
+  min-height: 36px;
+  padding: 2px 6px;
+  border-radius: 9px;
+  transition: background 0.15s ease;
+}
+#tagPickerModal .tag-row:hover,
+#tagPickerModal .tag-row.tag-row-selected { background: #eef2ff; }
+#tagPickerModal button.tag-toggle {
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  font-size: 12px;
+  transition: background 0.15s ease;
+}
+#tagPickerModal button.tag-toggle:hover { background: #e3e8f7; }
+#tagPickerModal .tag-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 14.5px;
+  overflow-wrap: anywhere;                /* 名字太长就换行，别横向撑破卡片 */
+}
+
+/* ---------- 错题信息：单独一张卡片，和标签树区分开 ---------- */
+#tagPickerModal .mistake-edit-form {
+  margin-top: 14px;
+  padding: 14px;
+  background: #fafbfd;
+  border: 1px solid #eef0f5;
+  border-radius: 12px;
+}
+#tagPickerModal .tag-sheet-section-title { margin: 0; font-size: 13px; font-weight: 600; color: #5b6478; }
+
+/* ---------- 底部按钮：看得清、点得准 ---------- */
+#tagPickerModal .modal-actions button {
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 500;
+  transition: background 0.15s ease, filter 0.15s ease;
+}
+#tagPickerModal .btn-cancel { background: #f3f4f8; color: #4a5268; }
+#tagPickerModal .btn-cancel:hover { background: #e8eaf1; }
+#tagPickerModal .btn-confirm { background: #4a6cf7; color: #fff; }
+#tagPickerModal .btn-confirm:hover { filter: brightness(1.06); }
+#tagPickerModal .btn-confirm:disabled { opacity: 0.6; cursor: wait; }
+
+/* ---------- 窄屏：从底部升起的抽屉 ---------- */
+@media (max-width: 640px) {
+  #tagPickerModal { align-items: flex-end; }
+
+  #tagPickerModal .tag-sheet {
+    margin: 0;                            /* 必须清掉 margin:auto，否则会盖过 align-items:flex-end */
+    max-width: none;
+    max-height: 92vh;
+    max-height: 92dvh;
+    border-radius: 18px 18px 0 0;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+  #tagPickerModal.show .tag-sheet { transform: translateY(0); }
+  #tagPickerModal .tag-sheet-grip { display: block; }
+
+  #tagPickerModal .tag-sheet-head { padding: 6px 12px 12px 16px; }
+  #tagPickerModal .tag-sheet-body { padding: 14px 16px 12px; }
+  #tagPickerModal .tag-sheet-foot { padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px)); }
+
+  /* 手指点得准：整行 44px 高，勾选框和箭头一起放大 */
+  #tagPickerModal .tag-row { min-height: 44px; }
+  #tagPickerModal .tag-picker-tree .tag-check { min-width: 18px; height: 18px; }
+  #tagPickerModal button.tag-toggle { width: 28px; height: 28px; }
+  #tagPickerModal .tag-label { font-size: 15px; }
+
+  /* 按钮并排铺满一行，角落里的按钮不再难点 */
+  #tagPickerModal .modal-actions { gap: 12px; }
+  #tagPickerModal .modal-actions button { flex: 1 1 0; padding: 12px 16px; }
+}
+
+/* 尊重系统的"减少动态效果"设置 */
+@media (prefers-reduced-motion: reduce) {
+  #tagPickerModal .tag-sheet,
+  .modal-mask,
+  .modal { transition: none; }
+}
