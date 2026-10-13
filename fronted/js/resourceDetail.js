@@ -82,8 +82,8 @@ function renderResourceDetail(resourceType, item) {
 }
 
 // 按文件类型做最简预览：图片直接显示、PDF 用 iframe，其它只给“打开文件”
-function renderResourcePreview(fileType, url) {
-  const box = document.getElementById('resourceDetailPreview');
+function renderResourcePreview(fileType, url, target = null) {
+  const box = target || document.getElementById('resourceDetailPreview');
   box.innerHTML = '';
 
   const type = String(fileType || '');

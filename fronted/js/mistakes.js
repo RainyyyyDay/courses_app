@@ -25,13 +25,15 @@ function rememberMistakeUi() { mistakeStorageSet('mistake-list:' + currentCourse
 function mistakeStatusText(status) { return status === 'reviewed' ? '已复习' : '未复习'; }
 function mistakeCreationFields() {
   const mistakeType = document.getElementById('mistakeCreateType').value;
-  if (!['knowledge', 'thinking', 'execution'].includes(mistakeType)) throw new Error('请选择错题类型');
+  if (!Object.hasOwn(MISTAKE_TYPES, mistakeType)) throw new Error('请选择错题类型');
   return { mistakeType, answerContent: document.getElementById('mistakeCreateAnswer').value,
     explanation: document.getElementById('mistakeCreateExplanation').value };
 }
 
 function renderMistakeCategories(rows = null) {
   const home = !mistakeUi.type;
+  const reviewEntry = document.getElementById('mistakeHomeReview');
+  if (reviewEntry) reviewEntry.style.display = home ? 'flex' : 'none';
   document.getElementById('mistakeCategories').style.display = home ? 'grid' : 'none';
   document.getElementById('mistakeFilters').style.display = home ? 'none' : 'block';
   document.getElementById('mistakeCategories').innerHTML = Object.entries(MISTAKE_TYPES).map(([type, name]) =>
@@ -42,10 +44,13 @@ function renderMistakeCategories(rows = null) {
   document.getElementById('mistakeStatusFilter').value = mistakeUi.reviewStatus;
 }
 
-async function openMistakeCategory(type) {
+async function openMistakeCategory(type, keepSelection = false) {
   ensureMistakeUi();
   mistakeUi.type = Object.hasOwn(MISTAKE_TYPES, type) ? type : null;
-  if (typeof mistakeSelection !== 'undefined') mistakeSelection = null;
+  if (typeof mistakeSelection !== 'undefined') {
+    if (keepSelection && mistakeSelection?.mixed && mistakeSelection.courseId === currentCourseId) mistakeSelection.type = mistakeUi.type;
+    else mistakeSelection = null;
+  }
   rememberMistakeUi();
   mistakeStorageSet('mistake-detail:' + currentCourseId, null);
   await loadMistakes();
@@ -91,11 +96,11 @@ async function loadMistakes() {
           <div class="meta">${!r.image_url ? '手动输入' : (isImageFile(r.file_type, r.image_url) ? '图片' : '文件')} · ${escapeHtml(r.created_at || '')}</div>
           ${r.content ? `<div class="row-content">${escapeHtml(r.content)}</div>` : ''}
           <div class="mistake-tags">${selecting ? (r.knowledge || []).map(k => `<span class="mistake-state">${escapeHtml(k.name)}</span>`).join('') : nodeChipsHtml(r)}</div>
-          ${selecting && mistakeCannotReview(r) ? `<div class="mistake-inline-error">${mistakeCannotReview(r)}，暂不能勾选。<button onclick="openMistakeDetail(${r.id})">补齐内容</button></div>` : ''}
+          ${selecting && mistakeCannotReview(r) ? `<div class="mistake-inline-error">${mistakeCannotReview(r)}，暂不能勾选。<button onclick="${typeof mistakeReviewPicker !== 'undefined' && mistakeReviewPicker ? 'openMistakeReviewRepair' : 'openMistakeDetail'}(${r.id})">补齐内容</button></div>` : ''}
         </div>
         <div class="mistake-actions" ${selecting ? 'style="display:none;"' : ''}>
           <button onclick="openMistakeDetail(${r.id})">详情 / 编辑</button>
-          ${r.mistake_type !== 'unclassified' ? `<button onclick="openMistakeDetail(${r.id}, true)">复习</button>` : ''}
+          <button onclick="openMistakeDetail(${r.id}, true)">复习</button>
           <button onclick="toggleMistakeFavorite(${r.id}, ${!r.favorite}, this)">${r.favorite ? '取消收藏' : '收藏'}</button>
           <button onclick="openTagPicker('edit', 'mistake', ${r.id})">标签</button>
           <button onclick="delItem('mistakes', ${r.id}, loadMistakes)">删除</button>

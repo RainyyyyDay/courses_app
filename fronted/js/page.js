@@ -10,7 +10,7 @@
 
 // 只显示其中一个页面容器，其余隐藏。沿用原有 SPA 的 display 切换方式，不引入路由。
 function showPageOnly(pageId) {
-  ['listPage', 'detailPage', 'nodeDetailPage', 'mistakeDetailPage', 'resourceDetailPage'].forEach(id => {
+  ['listPage', 'detailPage', 'nodeDetailPage', 'mistakeDetailPage', 'resourceDetailPage', 'materialReviewPage'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = (id === pageId) ? 'block' : 'none';
   });

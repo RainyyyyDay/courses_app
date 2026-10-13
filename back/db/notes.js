@@ -10,7 +10,7 @@ const { findKnowledgeNode, SUBTREE_CTE } = require('./knowledge');
 
 // ==================== 笔记 ====================
 
-const NOTE_COLUMNS = 'id, course_id, title, file_url, file_type, source, content, created_at';
+const NOTE_COLUMNS = 'id, course_id, title, file_url, file_type, source, content, created_at, review_status, favorite';
 
 // 笔记列表：字段和原来一样，额外给每条补一个 nodes 数组（标签节点）
 function listNotes(courseId) {
@@ -22,6 +22,16 @@ function listNotes(courseId) {
 
 function findNote(id) {
   return db.prepare(`SELECT ${NOTE_COLUMNS} FROM notes WHERE id = ?`).get(id);
+}
+
+function setNoteReviewStatus(id, courseId, status) {
+  db.prepare('UPDATE notes SET review_status = ? WHERE id = ? AND course_id = ?').run(status, id, courseId);
+  return findNote(id);
+}
+
+function setNoteFavorite(id, courseId, favorite) {
+  db.prepare('UPDATE notes SET favorite = ? WHERE id = ? AND course_id = ?').run(favorite ? 1 : 0, id, courseId);
+  return findNote(id);
 }
 
 // 新建笔记；nodeIds 可选，不传就是原来那条“没有标签”的笔记
@@ -140,6 +150,8 @@ module.exports = {
   listNotes,
   createNote,
   findNote,
+  setNoteReviewStatus,
+  setNoteFavorite,
   renameNote,
   deleteNote,
   listNoteNodes,

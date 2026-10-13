@@ -56,7 +56,7 @@ async function openTagPicker(mode, resourceType, resourceId) {
   mistakeFields.style.display = resourceType === 'mistake' && mode !== 'edit' ? 'grid' : 'none';
   if (resourceType === 'mistake' && mode !== 'edit') {
     ensureMistakeUi();
-    document.getElementById('mistakeCreateType').value = mistakeUi.type && mistakeUi.type !== 'unclassified' ? mistakeUi.type : '';
+    document.getElementById('mistakeCreateType').value = mistakeUi.type || '';
     document.getElementById('mistakeCreateAnswer').value = '';
     document.getElementById('mistakeCreateExplanation').value = '';
   }

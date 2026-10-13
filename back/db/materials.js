@@ -10,7 +10,7 @@ const { findKnowledgeNode, SUBTREE_CTE } = require('./knowledge');
 
 // ==================== 资料 ====================
 
-const MATERIAL_COLUMNS = 'id, course_id, title, file_url, file_type, content, created_at';
+const MATERIAL_COLUMNS = 'id, course_id, title, file_url, file_type, content, created_at, review_status, favorite';
 
 // 资料列表：字段和原来一样，额外给每条补一个 nodes 数组（标签节点）
 function listMaterials(courseId) {
@@ -22,6 +22,16 @@ function listMaterials(courseId) {
 
 function findMaterial(id) {
   return db.prepare(`SELECT ${MATERIAL_COLUMNS} FROM materials WHERE id = ?`).get(id);
+}
+
+function setMaterialReviewStatus(id, courseId, status) {
+  db.prepare('UPDATE materials SET review_status = ? WHERE id = ? AND course_id = ?').run(status, id, courseId);
+  return findMaterial(id);
+}
+
+function setMaterialFavorite(id, courseId, favorite) {
+  db.prepare('UPDATE materials SET favorite = ? WHERE id = ? AND course_id = ?').run(favorite ? 1 : 0, id, courseId);
+  return findMaterial(id);
 }
 
 // 新建资料；nodeIds 可选，不传就是原来那条“没有标签”的资料
@@ -142,6 +152,8 @@ module.exports = {
   listMaterials,
   createMaterial,
   findMaterial,
+  setMaterialReviewStatus,
+  setMaterialFavorite,
   renameMaterial,
   deleteMaterial,
   listMaterialNodes,

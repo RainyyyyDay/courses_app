@@ -160,9 +160,77 @@ app.put('/api/courses/:id/pin', (req, res) => {
 // ==================== 资料接口 ====================
 
 app.get('/api/courses/:id/materials', (req, res) => {
-  const courseId = Number(req.params.id);
-  res.json(db.listMaterials(courseId));
+  readingList(req, res, 'materials');
 });
+
+// 完整课程列表，无分页；筛选只匹配直接关联标签。
+function readingList(req, res, kind) {
+  const courseId = Number(req.params.id), filters = req.query;
+  const invalid = message => res.status(400).json({code:'INVALID_ARGUMENT', message});
+  if (!Number.isSafeInteger(courseId) || courseId < 1) return invalid('课程 ID 必须是正整数');
+  if (!db.findCourse(courseId)) return res.status(404).json({code:'COURSE_NOT_FOUND',message:'课程不存在'});
+  for (const key of ['q','favorite','reviewStatus','nodeIds']) {
+    if (filters[key] !== undefined && typeof filters[key] !== 'string') return invalid(`${key} 必须是字符串`);
+  }
+  if (filters.favorite && !['true','false','1','0'].includes(filters.favorite)) return invalid('favorite 必须是 true、false、1 或 0');
+  if (filters.reviewStatus && !['reviewed','unreviewed'].includes(filters.reviewStatus)) return invalid('复习状态不合法');
+  const nodeIds = filters.nodeIds ? filters.nodeIds.split(',').map(Number) : [];
+  if (nodeIds.length > 100 || nodeIds.some(id=>!Number.isSafeInteger(id) || id < 1)) return invalid('nodeIds 必须是逗号分隔的正整数，最多 100 个');
+  const bad = checkNodeIds(courseId,nodeIds); if (bad) return invalid(bad);
+  const q = (filters.q || '').trim().toLowerCase();
+  const rows = kind === 'notes' ? db.listNotes(courseId) : db.listMaterials(courseId);
+  res.json(rows.filter(row => (!q || `${row.title}\n${row.content || ''}`.toLowerCase().includes(q))
+    && (!filters.favorite || !!row.favorite === ['true','1'].includes(filters.favorite))
+    && (!filters.reviewStatus || row.review_status === filters.reviewStatus)
+    && (!nodeIds.length || row.nodes.some(node=>nodeIds.includes(node.id)))));
+}
+
+// 资料独立复习只更新状态，课程归属在读写前统一校验。
+function readingReviewApi(handler, kind = 'material') {
+  return (req, res) => {
+    const courseId = Number(req.params.courseId);
+    const resourceId = Number(kind === 'note' ? req.params.noteId : req.params.materialId);
+    const label = kind === 'note' ? '笔记' : '资料';
+    if (![courseId, resourceId].every(id => Number.isSafeInteger(id) && id > 0)) return res.status(400).json({code:'INVALID_ARGUMENT', message:`课程和${label} ID 必须是正整数`});
+    if (!db.findCourse(courseId)) return res.status(404).json({code:'COURSE_NOT_FOUND', message:'课程不存在'});
+    const row = kind === 'note' ? db.findNote(resourceId) : db.findMaterial(resourceId);
+    if (!row || row.course_id !== courseId) return res.status(404).json({code:kind === 'note' ? 'NOTE_NOT_FOUND' : 'MATERIAL_NOT_FOUND', message:`${label}不存在或不属于当前课程`});
+    try { handler(req, res, row); }
+    catch (err) { console.error(`${label}复习保存失败`, err); res.status(500).json({code:'INTERNAL_ERROR', message:`${label}复习操作失败，请重试`}); }
+  };
+}
+for (const kind of ['material','note']) {
+  const plural = kind === 'note' ? 'notes' : 'materials';
+  app.patch(`/api/courses/:courseId/${plural}/:${kind}Id`, readingReviewApi((req,res,row) => {
+    const body = req.body;
+    if (!body || Array.isArray(body) || typeof body.favorite !== 'boolean' || Object.keys(body).some(key=>key !== 'favorite')) {
+      return res.status(400).json({code:'INVALID_ARGUMENT',message:'请提交 favorite: true 或 false'});
+    }
+    const updated = kind === 'note' ? db.setNoteFavorite(row.id,row.course_id,body.favorite) : db.setMaterialFavorite(row.id,row.course_id,body.favorite);
+    res.json({...updated,nodes:kind === 'note' ? db.listNoteNodes(row.id) : db.listMaterialNodes(row.id)});
+  },kind));
+}
+app.get('/api/courses/:courseId/materials/:materialId/review', readingReviewApi((req, res, row) => {
+  res.json({...row, nodes: db.listMaterialNodes(row.id)});
+}));
+app.patch('/api/courses/:courseId/materials/:materialId/review', readingReviewApi((req, res, row) => {
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'reviewStatus')
+    || !['reviewed','unreviewed'].includes(body.reviewStatus)) return res.status(400).json({code:'INVALID_ARGUMENT', message:'reviewStatus 必须是 reviewed 或 unreviewed'});
+  const updated = db.setMaterialReviewStatus(row.id, row.course_id, body.reviewStatus);
+  res.json({...updated, nodes: db.listMaterialNodes(row.id)});
+}));
+
+app.get('/api/courses/:courseId/notes/:noteId/review', readingReviewApi((req, res, row) => {
+  res.json({...row, nodes: db.listNoteNodes(row.id)});
+}, 'note'));
+app.patch('/api/courses/:courseId/notes/:noteId/review', readingReviewApi((req, res, row) => {
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'reviewStatus')
+    || !['reviewed','unreviewed'].includes(body.reviewStatus)) return res.status(400).json({code:'INVALID_ARGUMENT', message:'reviewStatus 必须是 reviewed 或 unreviewed'});
+  const updated = db.setNoteReviewStatus(row.id, row.course_id, body.reviewStatus);
+  res.json({...updated, nodes: db.listNoteNodes(row.id)});
+}, 'note'));
 
 // 两种录入方式二选一：
 //   1) 上传文件（multipart 里带 file 字段）
@@ -251,8 +319,7 @@ app.put('/api/materials/:id/nodes', (req, res) => {
 // ==================== 笔记接口 ====================
 
 app.get('/api/courses/:id/notes', (req, res) => {
-  const courseId = Number(req.params.id);
-  res.json(db.listNotes(courseId));
+  readingList(req, res, 'notes');
 });
 
 // 同样支持“上传文件”和“手动输入”两种方式

@@ -11,6 +11,7 @@ const { spawn, spawnSync } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
 const { testMistakeMigrations, testMistakeApi } = require('./mistake-backend.cjs');
 const { mistakeBrowserPrelude, mistakeBrowserScenario } = require('./mistake-frontend.cjs');
+const { testMaterialReviewMigration, testMaterialReviewApi, materialBrowserPrelude, materialBrowserScenario } = require('./material-review.cjs');
 
 const root = path.resolve(__dirname, '..');
 const source = path.join(root, 'back');
@@ -44,7 +45,7 @@ async function testBackend() {
   before.close();
   const store = require(path.join(temp, 'db/index.js'));
   db = store.db;
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 7);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 10);
   assert.deepEqual(db.prepare('SELECT id, name FROM courses ORDER BY id').all(), existing);
   for (const snapshot of snapshots) assert.deepEqual(db.prepare(snapshot.sql).all(), snapshot.rows);
   const course = store.createCourse('regression course');
@@ -166,6 +167,11 @@ async function testBrowser(data) {
       result.id = 'regressionResult';
       function check(ok, text) { if (!ok) throw new Error(text); }
       try {
+        const readingRestored = await materialBrowserRestore(check, waitUntil);
+        if (readingRestored) {
+          if (readingRestored === 'materials') { ${materialBrowserScenario(data, 'notes')} return; }
+          ${mistakeBrowserScenario(data)} return;
+        }
         ${mistakeBrowserPrelude()}
         await loadCourses();
         check(document.querySelectorAll('#courseList .course-item').length > 0, 'course render');
@@ -199,6 +205,7 @@ async function testBrowser(data) {
         for (const id of ['materialList','noteList','mistakeList','assessmentList']) check(document.getElementById(id).textContent.includes('暂无'), 'empty state '+id);
         window.fetch = originalFetch;
         check(!document.getElementById('bootErrorBox'), 'unexpected JS or boot error');
+        ${materialBrowserScenario(data)}
         ${mistakeBrowserScenario(data)}
         result.dataset.result = 'passed';
         result.textContent = 'browser interactions passed';
@@ -208,9 +215,10 @@ async function testBrowser(data) {
       }
       document.body.appendChild(result);
     });`;
-  new vm.Script(script, { filename: 'browser-regression.js' });
+  const materialPrelude = materialBrowserPrelude();
+  new vm.Script(materialPrelude + script, { filename: 'browser-regression.js' });
   const index = path.join(front, 'index.html');
-  fs.writeFileSync(index, fs.readFileSync(index, 'utf8').replace('</body>', `<script>${script}</script></body>`));
+  fs.writeFileSync(index, fs.readFileSync(index, 'utf8').replace('</body>', `<script>${materialPrelude}${script}</script></body>`));
   const staticServer = http.createServer((req, res) => {
     const filename = path.join(front, req.url === '/' ? 'index.html' : req.url.slice(1));
     if (!filename.startsWith(front + path.sep) || !fs.existsSync(filename)) { res.writeHead(404).end(); return; }
@@ -223,7 +231,7 @@ async function testBrowser(data) {
     const url = `http://127.0.0.1:${staticServer.address().port}/`;
     const html = await new Promise((resolve, reject) => {
       const browser = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-        '--window-size=1280,960',
+        '--window-size=' + (process.env.COURSES_TEST_VIEWPORT || '1280,960'),
         ...(process.env.COURSES_TEST_SCREENSHOT ? ['--screenshot=' + process.env.COURSES_TEST_SCREENSHOT] : []),
         '--user-data-dir=' + path.join(temp, 'chrome-profile'), '--virtual-time-budget=30000', '--dump-dom', url], { windowsHide: true });
       let output = '';
@@ -232,6 +240,7 @@ async function testBrowser(data) {
       browser.on('exit', () => resolve(output));
     });
     assert.match(html, /<pre id="regressionResult" data-result="passed">/, html.match(/<pre id="regressionResult"[^>]*>[\s\S]*?<\/pre>/)?.[0] || 'browser did not complete');
+    console.log('PASS Chrome reading review: ordinary/picker favorites sync/failure/reload, combined filters/AND/OR/direct tags/status/search/filtered all/dedup, preview, auto-next, skip preserves status/favorite, success counts, retry, independent queues, repeat/pause/actual reload');
     console.log('PASS Chrome: existing pages/tags/CRUD, mistake filters, filtered selection/dedup/partial state, three review queues/repeat, failed request never skips, pause/resume and actual reload recovery');
   } finally { await new Promise(resolve => staticServer.close(resolve)); }
 }
@@ -242,17 +251,17 @@ async function testFrontend() {
     const classes = new Set();
     return { innerHTML: '', value: '', textContent: '', disabled: false, style: {},
       classList: { add: n => classes.add(n), remove: n => classes.delete(n), contains: n => classes.has(n) },
-      replaceChildren(child) { this.innerHTML = child.textContent; }, focus() {} };
+      replaceChildren(child) { this.innerHTML = child.textContent; }, querySelector() { return element(); }, focus() {} };
   }
   const get = id => {
     if (!elements.has(id)) elements.set(id, element());
     return elements.get(id);
   };
   const messages = [];
-  const context = vm.createContext({ console: { error() {}, warn() {} }, FormData, Blob, File,
+  const context = vm.createContext({ console: { error() {}, warn() {} }, FormData, Blob, File, URLSearchParams,
     document: { getElementById: get, createElement: element, querySelector: get },
     event: { stopPropagation() {} }, prompt: () => 'new name', setTimeout, requestAnimationFrame() {} });
-  for (const name of ['config', 'state', 'utils', 'tags', 'courses', 'materials', 'notes', 'mistakes', 'assessments', 'manualEntry', 'tagPicker']) {
+  for (const name of ['config', 'state', 'utils', 'tags', 'courses', 'readingBrowse', 'materials', 'notes', 'mistakes', 'assessments', 'manualEntry', 'tagPicker']) {
     vm.runInContext(fs.readFileSync(path.join(root, 'fronted/js', name + '.js'), 'utf8'), context, { filename: name + '.js' });
   }
   context.showToast = text => messages.push(text);
@@ -319,8 +328,10 @@ async function testFrontend() {
 (async () => {
   try {
     testMistakeMigrations(source, temp);
+    testMaterialReviewMigration(source, temp);
     const backend = await testBackend();
     await testMistakeApi(backend);
+    await testMaterialReviewApi(backend);
     if (!process.argv.includes('--backend-only')) {
       await testFrontend();
       await testBrowser(backend);

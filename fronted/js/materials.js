@@ -7,22 +7,30 @@
  */
 
 /* ========== 资料 ========== */
+let materialListRequest = 0;
 async function loadMaterials() {
+  const request = ++materialListRequest;
+  const courseId = currentCourseId;
   const box = document.getElementById('materialList');
   box.innerHTML = '<div class="loading-tip">加载中…</div>';
   try {
-    const rows = await requestList(`${API}/courses/${currentCourseId}/materials`);
+    const rows = await requestList(`${API}/courses/${courseId}/materials${readingBrowseQuery('materials')}`);
+    if (request !== materialListRequest || courseId !== currentCourseId) return;
     currentMaterials = rows;
+    loadReadingBrowseTags('materials');
+    if (typeof renderMaterialReviewResume === 'function') renderMaterialReviewResume();
     if (rows.length === 0) return box.innerHTML = '<div class="empty">暂无资料</div>';
     box.innerHTML = rows.map(r => `
-      <div class="item-row">
+      <div class="item-row" data-material-id="${r.id}">
         <div class="info">
           <div class="title">${escapeHtml(r.title)}</div>
+          <span class="material-review-badge">${r.review_status === 'reviewed' ? '已复习' : '未复习'}</span>
           <div class="meta">${r.file_url ? '📄 文件' : '✍ 手动输入'} · ${r.created_at}</div>
           ${r.content ? `<div class="row-content">${escapeHtml(r.content)}</div>` : ''}
           <div class="mistake-tags">${nodeChipsHtml(r)}</div>
         </div>
         <div class="mistake-actions">
+          ${readingFavoriteButton('materials',r)}
           <button onclick="event.stopPropagation();openResourceDetail('material', ${r.id})">查看</button>
           <button onclick="openTagPicker('edit', 'material', ${r.id})">编辑</button>
           <button onclick="delItem('materials', ${r.id}, loadMaterials)">删除</button>
@@ -30,6 +38,7 @@ async function loadMaterials() {
       </div>
     `).join('');
   } catch (err) {
+    if (request !== materialListRequest || courseId !== currentCourseId) return;
     currentMaterials = [];
     showListError(box, err);
   }

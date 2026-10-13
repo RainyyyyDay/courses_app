@@ -187,7 +187,8 @@ function renderMistakeReview(state) {
   const p = state.progress;
   const panel = document.getElementById('mistakeReviewPanel');
   const pending = mistakeStorageGet(mistakePendingKey(state)) || state.pending;
-  const reasons = { unclassified: '请先将错题分为知识类、思维类或执行类', missing_answer: '请先补充参考答案', missing_question: '请先补充题目文字或附件' };
+  const reasons = { missing_answer: '请先补充参考答案', missing_question: '请先补充题目文字或附件' };
+  const usesMastered = ['thinking', 'unclassified'].includes(p.mistakeType);
   document.getElementById('mistakeDetailMeta').textContent = `${MISTAKE_TYPES[p.mistakeType]} · ${mistakeStatusText(p.reviewStatus)} · 第 ${p.round} 轮`;
   let message = '';
   let actions = '';
@@ -196,17 +197,18 @@ function renderMistakeReview(state) {
   }
   if (!p.reviewable) {
     message = (p.blockedReasons || []).map(r => reasons[r] || r).join('；');
-    actions = '<button onclick="toggleMistakeReviewMode()">去分类 / 补齐内容</button>';
+    actions = '<button onclick="toggleMistakeReviewMode()">补齐内容</button>';
   } else if (p.stage === 'idle') {
     message = '先看题目，开始本轮复习。'; actions = button('开始复习', 'start');
   } else if (p.stage === 'question' && p.mistakeType === 'knowledge') {
     message = '你对这道题的记忆程度是？';
     actions = button('清楚', 'recall', 'recall', 'clear') + button('模糊', 'recall', 'recall', 'vague') + button('不记得', 'recall', 'recall', 'forgotten');
   } else if (p.stage === 'question') {
-    message = p.mistakeType === 'thinking' ? '请先重新思考或解题，再对照答案。' : '请先重新做题，再对照答案和错误原因。';
+    message = p.mistakeType === 'unclassified' ? '请先自行回忆或重新解题，再查看答案。'
+      : usesMastered ? '请先重新思考或解题，再对照答案。' : '请先重新做题，再对照答案和错误原因。';
     actions = button('查看答案和解析', 'reveal_answer');
   } else if (p.stage === 'answer') {
-    if (p.mistakeType === 'thinking') {
+    if (usesMastered) {
       message = '对照答案后，是否已经掌握？';
       actions = button('已掌握', 'judge', 'mastered', true) + button('仍需复习', 'judge', 'mastered', false);
     } else {
@@ -231,7 +233,7 @@ function renderMistakeReview(state) {
     if (!p.allowedActions.includes(action)) b.disabled = true;
   });
   if (typeof mistakeQueueCurrent === 'function' && mistakeQueueCurrent(state)
-    && (p.mistakeType !== mistakeQueue.type || !p.reviewable)) {
+    && (p.mistakeType !== mistakeQueueTypeFor(state.id) || !p.reviewable)) {
     panel.querySelectorAll('[data-review-action]').forEach(b => { b.disabled = true; });
   }
   if (typeof renderMistakeQueueBanner === 'function') renderMistakeQueueBanner();
@@ -241,7 +243,7 @@ async function submitMistakeReview(action, key, value) {
   const state = mistakeDetailState;
   if (!state?.progress || mistakeReviewBusy || !state.progress.allowedActions.includes(action)) return;
   if (typeof mistakeQueueCurrent === 'function' && mistakeQueueCurrent(state)
-    && (state.progress.mistakeType !== mistakeQueue.type || !state.progress.reviewable)) return;
+    && (state.progress.mistakeType !== mistakeQueueTypeFor(state.id) || !state.progress.reviewable)) return;
   if (mistakeStorageGet(mistakePendingKey(state)) || state.pending) return;
   if (action === 'start' && typeof mistakeQueueCurrent === 'function' && mistakeQueueCurrent(state)) {
     mistakeQueue.rounds[state.id] = state.progress.round + 1;

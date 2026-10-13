@@ -8,7 +8,7 @@
 const { db } = require('./connection');
 
 // ===== 当前程序支持的数据库版本 =====
-const CURRENT_DB_VERSION = 7;
+const CURRENT_DB_VERSION = 10;
 
 // 判断某张表是否已经存在
 function tableExists(name) {
@@ -97,6 +97,53 @@ function migrate() {
     try {
       upgradeToV7();
       setUserVersion(7);
+      db.exec('COMMIT');
+      version = 7;
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+  if (version === 7) {
+    db.exec('BEGIN');
+    try {
+      const columns = db.prepare('PRAGMA table_info(materials)').all();
+      if (!columns.some(column => column.name === 'review_status')) {
+        db.exec("ALTER TABLE materials ADD COLUMN review_status TEXT NOT NULL DEFAULT 'unreviewed' CHECK (review_status IN ('unreviewed','reviewed'))");
+      }
+      setUserVersion(8);
+      db.exec('COMMIT');
+      version = 8;
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+  if (version === 8) {
+    db.exec('BEGIN');
+    try {
+      const columns = db.prepare('PRAGMA table_info(notes)').all();
+      if (!columns.some(column => column.name === 'review_status')) {
+        db.exec("ALTER TABLE notes ADD COLUMN review_status TEXT NOT NULL DEFAULT 'unreviewed' CHECK (review_status IN ('unreviewed','reviewed'))");
+      }
+      setUserVersion(9);
+      db.exec('COMMIT');
+      version = 9;
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+  if (version === 9) {
+    db.exec('BEGIN');
+    try {
+      for (const table of ['materials', 'notes']) {
+        const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+        if (!columns.some(column => column.name === 'favorite')) {
+          db.exec(`ALTER TABLE ${table} ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0 CHECK (favorite IN (0,1))`);
+        }
+      }
+      setUserVersion(10);
       db.exec('COMMIT');
     } catch (err) {
       db.exec('ROLLBACK');
