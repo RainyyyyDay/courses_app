@@ -13,8 +13,8 @@ function mistakeBrowserPrelude() {
       await waitUntil(() => currentView.type === 'mistake' && mistakeDetailState?.progress?.stage === 'answer', 'refresh restore');
       check(currentView.id === restored.id && mistakeDetailState.review, 'restored correct review page');
       if (restored.type === 'unclassified') {
-        check(mistakeUi.type === 'unclassified', 'unclassified category restored');
-        check(mistakeQueue?.type === 'unclassified' && JSON.stringify(mistakeQueue.ids) === JSON.stringify(restored.queueIds), 'unclassified queue restored');
+        check(!mistakeUi.type, 'home state restored for a queue started from home');
+        check(mistakeQueue?.type === 'mixed' && JSON.stringify(mistakeQueue.ids) === JSON.stringify(restored.queueIds), 'unclassified queue restored as mixed');
         check(mistakeDetailState.progress.round === restored.round && mistakeDetailState.progress.version === restored.version, 'unclassified refresh preserves backend round and version');
         check(document.getElementById('mistakeReviewAnswer').textContent === '待分类答案', 'unclassified restored answer');
         check(document.querySelector('[data-review-action="judge-false"]').getAttribute('onclick').includes('mastered'), 'unclassified restored judgment uses mastered');
@@ -23,7 +23,7 @@ function mistakeBrowserPrelude() {
         check(mistakeDetailState.progress.reviewStatus === 'unreviewed', 'unclassified needs review saved');
         await nextMistakeQueueItem();
         check(currentView.type === 'mistakeQueueComplete', 'unclassified restored queue completes');
-        await backFromDetail(); await clearMistakeFilters();
+        await backFromDetail(); await openMistakeCategory('unclassified'); await clearMistakeFilters();
         check(document.querySelector('[data-mistake-id="' + restored.id + '"]').textContent.includes('未复习'), 'unclassified list reflects judgment');
         sessionStorage.removeItem('mistake-regression-refresh');
         result.dataset.result = 'passed';
@@ -57,11 +57,15 @@ function mistakeBrowserPrelude() {
       check(document.querySelector('[data-mistake-id="' + restored.id + '"]').textContent.includes('已复习'), 'list status updated');
       check(!mistakeStorageGet('mistake-detail:' + currentCourseId), 'back clears detail restoration');
       if (restored.unclassifiedId) {
-        await openMistakeCategory('unclassified'); await clearMistakeFilters();
-        await enterMistakeSelection(); chooseMistake(restored.unclassifiedId, true); await startMistakeQueue();
+        // 复习入口只在「错题」大页：回大页 → 开始复习 → 选待分类 → 勾题 → 开始。
+        await openMistakeCategory(null);
+        await enterMistakeReviewFromHome();
+        await openMistakeReviewCategory('unclassified'); await clearMistakeFilters();
+        chooseMistake(restored.unclassifiedId, true);
+        await startMistakeQueue();
         await submitMistakeReview('reveal_answer');
         await pauseMistakeQueue();
-        check(readMistakeQueue()?.type === 'unclassified', 'paused unclassified queue accepted');
+        check(readMistakeQueue()?.type === 'mixed', 'paused unclassified queue accepted');
         await resumeMistakeQueue();
         check(mistakeDetailState.progress.stage === 'answer', 'unclassified pause/resume restores answer');
         sessionStorage.setItem('mistake-regression-refresh', JSON.stringify({id:restored.unclassifiedId,type:'unclassified',queueIds:mistakeQueue.ids,round:mistakeDetailState.progress.round,version:mistakeDetailState.progress.version}));
@@ -94,7 +98,8 @@ function mistakeBrowserScenario(data) {
       await waitUntil(() => mistakeSelectionCurrent() && !mistakeSelection.listLoading, 'category name starts detailed selection ' + type);
       check(document.getElementById('mistakeReviewPicker').classList.contains('show'), 'category detail stays in same modal');
       check(document.getElementById('mistakeReviewPickerDetail').contains(document.getElementById('mistakeFilters'))
-        && document.getElementById('mistakeReviewPickerDetail').contains(document.getElementById('mistakeList')), 'existing filters and list reused inside modal');
+        && document.getElementById('mistakeReviewPickerDetail').contains(document.getElementById('mistakeList'))
+        && document.getElementById('mistakeReviewPickerDetail').contains(document.getElementById('mistakeSelectionHeader')), 'existing filters, list and select-all toolbar reused inside modal');
       check(currentView.type === 'course' && currentView.tab === 'mistakes', 'modal detail does not navigate page');
       check(document.getElementById('mistakeReviewPickerTitle').textContent === MISTAKE_TYPES[type], 'modal detail category title');
       check(mistakeSelection.courseId === currentCourseId && mistakeSelection.type === type && mistakeUi.type === type, 'home selection scoped to course and type ' + type);
@@ -253,7 +258,10 @@ function mistakeBrowserScenario(data) {
     await backFromDetail();
     await openMistakeCategory('unclassified');
     check(currentMistakes.some(r => r.id === execution.id), 'unclassified query');
-    check(document.getElementById('mistakeSelectionHeader').style.display === 'flex', 'unclassified selection entry visible');
+    // 四个分类详情页都不再有复习入口，只有「错题」大页保留。
+    check(document.getElementById('mistakeHomeReview').style.display === 'none'
+      && document.getElementById('mistakeSelectionHeader').style.display === 'none'
+      && !document.getElementById('mistakeSelectionHeader').innerHTML, 'category detail page has no review entry');
     // 从待分类页面新建，类型默认回显待分类，并通过现有录入 API 保存。
     openManualModal('mistake');
     document.getElementById('manualTitle').value = '浏览器待分类题';
@@ -277,28 +285,35 @@ function mistakeBrowserScenario(data) {
     const genericMissingForm = new FormData();
     genericMissingForm.set('title','待分类无答案'); genericMissingForm.set('content','题目'); genericMissingForm.set('mistakeType','unclassified');
     const genericMissing = await (await requestApi(API + '/courses/' + currentCourseId + '/mistakes', {method:'POST',body:genericMissingForm})).json();
-    await enterMistakeSelection();
+    // 复习入口只在「错题」大页：从大页进弹窗，再选待分类分类。
+    await openMistakeCategory(null);
+    await enterMistakeReviewFromHome();
+    await openMistakeReviewCategory('unclassified'); await clearMistakeFilters();
     check(!document.querySelector('[data-mistake-id="' + unclassified.id + '"] .mistake-select-check').disabled, 'unclassified selectable');
     check(document.querySelector('[data-mistake-id="' + genericMissing.id + '"] .mistake-select-check').disabled, 'unclassified missing answer still blocked');
     check(document.querySelector('[data-mistake-id="' + genericMissing.id + '"]').textContent.includes('补齐内容'), 'unclassified missing answer repair entry');
     await cancelMistakeSelection();
 
     // 连续复习：包含待分类队列，以及已复习题重新开轮。
+    const startReviewFromHome = async (type, ids) => {
+      await openMistakeCategory(null);
+      await enterMistakeReviewFromHome();
+      await openMistakeReviewCategory(type); await clearMistakeFilters();
+      for (const id of [].concat(ids)) chooseMistake(id, true);
+      await startMistakeQueue();
+    };
     for (const [row, type, key] of [[thinking, 'thinking', 'mastered'], [execution, 'execution', 'correct'], [unclassified, 'unclassified', 'mastered']]) {
       if (type === 'execution') {
         await requestApi(API + '/courses/' + currentCourseId + '/mistakes/' + row.id, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mistakeType:type})});
       }
-      await openMistakeCategory(type); await clearMistakeFilters();
-      await enterMistakeSelection();
-      chooseMistake(row.id, true);
-      await startMistakeQueue();
+      await startReviewFromHome(type, row.id);
       check(mistakeDetailState.progress.stage === 'question', 'queue automatic start ' + type);
       await submitMistakeReview('reveal_answer');
       await submitMistakeReview('judge', key, true);
       await nextMistakeQueueItem();
       check(currentView.type === 'mistakeQueueComplete', 'single queue completes ' + type);
       await backFromDetail(); await loadMistakes();
-      await enterMistakeSelection(); chooseMistake(row.id, true); await startMistakeQueue();
+      await startReviewFromHome(type, row.id);
       check(mistakeDetailState.progress.stage === 'question' && mistakeDetailState.progress.reviewStatus === 'reviewed', 'reviewed allowed new round ' + type);
       await submitMistakeReview('reveal_answer'); await submitMistakeReview('judge', key, false);
       check(mistakeDetailState.progress.reviewStatus === 'unreviewed', 'repeat wrong updates state ' + type);
@@ -359,8 +374,11 @@ function mistakeBrowserScenario(data) {
     secondForm.set('title','队列缺答案'); secondForm.set('answerContent','');
     const missing = await (await requestApi(API + '/courses/' + currentCourseId + '/mistakes', {method:'POST',body:secondForm})).json();
     await openMistakeCategory('knowledge'); await clearMistakeFilters();
-    await enterMistakeSelection();
-    check(document.getElementById('mistakeQueueStart').disabled, 'empty selection disabled');
+    // （复习入口只在「错题」大页）这里改从大页进弹窗，验证筛选 / 勾选仍复用同一套列表与选择状态。
+    await openMistakeCategory(null);
+    await enterMistakeReviewFromHome();
+    await openMistakeReviewCategory('knowledge'); await clearMistakeFilters();
+    check(document.getElementById('mistakeReviewPickerStart').disabled, 'empty selection disabled');
     check(document.querySelector('[data-mistake-id="' + missing.id + '"] .mistake-select-check').disabled, 'missing answer disabled');
     check(document.querySelector('[data-mistake-id="' + missing.id + '"]').textContent.includes('补齐内容'), 'missing answer repair entry');
     document.getElementById('mistakeSearch').value = '浏览器知识'; await applyMistakeFilters();
@@ -385,12 +403,13 @@ function mistakeBrowserScenario(data) {
     await changeMistakeTagFilter(${data.child.id}, true);
     check(currentMistakes.length === 1 && currentMistakes[0].id === knowledge.id, 'selection combined search favorite status tags');
     await cancelMistakeSelection();
-    check(!mistakeSelection && document.getElementById('mistakeSelectionFooter').style.display === 'none', 'cancel restores ordinary list');
+    check(!mistakeSelection && !document.getElementById('mistakeReviewPicker').classList.contains('show')
+      && document.getElementById('mistakeSelectionHeader').style.display === 'none', 'cancel restores ordinary list');
     await openMistakeCategory(null);
     await enterMistakeReviewFromHome();
     await openMistakeReviewCategory('knowledge'); await clearMistakeFilters();
     chooseMistake(second.id, true); chooseMistake(knowledge.id, true);
-    check(document.getElementById('mistakeSelectedCount').textContent === '2', 'unique count displayed');
+    check(document.getElementById('mistakeReviewPickerCount').textContent === '2', 'unique count displayed');
     await startMistakeQueue();
     check(JSON.stringify(mistakeQueue.ids) === JSON.stringify([knowledge.id,second.id]), 'queue follows list order rather than click order');
     check(mistakeDetailState.progress.stage === 'question' && !document.getElementById('mistakeReviewAnswer'), 'queue starts with hidden answer');

@@ -96,9 +96,12 @@ function mistakeListBrowserScenario(data) {
       check(currentView.type === 'course', 'edit stays on list');
       document.getElementById('mistakeEditTitle').value = '统一列表第一题已编辑';
       await saveMistakeDetail(); check(card(first.id).textContent.includes('已编辑'), 'edit updates list');
-      // 分类页开始复习也先打开四分类选择弹窗，不能直接进入单题或旧选择模式。
-      document.querySelector('#mistakeSelectionHeader button').click();
-      await waitUntil(() => mistakeReviewPicker && !mistakeReviewPicker.pickerLoading, 'category start opens unified picker');
+      // 复习入口只在「错题」大页：分类详情页没有任何复习按钮，从大页开始复习会打开四分类选择弹窗。
+      check(!document.querySelector('#mistakeSelectionHeader button'), 'category page has no review entry');
+      await openMistakeCategory(null);
+      check(document.getElementById('mistakeHomeReview').style.display === 'flex', 'home keeps the review entry');
+      document.getElementById('mistakeHomeReviewStart').click();
+      await waitUntil(() => mistakeReviewPicker && !mistakeReviewPicker.pickerLoading, 'home start opens unified picker');
       check(document.querySelectorAll('[data-review-category]').length === 4 && !mistakeReviewPicker.pickerType && currentView.type === 'course', 'unified picker shows four categories');
       document.querySelector('[data-review-category="knowledge"]').click();
       await waitUntil(() => mistakeSelectionCurrent() && !mistakeSelection.listLoading, 'picker category loads');

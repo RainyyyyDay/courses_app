@@ -141,20 +141,18 @@ function readMistakeQueue() {
 }
 function renderMistakeSelectionControls() {
   const header = document.getElementById('mistakeSelectionHeader');
-  const footer = document.getElementById('mistakeSelectionFooter');
-  if (!header || !footer) return;
+  if (!header) return;
   const selecting = mistakeSelectionCurrent();
-  const formal = Object.hasOwn(MISTAKE_TYPES, mistakeUi.type);
   const saved = readMistakeQueue();
   const homeResume = document.getElementById('mistakeHomeReviewResume');
   if (homeResume) homeResume.style.display = saved && !saved.finished ? 'inline-block' : 'none';
-  header.style.display = formal ? 'flex' : 'none';
-  header.className = selecting ? 'mistake-toolbar' : 'material-review-entry';
+  // 复习入口只保留在「错题」大页（#mistakeHomeReview）：四个分类详情页不再出现任何复习按钮。
+  // 这条工具条只服务于复习弹窗里挂载过来的那份分类详情：进入选择状态时显示，选完 / 关闭弹窗后隐藏。
+  header.style.display = selecting ? 'flex' : 'none';
+  header.className = 'mistake-toolbar';
   header.innerHTML = selecting
-    ? '<label><input id="mistakeSelectAll" type="checkbox" onchange="selectAllVisibleMistakes(this.checked)" /> 全选当前筛选结果</label><button onclick="clearMistakeSelection()">清空已选</button>' + (!mistakeReviewPicker ? '<button onclick="cancelMistakeSelection()">取消选择</button>' : '')
-    : '<button onclick="enterMistakeReviewFromHome()">开始复习</button>' + (saved && !saved.finished && saved.type === mistakeUi.type ? '<button onclick="resumeMistakeQueue()">继续上次复习</button>' : '');
-  footer.style.display = selecting && !mistakeReviewPicker ? 'flex' : 'none';
-  footer.innerHTML = selecting ? `<span>已选择 <strong id="mistakeSelectedCount">${mistakeSelection.ids.size}</strong> 道题</span><button id="mistakeQueueStart" onclick="startMistakeQueue()">开始复习</button><span id="mistakeSelectionError" class="mistake-inline-error" role="alert"></span>` : '';
+    ? '<label><input id="mistakeSelectAll" type="checkbox" onchange="selectAllVisibleMistakes(this.checked)" /> 全选当前筛选结果</label><button onclick="clearMistakeSelection()">清空已选</button>'
+    : '';
   updateMistakeSelectionControls();
   renderMistakeReviewPicker();
 }
@@ -168,17 +166,8 @@ function updateMistakeSelectionControls() {
     all.indeterminate = count > 0 && count < rows.length;
     all.disabled = mistakeQueueLoading || mistakeSelection.listLoading || rows.length === 0;
   }
-  const countEl = document.getElementById('mistakeSelectedCount');
-  if (countEl) countEl.textContent = mistakeSelection.ids.size;
-  const start = document.getElementById('mistakeQueueStart');
-  if (start) start.disabled = mistakeSelection.ids.size === 0 || mistakeQueueLoading || mistakeSelection.listLoading;
   document.querySelectorAll('#mistakeList .mistake-select-check').forEach(input => { input.checked = mistakeSelection.ids.has(Number(input.value)); });
   renderMistakeReviewPicker();
-}
-async function enterMistakeSelection() {
-  if (!Object.hasOwn(MISTAKE_TYPES, mistakeUi.type)) return;
-  mistakeSelection = { courseId: currentCourseId, type: mistakeUi.type, ids: new Set(), listLoading: false };
-  await loadMistakes();
 }
 async function cancelMistakeSelection() {
   if (mistakeReviewPicker) await closeMistakeReviewPicker();
@@ -209,29 +198,28 @@ function selectAllVisibleMistakes(checked) {
   updateMistakeSelectionControls();
 }
 async function startMistakeQueue() {
-  if (!(mistakeSelectionCurrent() || mistakeReviewPicker === mistakeSelection && mistakeSelection?.mixed && mistakeSelection.courseId === currentCourseId)
+  // 选择集合只可能来自复习弹窗（跨分类，mixed）；分类详情页自己没有入口。
+  if (!(mistakeSelectionCurrent() || mistakeReviewPicker && mistakeReviewPicker === mistakeSelection && mistakeSelection.courseId === currentCourseId)
     || !mistakeSelection.ids.size || mistakeQueueLoading || mistakeSelection.listLoading || mistakeReviewPicker?.pickerLoading) return;
   const selection = mistakeSelection;
   mistakeQueueLoading = true; updateMistakeSelectionControls(); renderMistakeReviewPicker();
   try {
-    const rows = await requestList(`${API}/courses/${selection.courseId}/mistakes${selection.mixed ? '' : '?mistakeType=' + selection.type}`);
+    const rows = await requestList(`${API}/courses/${selection.courseId}/mistakes`);
     const selected = rows.filter(row => selection.ids.has(row.id)); // 全分类当前顺序（后端统一按 ID 升序），包含其他筛选下的已选题。
     if (selected.length !== selection.ids.size) throw new Error('部分已选题目已删除或改变分类，请清空已选后重新选择');
     for (const row of selected) {
       if (mistakeCannotReview(row)) throw new Error(`${row.title}：${mistakeCannotReview(row)}，请先补齐`);
       const p = await mistakeReviewRequest(`${API}/courses/${selection.courseId}/mistakes/${row.id}/review`);
-      const expectedType = selection.mixed ? selection.catalog.find(item => item.id === row.id)?.mistake_type : selection.type;
+      const expectedType = selection.catalog.find(item => item.id === row.id)?.mistake_type;
       if (!p.reviewable || p.courseId !== selection.courseId || p.mistakeType !== expectedType || !Object.hasOwn(MISTAKE_TYPES, p.mistakeType)) throw new Error(`${row.title}：当前无法复习，请先检查分类和答案`);
     }
     if (mistakeSelection !== selection || currentCourseId !== selection.courseId) return;
-    mistakeQueue = { courseId: selection.courseId, type: selection.mixed ? 'mixed' : selection.type,
+    mistakeQueue = { courseId: selection.courseId, type: 'mixed',
       types: Object.fromEntries(selected.map(row => [row.id, row.mistake_type])), ids: selected.map(row => row.id), index: 0, rounds: {}, finished: false };
     dismissMistakeReviewPicker();
     saveMistakeQueue(); mistakeSelection = null;
     await openMistakeDetail(mistakeQueue.ids[0], true);
   } catch (err) {
-    const el = document.getElementById('mistakeSelectionError');
-    if (el) el.textContent = err.message;
     if (mistakeReviewPicker) document.getElementById('mistakeReviewPickerError').textContent = err.message;
   } finally { mistakeQueueLoading = false; updateMistakeSelectionControls(); renderMistakeReviewPicker(); renderMistakeQueueBanner(); }
 }
