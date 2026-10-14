@@ -33,6 +33,28 @@ function findKnowledgeNode(id) {
     .get(id);
 }
 
+// 取一批节点及其全部后代的 id（整棵子树），用于“用母标签筛选时，也要能命中只打了子标签的资源”。
+// 传入 id 可能来自不同分支，也可能重复（server 端已去重，这里再兜一层），返回去重后的 id 数组。
+// 单条查询完成，避免在调用方按节点逐个查子树。
+function listSubtreeIds(ids) {
+  const roots = [...new Set((ids || []).filter((id) => Number.isSafeInteger(id)))];
+  if (!roots.length) return [];
+  return db
+    .prepare(
+      `WITH RECURSIVE subtree(id, depth) AS (
+         SELECT id, 0 FROM knowledge_nodes WHERE id IN (${roots.map(() => '?').join(',')})
+         UNION ALL
+         SELECT k.id, s.depth + 1
+           FROM knowledge_nodes k
+           JOIN subtree s ON k.parent_id = s.id
+          WHERE s.depth < 100
+       )
+       SELECT DISTINCT id FROM subtree`
+    )
+    .all(...roots)
+    .map((row) => row.id);
+}
+
 // ===== 系统分类“未分类” =====
 // 每门课都有一个系统内置的顶层分类，用来收纳“还没打过任何标签”的资源。
 // 用 is_system 标记识别（不靠名字），所以用户随时可以改名，功能不受影响。
@@ -263,6 +285,7 @@ function moveKnowledgeNode(id, parentId, position) {
 module.exports = {
   SUBTREE_CTE,
   findKnowledgeNode,
+  listSubtreeIds,
   listKnowledgeTree,
   getKnowledgePath,
   createKnowledgeNode,

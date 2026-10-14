@@ -160,8 +160,11 @@ async function testBackend() {
 }
 
 async function testBrowser(data) {
-  const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-  assert.ok(fs.existsSync(chrome), 'Chrome is required for browser regression');
+  // 优先用 Chrome；没装 Chrome 的机器退到同内核的 Edge，测试逻辑不变。
+  const chrome = ['C:/Program Files/Google/Chrome/Application/chrome.exe',
+    'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+    'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].find(candidate => fs.existsSync(candidate));
+  assert.ok(chrome, 'Chrome or Edge is required for browser regression');
   const front = path.join(temp, 'fronted');
   fs.cpSync(path.join(root, 'fronted'), front, { recursive: true });
   const config = path.join(front, 'js/config.js');
@@ -239,6 +242,8 @@ async function testBrowser(data) {
     const url = `http://127.0.0.1:${staticServer.address().port}/`;
     const html = await new Promise((resolve, reject) => {
       const browser = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+        // 受限环境（容器 / 无 GPU 会话）里浏览器自带沙箱起不来，可用 COURSES_TEST_NO_SANDBOX=1 显式关掉。
+        ...(process.env.COURSES_TEST_NO_SANDBOX ? ['--no-sandbox', '--disable-software-rasterizer'] : []),
         '--window-size=' + (process.env.COURSES_TEST_VIEWPORT || '1280,960'),
         ...(process.env.COURSES_TEST_SCREENSHOT ? ['--screenshot=' + process.env.COURSES_TEST_SCREENSHOT] : []),
         '--user-data-dir=' + path.join(temp, 'chrome-profile'), '--virtual-time-budget=30000', '--dump-dom', url], { windowsHide: true });

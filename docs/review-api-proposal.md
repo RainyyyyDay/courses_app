@@ -1,6 +1,6 @@
 # 第一阶段错题后端：接口对接文档
 
-本文对应当前已实现代码，替代此前综合复习设计稿。本阶段仅支持当前课程的错题分类、筛选和单题独立复习；不实现资料/笔记复习、综合会话或标签递归扩展。
+本文对应当前已实现代码，替代此前综合复习设计稿。本阶段仅支持当前课程的错题分类、筛选和单题独立复习；不实现资料/笔记复习或综合会话。
 
 ## 1. 与原方案的调整
 
@@ -79,7 +79,7 @@ GET /api/courses/:courseId/mistakes
 | mistakeType | 四种类型之一 | 类型筛选 |
 | reviewStatus | unreviewed / reviewed | 最终复习状态 |
 | favorite | true / false / 1 / 0 | 收藏状态 |
-| nodeIds | 7,9 | 直接关联任一所选标签，最多 100 个，重复 ID 去重 |
+| nodeIds | 7,9 | 关联所选标签或其任一后代，最多 100 个，重复 ID 去重 |
 | q | 搜索文本，最多 500 字符 | 标题、content、ocr_text 的子串搜索 |
 
 示例：
@@ -88,7 +88,7 @@ GET /api/courses/:courseId/mistakes
 GET /api/courses/1/mistakes?mistakeType=knowledge&reviewStatus=unreviewed&favorite=true&nodeIds=7,9&q=函数
 ```
 
-不同筛选类别是 AND；多个标签是 OR。不会递归查后代，也不会跨课程；同一题返回一次。% 和 _ 按普通文字搜索；不会搜索附件二进制内容、答案或解析。
+不同筛选类别是 AND；多个标签是 OR。标签按子树匹配：选母标签（分类目录）时，只打了子标签的错题也会返回；子标签本身及其后代同理。不会跨课程；同一题返回一次。% 和 _ 按普通文字搜索；不会搜索附件二进制内容、答案或解析。
 
 成功 HTTP 200 返回资源记录数组，每条在第 3 节记录字段基础上增加：
 

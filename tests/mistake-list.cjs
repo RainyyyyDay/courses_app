@@ -16,6 +16,17 @@ function mistakeListBrowserScenario(data) {
       check(search.value === '统一列表 ', 'live search preserves the space before the next word');
       search.value = '统一列表'; search.dispatchEvent(new Event('input'));
       await waitUntil(() => currentMistakes.length === 2 && !document.querySelector('#mistakeList .loading-tip'), 'live search updates list');
+      // 母标签筛选：错题只打了子标签时，勾选它的母标签（分类目录）也要能看到。
+      const tree = await (await requestApi(API + '/courses/' + currentCourseId + '/knowledge-tree')).json();
+      const parentNode = tree.find(node => (node.children || []).some(child => child.id === ${data.child.id}));
+      check(parentNode && !parentNode.is_system, 'child tag sits under a folder');
+      await waitUntil(() => document.querySelector('#mistakeFilterTags input[value="' + parentNode.id + '"]'), 'parent tag filter loaded');
+      document.querySelector('#mistakeFilterTags input[value="' + parentNode.id + '"]').click();
+      await waitUntil(() => !document.querySelector('#mistakeList .loading-tip') && mistakeUi.nodeIds.includes(parentNode.id), 'parent tag live filter');
+      check(currentMistakes.length === 2, 'parent tag matches child-tagged mistakes');
+      document.querySelector('#mistakeFilterTags input[value="' + parentNode.id + '"]').click();
+      await waitUntil(() => !document.querySelector('#mistakeList .loading-tip') && mistakeUi.nodeIds.length === 0, 'parent tag filter cleared');
+      check(currentMistakes.length === 2, 'clearing parent tag restores list');
       const card = id => document.querySelector('[data-mistake-id="' + id + '"]');
       const star = id => card(id)?.querySelector('[data-mistake-favorite]');
       const view = currentView;

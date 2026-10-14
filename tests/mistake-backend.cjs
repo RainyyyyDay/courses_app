@@ -131,7 +131,16 @@ async function testMistakeApi({ base, course, child, other, restart }) {
   assert.equal((await request('GET', `${listPath}?nodeIds=${tag2.id}`)).length, 1);
   const parent = await request('POST', `/courses/${course.id}/knowledge-nodes`, { name: '过滤母节点', type: 'folder', parentId: null }, 201);
   await request('PUT', `/knowledge-nodes/${tag2.id}/move`, { parentId: parent.id });
-  assert.deepEqual(await request('GET', `${listPath}?nodeIds=${parent.id}`), [], 'no recursive filtering');
+  // 错题只打了子标签时，用它的母标签（分类目录）筛选也要能查到，再深一层同理。
+  assert.deepEqual((await request('GET', `${listPath}?nodeIds=${parent.id}`)).map(r => r.id), [knowledge], 'parent tag matches child-tagged mistakes');
+  const grandparent = await request('POST', `/courses/${course.id}/knowledge-nodes`, { name: '过滤祖父节点', type: 'folder', parentId: null }, 201);
+  await request('PUT', `/knowledge-nodes/${parent.id}/move`, { parentId: grandparent.id });
+  assert.deepEqual((await request('GET', `${listPath}?nodeIds=${grandparent.id}`)).map(r => r.id), [knowledge], 'grandparent tag matches child-tagged mistakes');
+  // 叶子标签仍是精确匹配：结果等于直接打了这个标签的错题。
+  const leafRows = await request('GET', `${listPath}?nodeIds=${child.id}`);
+  const allRows = await request('GET', listPath);
+  assert.deepEqual(leafRows.map(r => r.id),
+    allRows.filter(r => r.knowledge.some(k => k.id === child.id)).map(r => r.id), 'leaf tag filter unchanged');
   assert.equal((await request('GET', `${listPath}?q=${encodeURIComponent('100%_')}`)).length, 4);
   assert.equal((await request('GET', `${listPath}?q=${encodeURIComponent('复习-knowledge')}`)).length, 1);
   const combined = await request('GET', `${listPath}?mistakeType=knowledge&favorite=1&reviewStatus=unreviewed&nodeIds=${tag2.id}&q=${encodeURIComponent('公共题目')}`);

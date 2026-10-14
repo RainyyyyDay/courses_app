@@ -6,7 +6,7 @@
  */
 
 const { db, nowText } = require('./connection');
-const { findKnowledgeNode, SUBTREE_CTE } = require('./knowledge');
+const { findKnowledgeNode, listSubtreeIds, SUBTREE_CTE } = require('./knowledge');
 
 // ==================== 错题 ====================
 
@@ -28,8 +28,14 @@ function listMistakes(courseId, filters = {}) {
     params.push(q, q, q);
   }
   if (filters.nodeIds?.length) {
-    conditions.push(`EXISTS (SELECT 1 FROM mistake_node_links l WHERE l.mistake_id = mistakes.id AND l.node_id IN (${filters.nodeIds.map(() => '?').join(',')}))`);
-    params.push(...filters.nodeIds);
+    // 用母标签（分类目录）筛选时，也要能命中只打了子标签的错题：
+    // 把每个所选节点展开成「节点 + 全部后代」，再按这批 id 关联。
+    const ids = listSubtreeIds(filters.nodeIds);
+    if (!ids.length) conditions.push('0 = 1');
+    else {
+      conditions.push(`EXISTS (SELECT 1 FROM mistake_node_links l WHERE l.mistake_id = mistakes.id AND l.node_id IN (${ids.map(() => '?').join(',')}))`);
+      params.push(...ids);
+    }
   }
   const rows = db
     .prepare(`SELECT ${MISTAKE_COLUMNS} FROM mistakes WHERE ${conditions.join(' AND ')} ORDER BY id`)
