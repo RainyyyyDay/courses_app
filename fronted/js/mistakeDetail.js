@@ -42,8 +42,6 @@ async function renderMistakeDetailPage(mistakeId, review = false) {
   showPageOnly('mistakeDetailPage');
   const detailBody = document.getElementById('mistakeDetailBody');
   if (detailBody) detailBody.style.display = 'block';
-  const complete = document.getElementById('mistakeQueueComplete');
-  if (complete) complete.style.display = 'none';
   if (typeof renderMistakeQueueBanner === 'function') renderMistakeQueueBanner();
   mistakeStorageSet('mistake-detail:' + courseId, { id: mistakeId, review,
     queue: typeof mistakeQueueCurrent === 'function' && !!mistakeQueueCurrent(state) });

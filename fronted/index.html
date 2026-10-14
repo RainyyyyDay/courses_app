@@ -214,7 +214,6 @@
       </div>
     </div>
     <div class="tab-content">
-      <div id="mistakeQueueComplete" class="mistake-workspace" style="display:none;"></div>
       <div id="mistakeDetailBody">
       <div id="mistakeQueueBanner" class="mistake-workspace" style="display:none;" aria-live="polite"></div>
       <div class="detail-card">
@@ -377,6 +376,20 @@
         <button type="button" onclick="closeMistakeReviewPicker()">关闭</button>
         <button id="mistakeReviewPickerStart" type="button" class="btn-confirm" onclick="startMistakeQueue()" disabled>开始复习</button>
       </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 复习完成弹窗：过完全部所选题后出现；正确率 100% 时飘彩带 -->
+  <div id="mistakeCompleteModal" class="modal-mask" onclick="if(event.target===this)cancelMistakeComplete()" onkeydown="if(event.key==='Escape'){event.preventDefault();cancelMistakeComplete()}">
+    <div class="modal mistake-complete" role="dialog" aria-modal="true" aria-labelledby="mistakeCompleteTitle">
+      <div id="mistakeCompleteConfetti" class="mistake-confetti" aria-hidden="true"></div>
+      <h3 id="mistakeCompleteTitle" tabindex="-1"></h3>
+      <p id="mistakeCompleteText"></p>
+      <div class="modal-actions">
+        <button type="button" onclick="cancelMistakeComplete()">取消</button>
+        <button type="button" onclick="replayMistakeQueue()">再来一遍</button>
+        <button type="button" class="btn-primary" onclick="startNewMistakeReview()">开始新复习</button>
       </div>
     </div>
   </div>

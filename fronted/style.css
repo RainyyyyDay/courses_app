@@ -919,6 +919,30 @@ body.mistake-review-open { overflow: hidden; }
 .mistake-selectable { cursor: pointer; }
 .mistake-select-check { flex: 0 0 auto; width: 20px; height: 20px; margin: 8px 12px 0 0; }
 
+/* 复习完成弹窗：正确率 100% 时在卡片里飘一层彩带。 */
+.mistake-complete { position: relative; overflow: hidden; text-align: center; }
+.mistake-complete h3 { font-size: 19px; line-height: 1.5; margin-bottom: 10px; }
+.mistake-complete p { margin: 0 0 16px; color: #5b6273; font-size: 14px; line-height: 1.6; }
+.mistake-complete .modal-actions { justify-content: center; flex-wrap: wrap; }
+.mistake-complete .modal-actions button {
+  padding: 10px 16px; border: 1px solid #d7dae3; border-radius: 8px;
+  background: #f3f4f8; color: #333; font: inherit; cursor: pointer;
+}
+.mistake-complete .modal-actions button:hover { background: #e8eaf1; }
+.mistake-complete .modal-actions button.btn-primary { background: #4a6cf7; border-color: #4a6cf7; color: #fff; }
+.mistake-complete .modal-actions button.btn-primary:hover { filter: brightness(1.06); }
+.mistake-confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+/* 彩带落在文字下面，别糊住标题。 */
+.mistake-complete h3, .mistake-complete p, .mistake-complete .modal-actions { position: relative; z-index: 1; }
+.mistake-confetti span {
+  position: absolute; top: -16px; width: 8px; height: 14px; border-radius: 2px;
+  opacity: 0; animation-name: mistake-confetti-fall; animation-timing-function: linear; animation-fill-mode: forwards;
+}
+@keyframes mistake-confetti-fall {
+  0% { transform: translate3d(0, -16px, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate3d(var(--drift, 20px), 220px, 0) rotate(560deg); opacity: 0; }
+}
+
 /* ============================================================
    标签选择器（错题 / 资料 / 笔记 的上传与编辑共用）
    ------------------------------------------------------------

@@ -227,7 +227,7 @@ async function resumeMistakeQueue() {
   const saved = readMistakeQueue();
   if (!saved || saved.finished) return;
   mistakeQueue = saved; mistakeSelection = null;
-  if (saved.index === saved.ids.length) { showMistakeQueueComplete(); return; }
+  if (saved.index === saved.ids.length) { await showMistakeQueueComplete(); return; }
   await openMistakeDetail(saved.ids[saved.index], true);
 }
 async function prepareMistakeQueueItem(state) {
@@ -256,7 +256,7 @@ function renderMistakeQueueBanner() {
   const completed = valid && p.stage === 'completed' && p.round === mistakeQueue.rounds[state.id];
   const pending = mistakeStorageGet(mistakePendingKey(state)) || state.pending;
   box.innerHTML = `<strong>第 ${mistakeQueue.index + 1} / ${mistakeQueue.ids.length} 题</strong> · 已完成 ${mistakeQueue.index + (completed ? 1 : 0)} 题
-    <div class="mistake-toolbar"><button id="mistakeQueueNext" onclick="nextMistakeQueueItem()" ${!completed || pending || mistakeReviewBusy || mistakeQueueLoading ? 'disabled' : ''}>${mistakeQueue.index + 1 === mistakeQueue.ids.length ? '完成本轮' : '下一题'}</button><button onclick="pauseMistakeQueue()">返回列表，稍后继续</button><button onclick="endMistakeQueue()">结束本轮</button></div>${p && !valid ? '<p class="mistake-inline-error">本题已改变分类或缺少内容，请退出并补齐；不会自动跳过。</p>' : ''}`;
+    <div class="mistake-toolbar"><button id="mistakeQueueNext" onclick="nextMistakeQueueItem()" ${!completed || pending || mistakeReviewBusy || mistakeQueueLoading ? 'disabled' : ''}>${mistakeQueue.index + 1 === mistakeQueue.ids.length ? '完成' : '下一题'}</button><button onclick="pauseMistakeQueue()">返回列表，稍后继续</button><button onclick="endMistakeQueue()">结束本轮</button></div>${p && !valid ? '<p class="mistake-inline-error">本题已改变分类或缺少内容，请退出并补齐；不会自动跳过。</p>' : ''}`;
 }
 async function nextMistakeQueueItem() {
   const state = mistakeDetailState;
@@ -270,7 +270,7 @@ async function nextMistakeQueueItem() {
       || mistakeStorageGet(mistakePendingKey(state)) || state.pending) throw new Error('请先完成并确认本题复习');
     mistakeQueue.index += 1; saveMistakeQueue();
     if (mistakeQueue.index === mistakeQueue.ids.length) {
-      mistakeQueue.finished = true; saveMistakeQueue(); showMistakeQueueComplete();
+      mistakeQueue.finished = true; saveMistakeQueue(); await showMistakeQueueComplete();
     } else {
       currentView = { type: 'mistake', id: mistakeQueue.ids[mistakeQueue.index], review: true };
       await renderMistakeDetailPage(currentView.id, true);
@@ -283,13 +283,80 @@ function showMistakeQueueComplete() {
   currentView = { type: 'mistakeQueueComplete' };
   document.getElementById('mistakeDetailTitle').textContent = '本轮复习完成';
   document.getElementById('mistakeDetailBody').style.display = 'none';
-  const box = document.getElementById('mistakeQueueComplete');
-  box.style.display = 'block';
-  box.innerHTML = `<h2>本轮 ${mistakeQueue.ids.length} 道题已全部处理</h2><p>判断结果已保存。答错或不记得的题目仍为未复习。</p><button onclick="pauseMistakeQueue()">返回错题列表</button>`;
   forgetMistakeDetailLocation();
+  return openMistakeCompleteModal();
+}
+
+// ===== 复习完成弹窗 =====
+// 过完全部所选题后弹出：正确率 100% 飘彩带 + 恭喜；三个去向 —— 取消（回错题大页）/ 再来一遍 / 开始新复习。
+function mistakeConfettiHtml() {
+  // 尊重系统「减少动态效果」偏好：关掉动画就什么都不放。
+  if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) return '';
+  const colors = ['#4a6cf7', '#f7724a', '#2fbf71', '#f2c14e', '#a86cf7', '#38b6d9'];
+  let html = '';
+  for (let i = 0; i < 40; i += 1) {
+    const left = Math.round(Math.random() * 96);
+    const delay = (Math.random() * 0.6).toFixed(2);
+    const duration = (1.6 + Math.random() * 1.2).toFixed(2);
+    const drift = Math.round(-30 + Math.random() * 60);
+    html += `<span style="left:${left}%;animation-delay:${delay}s;animation-duration:${duration}s;background:${colors[i % colors.length]};--drift:${drift}px"></span>`;
+  }
+  return html;
+}
+// 这一轮的正确率：每题判断后的最终状态就是答案（「正确 / 已掌握」= 已复习）。
+async function mistakeQueueRoundScore() {
+  const ids = mistakeQueue?.ids || [];
+  if (!ids.length) return null;
+  try {
+    const rows = await requestList(`${API}/courses/${mistakeQueue.courseId}/mistakes`);
+    const reviewed = new Set(rows.filter(row => row.review_status === 'reviewed').map(row => row.id));
+    return { correct: ids.filter(id => reviewed.has(id)).length, total: ids.length };
+  } catch { return null; }
+}
+async function openMistakeCompleteModal() {
+  const box = document.getElementById('mistakeCompleteModal');
+  if (!box) return;
+  const score = await mistakeQueueRoundScore();
+  const perfect = !!score && score.correct === score.total;
+  document.getElementById('mistakeCompleteTitle').textContent = perfect ? '恭喜你！你成功复习了所有所选题' : '本轮复习完成';
+  document.getElementById('mistakeCompleteText').textContent = score
+    ? `本轮 ${score.total} 道题，答对 ${score.correct} 道，正确率 ${Math.round(score.correct / score.total * 100)}%。${perfect ? '' : '答错或不记得的题目仍为未复习，可以再来一遍。'}`
+    : '判断结果已保存。答错或不记得的题目仍为未复习。';
+  document.getElementById('mistakeCompleteConfetti').innerHTML = perfect ? mistakeConfettiHtml() : '';
+  box.classList.add('show');
+  document.body.classList.add('mistake-review-open');
+  document.getElementById('mistakeCompleteTitle').focus();
+}
+function closeMistakeCompleteModal() {
+  const box = document.getElementById('mistakeCompleteModal');
+  if (!box || !box.classList.contains('show')) return;
+  box.classList.remove('show');
+  document.body.classList.remove('mistake-review-open');
+  document.getElementById('mistakeCompleteConfetti').innerHTML = '';
+}
+async function cancelMistakeComplete() {
+  closeMistakeCompleteModal();
+  await pauseMistakeQueue();
+}
+async function replayMistakeQueue() {
+  if (!mistakeQueue || mistakeReviewBusy || mistakeQueueLoading) return;
+  closeMistakeCompleteModal();
+  mistakeQueue.index = 0;
+  mistakeQueue.rounds = {};
+  mistakeQueue.finished = false;
+  saveMistakeQueue();
+  navStack = [];
+  await openMistakeDetail(mistakeQueue.ids[0], true);
+}
+async function startNewMistakeReview() {
+  if (mistakeReviewBusy || mistakeQueueLoading) return;
+  closeMistakeCompleteModal();
+  await pauseMistakeQueue();
+  await enterMistakeReviewFromHome();
 }
 async function pauseMistakeQueue() {
   if (mistakeReviewBusy) return;
+  closeMistakeCompleteModal();
   forgetMistakeDetailLocation();
   ensureMistakeUi();
   if (mistakeQueue?.courseId === currentCourseId) { mistakeUi.type = mistakeQueue.type === 'mixed' ? null : mistakeQueue.type; rememberMistakeUi(); }

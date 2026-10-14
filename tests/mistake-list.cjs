@@ -114,6 +114,9 @@ function mistakeListBrowserScenario(data) {
       document.querySelector('[data-review-action="judge-true"]').click();
       await waitUntil(() => mistakeDetailState.progress.reviewStatus === 'reviewed' && !mistakeReviewBusy, 'queue judgment saved');
       await nextMistakeQueueItem(); check(currentView.type === 'mistakeQueueComplete', 'selected single item queue completes');
+      check(document.getElementById('mistakeCompleteModal').classList.contains('show')
+        && document.getElementById('mistakeCompleteTitle').textContent.includes('恭喜')
+        && document.getElementById('mistakeCompleteConfetti').children.length > 0, 'perfect round celebrates with confetti');
       await backFromDetail(); await openMistakeCategory('knowledge'); await clearMistakeFilters();
       card(second.id).querySelector('.mistake-actions button:nth-child(4)').click();
       await waitUntil(() => document.getElementById('confirmModal').classList.contains('show'), 'delete opens existing confirmation');
