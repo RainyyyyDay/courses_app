@@ -4,6 +4,8 @@
 # Local application data and uploaded files
 back/data/
 back/uploads/
+# 路径写错时误建的数据目录（真正的数据在 back/data/）
+back/db/data/
 
 # Local environment configuration
 .env
