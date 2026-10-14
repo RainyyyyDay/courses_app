@@ -244,6 +244,25 @@ async function prepareMistakeQueueItem(state) {
     if (p.allowedActions.includes('start')) await submitMistakeReview('start');
   }
   if (mistakeDetailIsCurrent(state) && mistakeQueueCurrent(state)) renderMistakeReview(state);
+  // 最后一题在进来之前就判完了（比如中途暂停过）：同样直接收尾。
+  await tryFinishMistakeQueue(state, state.progress);
+}
+
+// 复习队列的最后一题判完就该结束了：不需要用户再点按钮，自动弹完成弹窗。
+let mistakeQueueAutoFinishing = false;
+function mistakeQueueShouldAutoFinish(state, progress) {
+  if (!mistakeQueue || !mistakeQueueCurrent(state) || !progress) return false;
+  if (mistakeQueue.index !== mistakeQueue.ids.length - 1) return false;
+  return progress.stage === 'completed'
+    && progress.round === mistakeQueue.rounds[state.id]
+    && progress.reviewable
+    && progress.mistakeType === mistakeQueueTypeFor(state.id);
+}
+async function tryFinishMistakeQueue(state, progress) {
+  // 布尔锁：收尾过程中触发的重渲染不会再进来一次，失败也不会反复重试。
+  if (mistakeQueueAutoFinishing || !mistakeQueueShouldAutoFinish(state, progress)) return;
+  mistakeQueueAutoFinishing = true;
+  try { await nextMistakeQueueItem(); } finally { mistakeQueueAutoFinishing = false; }
 }
 function renderMistakeQueueBanner() {
   const box = document.getElementById('mistakeQueueBanner');
@@ -255,8 +274,10 @@ function renderMistakeQueueBanner() {
   const valid = p?.reviewable && p.courseId === mistakeQueue.courseId && p.mistakeType === mistakeQueueTypeFor(state.id);
   const completed = valid && p.stage === 'completed' && p.round === mistakeQueue.rounds[state.id];
   const pending = mistakeStorageGet(mistakePendingKey(state)) || state.pending;
+  // 最后一题不再有「下一题 / 完成」按钮：判完自动收尾。
+  const last = mistakeQueue.index + 1 === mistakeQueue.ids.length;
   box.innerHTML = `<strong>第 ${mistakeQueue.index + 1} / ${mistakeQueue.ids.length} 题</strong> · 已完成 ${mistakeQueue.index + (completed ? 1 : 0)} 题
-    <div class="mistake-toolbar"><button id="mistakeQueueNext" onclick="nextMistakeQueueItem()" ${!completed || pending || mistakeReviewBusy || mistakeQueueLoading ? 'disabled' : ''}>${mistakeQueue.index + 1 === mistakeQueue.ids.length ? '完成' : '下一题'}</button><button onclick="pauseMistakeQueue()">返回列表，稍后继续</button><button onclick="endMistakeQueue()">结束本轮</button></div>${p && !valid ? '<p class="mistake-inline-error">本题已改变分类或缺少内容，请退出并补齐；不会自动跳过。</p>' : ''}`;
+    <div class="mistake-toolbar">${last ? '' : `<button id="mistakeQueueNext" onclick="nextMistakeQueueItem()" ${!completed || pending || mistakeReviewBusy || mistakeQueueLoading ? 'disabled' : ''}>下一题</button>`}<button onclick="pauseMistakeQueue()">返回列表，稍后继续</button><button onclick="endMistakeQueue()">结束本轮</button></div>${p && !valid ? '<p class="mistake-inline-error">本题已改变分类或缺少内容，请退出并补齐；不会自动跳过。</p>' : ''}`;
 }
 async function nextMistakeQueueItem() {
   const state = mistakeDetailState;
@@ -292,14 +313,34 @@ function showMistakeQueueComplete() {
 function mistakeConfettiHtml() {
   // 尊重系统「减少动态效果」偏好：关掉动画就什么都不放。
   if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) return '';
-  const colors = ['#4a6cf7', '#f7724a', '#2fbf71', '#f2c14e', '#a86cf7', '#38b6d9'];
+  const colors = ['#f7c948', '#ef6f5a', '#4a6cf7', '#38b6d9', '#f2a33c', '#7d5fe0', '#2fbf71'];
+  // 三条波浪/卷曲的彩带路径，随机挑一条，配随机长度和角度。
+  const paths = [
+    'M12 2 C 34 26, -10 44, 12 68 C 34 92, -10 110, 12 134 C 28 152, 0 160, 12 172',
+    'M12 2 C -8 24, 32 40, 12 62 C -8 84, 32 100, 12 122 C -4 140, 24 152, 12 172',
+    'M12 2 C 30 18, -6 34, 12 52 C 30 70, -6 86, 12 104 C 30 122, -6 138, 12 156 C 24 166, 4 170, 12 172'
+  ];
   let html = '';
-  for (let i = 0; i < 40; i += 1) {
-    const left = Math.round(Math.random() * 96);
-    const delay = (Math.random() * 0.6).toFixed(2);
-    const duration = (1.6 + Math.random() * 1.2).toFixed(2);
-    const drift = Math.round(-30 + Math.random() * 60);
-    html += `<span style="left:${left}%;animation-delay:${delay}s;animation-duration:${duration}s;background:${colors[i % colors.length]};--drift:${drift}px"></span>`;
+  for (let i = 0; i < 14; i += 1) {
+    const color = colors[i % colors.length];
+    const left = Math.round(-4 + Math.random() * 104);
+    const delay = (Math.random() * 0.5).toFixed(2);
+    const duration = (1.9 + Math.random() * 1.1).toFixed(2);
+    const drift = Math.round(-80 + Math.random() * 160);
+    const spin = Math.round(-300 + Math.random() * 600);
+    const tilt = Math.round(-30 + Math.random() * 60);
+    const width = 16 + Math.round(Math.random() * 10);
+    const height = 160 + Math.round(Math.random() * 140);
+    html += `<span class="mistake-streamer" style="left:${left}%;--drift:${drift}px;--spin:${spin}deg;--tilt:${tilt}deg;animation-delay:${delay}s;animation-duration:${duration}s">`
+      + `<svg viewBox="0 0 24 174" width="${width}" height="${height}" aria-hidden="true"><path d="${paths[i % paths.length]}" fill="none" stroke="${color}" stroke-width="6.5" stroke-linecap="round"/></svg></span>`;
+  }
+  for (let i = 0; i < 34; i += 1) {
+    const left = Math.round(Math.random() * 100);
+    const delay = (Math.random() * 0.5).toFixed(2);
+    const duration = (1.5 + Math.random() * 0.9).toFixed(2);
+    const drift = Math.round(-60 + Math.random() * 120);
+    const spin = Math.round(-540 + Math.random() * 1080);
+    html += `<span class="mistake-bit" style="left:${left}%;background:${colors[(i + 3) % colors.length]};--drift:${drift}px;--spin:${spin}deg;animation-delay:${delay}s;animation-duration:${duration}s"></span>`;
   }
   return html;
 }
@@ -322,7 +363,13 @@ async function openMistakeCompleteModal() {
   document.getElementById('mistakeCompleteText').textContent = score
     ? `本轮 ${score.total} 道题，答对 ${score.correct} 道，正确率 ${Math.round(score.correct / score.total * 100)}%。${perfect ? '' : '答错或不记得的题目仍为未复习，可以再来一遍。'}`
     : '判断结果已保存。答错或不记得的题目仍为未复习。';
-  document.getElementById('mistakeCompleteConfetti').innerHTML = perfect ? mistakeConfettiHtml() : '';
+  const confetti = document.getElementById('mistakeCompleteConfetti');
+  if (!confetti.dataset.bound) {
+    // 飘出屏幕的碎片自己移除，别在页面上留一堆动画节点。
+    confetti.addEventListener('animationend', event => { if (event.target.parentNode === confetti) event.target.remove(); });
+    confetti.dataset.bound = '1';
+  }
+  confetti.innerHTML = perfect ? mistakeConfettiHtml() : '';
   box.classList.add('show');
   document.body.classList.add('mistake-review-open');
   document.getElementById('mistakeCompleteTitle').focus();

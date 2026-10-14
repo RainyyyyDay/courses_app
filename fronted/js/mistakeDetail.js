@@ -687,10 +687,12 @@ async function retryMistakeReview() {
 }
 async function sendMistakeReview(state, pending) {
   mistakeReviewBusy = true;
+  let saved = false;
   if (mistakeDetailIsCurrent(state)) renderMistakeReview(state);
   try {
     const progress = await mistakeReviewRequest(mistakeReviewUrl(state) + (pending.start ? '' : '/events'), pending.body);
     mistakeStorageSet(mistakePendingKey(state), null); state.pending = null;
+    saved = true;
     if (mistakeDetailIsCurrent(state)) {
       state.progress = progress;
       await refreshMistakeReview(state);
@@ -715,5 +717,7 @@ async function sendMistakeReview(state, pending) {
     } else if (mistakeDetailState?.review && mistakeDetailState.progress && mistakeDetailIsCurrent(mistakeDetailState)) {
       renderMistakeReview(mistakeDetailState);
     }
+    // 过完全部所选题（最后一题判完）自动弹出完成弹窗，不用再点按钮。
+    if (saved && typeof tryFinishMistakeQueue === 'function') await tryFinishMistakeQueue(state, state.progress);
   }
 }

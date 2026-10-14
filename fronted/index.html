@@ -382,8 +382,8 @@
 
   <!-- 复习完成弹窗：过完全部所选题后出现；正确率 100% 时飘彩带 -->
   <div id="mistakeCompleteModal" class="modal-mask" onclick="if(event.target===this)cancelMistakeComplete()" onkeydown="if(event.key==='Escape'){event.preventDefault();cancelMistakeComplete()}">
+    <div id="mistakeCompleteConfetti" class="mistake-confetti" aria-hidden="true"></div>
     <div class="modal mistake-complete" role="dialog" aria-modal="true" aria-labelledby="mistakeCompleteTitle">
-      <div id="mistakeCompleteConfetti" class="mistake-confetti" aria-hidden="true"></div>
       <h3 id="mistakeCompleteTitle" tabindex="-1"></h3>
       <p id="mistakeCompleteText"></p>
       <div class="modal-actions">

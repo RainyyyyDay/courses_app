@@ -21,8 +21,7 @@ function mistakeBrowserPrelude() {
         document.querySelector('[data-review-action="judge-false"]').click();
         await waitUntil(() => mistakeDetailState.progress.stage === 'completed' && !mistakeReviewBusy, 'unclassified restored judgment');
         check(mistakeDetailState.progress.reviewStatus === 'unreviewed', 'unclassified needs review saved');
-        await nextMistakeQueueItem();
-        check(currentView.type === 'mistakeQueueComplete', 'unclassified restored queue completes');
+        await waitUntil(() => currentView.type === 'mistakeQueueComplete', 'unclassified restored queue completes');
         await backFromDetail(); await openMistakeCategory('unclassified'); await clearMistakeFilters();
         check(document.querySelector('[data-mistake-id="' + restored.id + '"]').textContent.includes('未复习'), 'unclassified list reflects judgment');
         sessionStorage.removeItem('mistake-regression-refresh');
@@ -309,10 +308,10 @@ function mistakeBrowserScenario(data) {
       }
       await startReviewFromHome(type, row.id);
       check(mistakeDetailState.progress.stage === 'question', 'queue automatic start ' + type);
+      check(!document.getElementById('mistakeQueueNext'), 'last question has no manual finish button ' + type);
       await submitMistakeReview('reveal_answer');
       await submitMistakeReview('judge', key, true);
-      await nextMistakeQueueItem();
-      check(currentView.type === 'mistakeQueueComplete', 'single queue completes ' + type);
+      check(currentView.type === 'mistakeQueueComplete', 'last judgment auto-completes the queue ' + type);
       check(document.getElementById('mistakeCompleteModal').classList.contains('show')
         && document.getElementById('mistakeCompleteTitle').textContent.includes('恭喜')
         && document.getElementById('mistakeCompleteConfetti').children.length > 0, 'perfect round celebrates ' + type);
@@ -321,7 +320,7 @@ function mistakeBrowserScenario(data) {
       check(mistakeDetailState.progress.stage === 'question' && mistakeDetailState.progress.reviewStatus === 'reviewed', 'reviewed allowed new round ' + type);
       await submitMistakeReview('reveal_answer'); await submitMistakeReview('judge', key, false);
       check(mistakeDetailState.progress.reviewStatus === 'unreviewed', 'repeat wrong updates state ' + type);
-      await nextMistakeQueueItem();
+      check(currentView.type === 'mistakeQueueComplete', 'wrong last judgment still auto-completes ' + type);
       check(document.getElementById('mistakeCompleteModal').classList.contains('show')
         && !document.getElementById('mistakeCompleteTitle').textContent.includes('恭喜')
         && !document.getElementById('mistakeCompleteConfetti').children.length, 'imperfect round shows plain completion ' + type);
@@ -381,7 +380,6 @@ function mistakeBrowserScenario(data) {
       await startReviewFromHome('thinking', thinking.id);
       await submitMistakeReview('reveal_answer');
       await submitMistakeReview('judge', 'mastered', true);
-      await nextMistakeQueueItem();
       await waitUntil(() => document.getElementById('mistakeCompleteModal').classList.contains('show'), 'completion modal after single round');
     };
     await finishSingleRound();
@@ -391,7 +389,6 @@ function mistakeBrowserScenario(data) {
     check(mistakeQueue.index === 0 && !mistakeQueue.finished, 'replay resets queue progress');
     await submitMistakeReview('reveal_answer');
     await submitMistakeReview('judge', 'mastered', true);
-    await nextMistakeQueueItem();
     completeButtons()[2].click();
     await waitUntil(() => mistakeReviewPicker && document.getElementById('mistakeReviewPicker').classList.contains('show'), 'start new review opens the picker');
     check(!document.getElementById('mistakeCompleteModal').classList.contains('show') && !mistakeQueue, 'new review drops the finished queue');
