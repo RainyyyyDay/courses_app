@@ -937,8 +937,30 @@ body.mistake-review-open { overflow: hidden; }
   position: absolute; top: 0; opacity: 0;
   animation-name: mistake-confetti-fall; animation-timing-function: linear; animation-fill-mode: forwards;
 }
-.mistake-streamer svg { display: block; }
-.mistake-bit { width: 7px; height: 14px; border-radius: 1.5px; }
+/* 彩带一边落一边摆 + 扭，避免整条直挺挺地平移下去。 */
+.mistake-streamer svg {
+  display: block;
+  animation-name: mistake-flutter; animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite; animation-direction: alternate;
+  animation-duration: var(--flutter, 1.4s); animation-delay: var(--flutter-delay, 0s);
+}
+@keyframes mistake-flutter {
+  0% { transform: translateX(calc(var(--amp, 8px) * -1)) rotate(calc(var(--tilt, 0deg) - var(--sway, 14deg))); }
+  100% { transform: translateX(var(--amp, 8px)) rotate(calc(var(--tilt, 0deg) + var(--sway, 14deg))); }
+}
+/* 碎片形状也随机：小方片 / 细长条 / 圆点，落的过程中翻面。 */
+.mistake-bit { width: var(--w, 7px); height: var(--h, 14px); border-radius: var(--r, 1.5px); }
+.mistake-bit > i {
+  display: block; width: 100%; height: 100%;
+  border-radius: inherit; background: inherit;
+  animation-name: mistake-tumble; animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite; animation-direction: alternate;
+  animation-duration: var(--tumble, 0.7s);
+}
+@keyframes mistake-tumble {
+  0% { transform: rotate3d(1, 1, 0, -42deg) scaleX(0.55); }
+  100% { transform: rotate3d(1, 1, 0, 42deg) scaleX(1); }
+}
 @keyframes mistake-confetti-fall {
   0% { transform: translate3d(0, -32vh, 0) rotate(var(--tilt, 0deg)); opacity: 0; }
   10% { opacity: 1; }
