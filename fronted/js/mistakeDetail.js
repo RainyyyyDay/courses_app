@@ -92,14 +92,20 @@ function renderMistakeDetail(mistake, review = false) {
   document.getElementById('mistakeDetailTags').innerHTML = tags.length
     ? tags.map(k => tagChipHtml(k, false, true)).join('') : '<span class="tag-none">暂无标签</span>';
   document.getElementById('mistakeReviewToggle').textContent = review ? '查看 / 编辑资料' : '进入复习';
+  document.getElementById('mistakeReviewToolbar').style.display = review ? 'flex' : 'none';
   document.getElementById('mistakeReadPanel').style.display = review ? 'none' : 'block';
   document.getElementById('mistakeReviewPanel').style.display = review ? 'block' : 'none';
-  document.getElementById('mistakeEditor').open = false;
   document.getElementById('mistakeEditError').textContent = '';
+  if (typeof closeMistakeEdit === 'function' && mistakeEditPending) closeMistakeEdit();
   if (!review) {
-    document.getElementById('mistakeAnswerText').textContent = mistake.answer_content || '尚未填写答案';
+    document.getElementById('mistakeAnswerText').textContent = mistake.answer_content || (mistake.answer_image_url ? '' : '尚未填写答案');
+    const answerFileBox = document.getElementById('mistakeDetailAnswerFile');
+    answerFileBox.innerHTML = mistakeAttachmentHtml('答案附件', mistake.answer_image_url, mistake.answer_file_type);
+    answerFileBox.style.display = mistake.answer_image_url ? 'block' : 'none';
     document.getElementById('mistakeExplanationText').textContent = mistake.explanation || '尚未填写解析或错误原因';
-    document.getElementById('mistakeEditTitle').value = mistake.title;
+    const detailParts = mistakeEditNameParts(mistake);
+    document.getElementById('mistakeEditTitle').value = detailParts.base;
+    setMistakeEditNameExt(detailParts.ext);
     document.getElementById('mistakeEditType').value = mistake.mistake_type || 'unclassified';
     document.getElementById('mistakeEditContent').value = mistake.content || '';
     document.getElementById('mistakeEditAnswer').value = mistake.answer_content || '';
@@ -123,12 +129,369 @@ function renderMistakeDetail(mistake, review = false) {
   img.style.display = 'block'; img.src = url;
 }
 
+/* ========== 编辑错题（弹窗） ========== */
+// 弹窗里「还没保存」的改动：删掉哪个附件、选了哪个新文件、标签选了哪些
+let mistakeEditPending = null;
+let mistakeEditRequest = 0;
+
+function mistakeEditIsCurrent(pending) {
+  return mistakeEditPending === pending && currentCourseId === pending.courseId && currentView === pending.view;
+}
+
+// 附件怎么展示：图片直接显示（外面用 CSS 限制高度），其它类型给一个打开入口
+function mistakeAttachmentHtml(label, url, fileType) {
+  if (!url) return '';
+  const full = API.replace(/\/api\/?$/, '') + url;
+  if (!isImageFile(fileType, url)) {
+    return '<div class="detail-actions"><a class="detail-link" href="' + escapeHtml(full) + '" target="_blank" rel="noopener">打开' + escapeHtml(label) + '</a></div>';
+  }
+  return '<a href="' + escapeHtml(full) + '" target="_blank" rel="noopener">' +
+    '<img class="mistake-detail-image mistake-detail-image-capped" id="mistakeDetail' + escapeHtml(label) + '" src="' + escapeHtml(full) + '" alt="' + escapeHtml(label) + '" /></a>';
+}
+
+// 名称 = 用户能改的名字 + 固定的文件后缀。
+// 后缀只由附件决定：附件在，后缀就是那个文件的；附件没有（或删掉了），名字里也不带后缀。
+function mistakeEditNameParts(row) {
+  const title = row.title || '';
+  const fileUrl = row.image_url || '';
+  if (!fileUrl) return { base: title, ext: '' };
+  const ext = extname(fileUrl) || splitNameExt(title).ext;
+  const base = ext && title.toLowerCase().endsWith(ext.toLowerCase())
+    ? title.slice(0, title.length - ext.length)
+    : title;
+  return { base: base, ext: ext };
+}
+
+// 保存时用的完整标题（名字 + 固定后缀）
+function mistakeEditTitleValue() {
+  const base = (document.getElementById('mistakeEditTitle').value || '').trim();
+  const ext = document.getElementById('mistakeEditNameExt').textContent || '';
+  return base + ext;
+}
+
+// 后缀那一小块固定文字：只显示，不给改
+function setMistakeEditNameExt(ext) {
+  const chip = document.getElementById('mistakeEditNameExt');
+  if (!chip) return;
+  chip.textContent = ext || '';
+  chip.style.display = ext ? 'inline-block' : 'none';
+}
+
+// 选了新文件：后缀跟着新文件走，名字里原来带的旧后缀先摘掉
+function syncMistakeEditNameExt(file) {
+  const chip = document.getElementById('mistakeEditNameExt');
+  const oldExt = chip ? (chip.textContent || '') : '';
+  const input = document.getElementById('mistakeEditTitle');
+  if (oldExt && input.value.toLowerCase().endsWith(oldExt.toLowerCase())) {
+    input.value = input.value.slice(0, input.value.length - oldExt.length);
+  }
+  setMistakeEditNameExt(splitNameExt((file && file.name) || '').ext || oldExt);
+}
+
+function openMistakeEdit(row = mistakeDetailState?.row) {
+  if (!row) return;
+  if (mistakeEditPending?.saving) return;
+  ++mistakeEditRequest;
+  mistakeEditPending = {
+    row, id: row.id, courseId: currentCourseId, view: currentView,
+    scrollX: window.scrollX, scrollY: window.scrollY, saving: false,
+    questionRemoved: false, questionFile: null,
+    answerRemoved: false, answerFile: null,
+    tags: (row.knowledge || []).map(k => ({ id: k.id, name: k.name, type: k.type }))
+  };
+  const nameParts = mistakeEditNameParts(row);
+  document.getElementById('mistakeEditTitle').value = nameParts.base;
+  setMistakeEditNameExt(nameParts.ext);
+  document.getElementById('mistakeEditType').value = row.mistake_type || 'unclassified';
+  document.getElementById('mistakeEditContent').value = row.content || '';
+  document.getElementById('mistakeEditAnswer').value = row.answer_content || '';
+  document.getElementById('mistakeEditExplanation').value = row.explanation || '';
+  document.getElementById('mistakeEditQuestionUpload').value = '';
+  document.getElementById('mistakeEditAnswerUpload').value = '';
+  document.getElementById('mistakeEditError').textContent = '';
+  document.getElementById('mistakeEditSave').disabled = false;
+  document.getElementById('mistakeEditTagSearch').value = '';
+  mistakeEditTagSearch = '';
+  mistakeEditTagTree = [];
+  mistakeEditTagExpanded = new Set();
+  mistakeEditTagMeta = new Map();
+  renderMistakeEditFiles();
+  renderMistakeEditTags();
+  refreshMistakeEditDirty();
+  document.getElementById('mistakeEditModal').classList.add('show');
+  const tagBox = document.getElementById('mistakeEditTagTree');
+  tagBox.innerHTML = '<div class="edit-tag-empty">正在加载知识框架…</div>';
+  const pending = mistakeEditPending;
+  document.body.classList.add('mistake-edit-open');
+  document.getElementById('mistakeEditBody').scrollTop = 0;
+  return loadMistakeEditTagTree(pending)
+    .then(() => { if (mistakeEditIsCurrent(pending)) renderMistakeEditTagTree(); })
+    .catch(err => {
+      if (mistakeEditIsCurrent(pending)) tagBox.innerHTML = '<div class="edit-tag-empty">' + escapeHtml(err.message) +
+        '</div><button type="button" class="edit-mini-btn" onclick="retryMistakeEditTagTree()">重试加载标签</button>';
+    });
+}
+
+function closeMistakeEdit() {
+  const pending = mistakeEditPending;
+  if (pending?.saving) return;
+  ++mistakeEditRequest;
+  const modal = document.getElementById('mistakeEditModal');
+  if (modal) modal.classList.remove('show');
+  document.body.classList.remove('mistake-edit-open');
+  mistakeEditPending = null;
+  if (pending && pending.view === currentView) window.scrollTo(pending.scrollX, pending.scrollY);
+}
+
+// 小工具：新选的文件先用浏览器内的临时地址预览
+function mistakeEditPreviewUrl(file) {
+  if (!file) return '';
+  return (typeof URL !== 'undefined' && URL.createObjectURL) ? URL.createObjectURL(file) : '';
+}
+
+// 附件区：照片只放一小块；有原文件时只能先删，删掉之后才让传新的
+function renderMistakeEditFiles() {
+  const row = mistakeEditPending?.row || {};
+  const pending = mistakeEditPending;
+  if (!pending) return;
+  const base = API.replace(/\/api\/?$/, '');
+
+  const paint = (config) => {
+    const box = document.getElementById(config.boxId);
+    const removeBtn = document.getElementById(config.removeId);
+    const uploadBtn = document.getElementById(config.uploadId);
+    const oldUrl = (config.removedFlag ? '' : config.oldUrl) || '';
+    const file = config.file;
+    const fileType = file ? file.type : config.oldFileType;
+    const previewUrl = file ? mistakeEditPreviewUrl(file) : (oldUrl ? base + oldUrl : '');
+
+    if (previewUrl) {
+      box.style.display = 'block';
+      box.innerHTML = isImageFile(fileType, previewUrl)
+        ? '<a href="' + escapeHtml(previewUrl) + '" target="_blank" rel="noopener"><img class="mistake-edit-thumb" src="' + escapeHtml(previewUrl) + '" alt="' + escapeHtml(config.label) + '" /></a>'
+        : '<a class="detail-link" href="' + escapeHtml(previewUrl) + '" target="_blank" rel="noopener">打开' + escapeHtml(config.label) + '</a>';
+    } else {
+      box.style.display = 'none';
+      box.innerHTML = '';
+    }
+    // 删除和上传并排：有东西可删（原文件还在，或刚选了新文件）时才显示删除
+    removeBtn.style.display = (oldUrl || file) ? 'inline-flex' : 'none';
+    const label = document.getElementById(config.labelId);
+    if (label) label.textContent = file ? '重新选择' : config.uploadText;
+  };
+
+  paint({
+    boxId: 'mistakeEditQuestionFile', removeId: 'mistakeEditQuestionRemove', uploadId: 'mistakeEditQuestionUploadBtn',
+    labelId: 'mistakeEditQuestionUploadLabel', label: '题目附件', uploadText: '上传新内容',
+    oldUrl: row.image_url, oldFileType: row.file_type,
+    removedFlag: pending.questionRemoved, file: pending.questionFile
+  });
+  paint({
+    boxId: 'mistakeEditAnswerFile', removeId: 'mistakeEditAnswerRemove', uploadId: 'mistakeEditAnswerUploadBtn',
+    labelId: 'mistakeEditAnswerUploadLabel', label: '答案附件', uploadText: '上传新内容',
+    oldUrl: row.answer_image_url, oldFileType: row.answer_file_type,
+    removedFlag: pending.answerRemoved, file: pending.answerFile
+  });
+}
+
+function chooseMistakeEditQuestionFile(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file || !mistakeEditPending) return;
+  mistakeEditPending.questionFile = file;
+  syncMistakeEditNameExt(file);
+  renderMistakeEditFiles();
+  refreshMistakeEditDirty();
+}
+function removeMistakeEditQuestionFile() {
+  if (!mistakeEditPending) return;
+  mistakeEditPending.questionFile = null;
+  mistakeEditPending.questionRemoved = true;
+  setMistakeEditNameExt('');
+  renderMistakeEditFiles();
+  refreshMistakeEditDirty();
+}
+function chooseMistakeEditAnswerFile(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file || !mistakeEditPending) return;
+  mistakeEditPending.answerFile = file;
+  renderMistakeEditFiles();
+  refreshMistakeEditDirty();
+}
+function removeMistakeEditAnswerFile() {
+  if (!mistakeEditPending) return;
+  mistakeEditPending.answerFile = null;
+  mistakeEditPending.answerRemoved = true;
+  renderMistakeEditFiles();
+  refreshMistakeEditDirty();
+}
+
+// 当前课程的分类 / 知识点（弹窗里直接勾，不用跳别的弹窗）
+let mistakeEditTagTree = [];
+let mistakeEditTagExpanded = new Set();
+let mistakeEditTagMeta = new Map();
+let mistakeEditTagSearch = '';
+
+async function loadMistakeEditTagTree(pending = mistakeEditPending) {
+  const res = await requestApi(`${API}/courses/${pending.courseId}/knowledge-tree`);
+  if (!res.ok) throw new Error('加载分类 / 知识点失败');
+  const tree = await res.json();
+  if (!mistakeEditIsCurrent(pending)) return;
+  // 「未分类」是系统分类，不参与打标签（和标签选择器一致）
+  mistakeEditTagTree = (Array.isArray(tree) ? tree : []).filter(node => !node.is_system);
+  mistakeEditTagMeta = new Map();
+  mistakeEditTagExpanded = new Set();
+  (function walk(nodes, parentId) {
+    for (const node of nodes || []) {
+      mistakeEditTagMeta.set(node.id, { name: node.name, type: node.type, parentId: parentId });
+      // 每一层都默认展开：用户要先看清整个框架
+      if (node.type === 'folder' && (node.children || []).length) mistakeEditTagExpanded.add(node.id);
+      walk(node.children, node.id);
+    }
+  })(mistakeEditTagTree, null);
+  // 已选标签的祖先路径也展开，免得藏在收起的分支里
+  for (const tag of pending.tags) {
+    let parentId = (mistakeEditTagMeta.get(tag.id) || {}).parentId;
+    while (parentId !== null && parentId !== undefined) {
+      mistakeEditTagExpanded.add(parentId);
+      parentId = (mistakeEditTagMeta.get(parentId) || {}).parentId;
+    }
+  }
+  return mistakeEditTagTree;
+}
+
+async function retryMistakeEditTagTree() {
+  const pending = mistakeEditPending;
+  if (!pending) return;
+  try {
+    await loadMistakeEditTagTree(pending);
+    if (mistakeEditIsCurrent(pending)) renderMistakeEditTagTree();
+  } catch (err) {
+    if (mistakeEditIsCurrent(pending)) showToast(err.message);
+  }
+}
+
+function searchMistakeEditTags(value) {
+  mistakeEditTagSearch = (value || '').trim();
+  renderMistakeEditTagTree();
+}
+
+function renderMistakeEditTagTree() {
+  const box = document.getElementById('mistakeEditTagTree');
+  const scroll = box.scrollTop;
+  if (!mistakeEditTagTree.length) {
+    box.innerHTML = '<div class="edit-tag-empty">当前课程暂无分类或知识点，请先在「知识框架」中创建</div>';
+    return;
+  }
+  // 只复用共享选择器的纯搜索函数，编辑状态仍留在当前表单里。
+  const nodes = mistakeEditTagSearch ? filterTagTree(mistakeEditTagTree, mistakeEditTagSearch) : mistakeEditTagTree;
+  box.innerHTML = nodes.length ? nodes.map(node => mistakeEditTagNodeHtml(node)).join('')
+    : '<div class="edit-tag-empty">没有匹配的分类或知识点</div>';
+  box.scrollTop = scroll;
+}
+
+function mistakeEditTagNodeHtml(node) {
+  const isFolder = node.type === 'folder';
+  const children = Array.isArray(node.children) ? node.children : [];
+  const expanded = !!mistakeEditTagSearch || mistakeEditTagExpanded.has(node.id);
+  const checked = !!mistakeEditPending && mistakeEditPending.tags.some(t => t.id === node.id);
+  const v = tagVisual(node.type);
+  const toggle = (isFolder && children.length)
+    ? `<button type="button" class="edit-tag-toggle" onclick="toggleMistakeEditTagExpand(${node.id})" title="${expanded ? '收起' : '展开'}">${expanded ? '▾' : '▸'}</button>`
+    : '<span class="edit-tag-toggle edit-tag-toggle-empty"></span>';
+  return `<div class="edit-tag-node">
+      <div class="edit-tag-row${checked ? ' is-checked' : ''}">
+        ${toggle}
+        <input type="checkbox" id="mistake-edit-tagchk-${node.id}" aria-label="${escapeHtml(node.name)}" class="edit-tag-check" ${checked ? 'checked' : ''} onchange="toggleMistakeEditTag(${node.id}, this.checked)" />
+        <span class="edit-tag-name ${v.cls}" onclick="toggleMistakeEditTag(${node.id})">${v.icon} ${escapeHtml(node.name)}</span>
+      </div>
+      ${isFolder && children.length && expanded ? `<div class="edit-tag-children">${children.map(child => mistakeEditTagNodeHtml(child)).join('')}</div>` : ''}
+    </div>`;
+}
+
+// 一键全展开 / 全收起：让用户先看清整个知识框架
+function toggleAllMistakeEditTags(expand) {
+  mistakeEditTagExpanded = new Set();
+  if (expand) {
+    for (const [id, meta] of mistakeEditTagMeta) {
+      if (meta.type === 'folder') mistakeEditTagExpanded.add(id);
+    }
+  }
+  renderMistakeEditTagTree();
+}
+
+function toggleMistakeEditTagExpand(id) {
+  if (mistakeEditTagExpanded.has(id)) mistakeEditTagExpanded.delete(id);
+  else mistakeEditTagExpanded.add(id);
+  renderMistakeEditTagTree();
+}
+
+// 勾 / 取消勾选：只动待保存的标签，保存时才落库
+function toggleMistakeEditTag(id, checked) {
+  const pending = mistakeEditPending;
+  if (!pending) return;
+  const has = pending.tags.some(t => t.id === id);
+  const want = typeof checked === 'boolean' ? checked : !has;
+  if (want && !has) {
+    const meta = mistakeEditTagMeta.get(id) || {};
+    pending.tags.push({ id: id, name: meta.name || ('#' + id), type: meta.type || 'unknown' });
+  }
+  if (!want && has) pending.tags = pending.tags.filter(t => t.id !== id);
+  renderMistakeEditTags();
+  renderMistakeEditTagTree();
+  refreshMistakeEditDirty();
+}
+
+// 每个板块右上角的「已改」：让用户知道改了哪儿
+function refreshMistakeEditDirty() {
+  const row = mistakeEditPending?.row;
+  const pending = mistakeEditPending;
+  if (!row || !pending) return;
+  const flag = (id, dirty) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = dirty ? 'inline-block' : 'none';
+  };
+  const value = id => (document.getElementById(id) || {}).value || '';
+  flag('mistakeEditFlagName', mistakeEditTitleValue() !== (row.title || '')
+    || value('mistakeEditType') !== (row.mistake_type || 'unclassified'));
+  const before = (row.knowledge || []).map(k => k.id).sort((a, b) => a - b).join(',');
+  const after = pending.tags.map(t => t.id).sort((a, b) => a - b).join(',');
+  flag('mistakeEditFlagTags', before !== after);
+  flag('mistakeEditFlagQuestion', (pending.questionRemoved && !!row.image_url) || !!pending.questionFile
+    || value('mistakeEditContent') !== (row.content || ''));
+  flag('mistakeEditFlagAnswer', (pending.answerRemoved && !!row.answer_image_url) || !!pending.answerFile
+    || value('mistakeEditAnswer') !== (row.answer_content || ''));
+  flag('mistakeEditFlagExplanation', value('mistakeEditExplanation') !== (row.explanation || ''));
+}
+
+function renderMistakeEditTags() {
+  const box = document.getElementById('mistakeEditTags');
+  const tags = mistakeEditPending ? mistakeEditPending.tags : [];
+  const count = document.getElementById('mistakeEditTagCount');
+  if (count) count.textContent = '已选 ' + tags.length + ' 项';
+  box.innerHTML = tags.length
+    ? tags.map(t => {
+        const v = tagVisual(t.type);
+        return '<span class="tag-chip ' + v.cls + '"><span class="tag-chip-icon">' + v.icon + '</span>' +
+          escapeHtml(t.name) + '<button class="tag-chip-x" type="button" onclick="removeMistakeEditTag(' + t.id + ')" title="移除">×</button></span>';
+      }).join('')
+    : '<span class="tag-none">暂无标签</span>';
+}
+function removeMistakeEditTag(id) {
+  if (!mistakeEditPending) return;
+  mistakeEditPending.tags = mistakeEditPending.tags.filter(t => t.id !== id);
+  renderMistakeEditTags();
+  renderMistakeEditTagTree();
+  refreshMistakeEditDirty();
+}
 async function saveMistakeDetail() {
-  const state = mistakeDetailState;
+  const state = mistakeEditPending;
   const button = document.getElementById('mistakeEditSave');
-  if (!state?.row || button.disabled) return;
+  if (!state?.row || state.saving || button.disabled || !mistakeEditIsCurrent(state)) return;
+  const pending = state;
   const body = {
-    title: document.getElementById('mistakeEditTitle').value.trim(),
+    title: mistakeEditTitleValue(),
     content: document.getElementById('mistakeEditContent').value,
     mistakeType: document.getElementById('mistakeEditType').value,
     answerContent: document.getElementById('mistakeEditAnswer').value,
@@ -136,26 +499,88 @@ async function saveMistakeDetail() {
     expectedRevision: state.row.review_revision
   };
   if (!body.title) { showToast('请输入标题'); return; }
+  const attachmentUrl = suffix => `${API}/courses/${state.courseId}/mistakes/${state.id}/${suffix}`;
+  let textSaved = false;
+  const attachmentsChanged = (pending.questionRemoved && !!state.row.image_url) || !!pending.questionFile
+    || (pending.answerRemoved && !!state.row.answer_image_url) || !!pending.answerFile;
+  state.saving = true;
   button.disabled = true;
   document.getElementById('mistakeEditError').textContent = '';
   try {
-    await requestApi(`${API}/courses/${state.courseId}/mistakes/${state.id}`, {
+    // 1) 文字字段（标题 / 类型 / 题目文字 / 答案 / 错因）
+    const response = await requestApi(`${API}/courses/${state.courseId}/mistakes/${state.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
     });
-    if (!mistakeDetailIsCurrent(state)) return;
+    const savedRow = await response.json();
+    textSaved = true;
+    if (!mistakeEditIsCurrent(state)) return;
+    // 后续附件 / 标签失败时允许重试文字保存，使用已提交的最新版本。
+    state.row = savedRow;
+    // 2) 附件：先删掉用户点了删除的原文件，再上传新选的（都在后端会刷新复习状态）
+    if (pending.questionRemoved && state.row.image_url) {
+      await requestApi(attachmentUrl('question-file'), { method: 'DELETE' });
+      state.row.image_url = ''; pending.questionRemoved = false;
+    }
+    if (pending?.questionFile) {
+      const fd = new FormData();
+      fd.append('file', pending.questionFile);
+      await requestApi(attachmentUrl('question-file'), { method: 'PUT', body: fd });
+      pending.questionFile = null;
+    }
+    if (pending?.answerRemoved && state.row.answer_image_url) {
+      await requestApi(attachmentUrl('answer-file'), { method: 'DELETE' });
+      state.row.answer_image_url = ''; pending.answerRemoved = false;
+    }
+    if (pending?.answerFile) {
+      const fd = new FormData();
+      fd.append('file', pending.answerFile);
+      await requestApi(attachmentUrl('answer-file'), { method: 'PUT', body: fd });
+      pending.answerFile = null;
+    }
+    // 3) 标签：改过才提交（完整替换）
+    if (pending) {
+      const before = (state.row.knowledge || []).map(k => k.id).sort((a, b) => a - b);
+      const after = pending.tags.map(t => t.id).sort((a, b) => a - b);
+      if (JSON.stringify(before) !== JSON.stringify(after)) {
+        await requestApi(`${API}/mistakes/${state.id}/knowledge`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ knowledgeIds: after })
+        });
+      }
+    }
+    if (!mistakeEditIsCurrent(state)) return;
     // 实质编辑会使旧的未确认复习请求失效，不能再发送旧步骤。
-    mistakeStorageSet('mistake-pending:' + state.courseId + ':' + state.id, null);
+    if (savedRow.review_revision !== body.expectedRevision || attachmentsChanged) {
+      mistakeStorageSet('mistake-pending:' + state.courseId + ':' + state.id, null);
+    }
     showToast('已保存');
-    await renderMistakeDetailPage(state.id, false);
+    state.saving = false;
+    closeMistakeEdit();
+    if (state.view.type === 'mistake' && state.view.id === state.id) {
+      await renderMistakeDetailPage(state.id, !!state.view.review);
+    } else {
+      await loadMistakes();
+      if (state.view === currentView) window.scrollTo(state.scrollX, state.scrollY);
+    }
   } catch (err) {
-    if (mistakeDetailIsCurrent(state)) document.getElementById('mistakeEditError').textContent = err.message + '；输入已保留。';
-  } finally { button.disabled = false; }
+    if (mistakeEditIsCurrent(state)) {
+      document.getElementById('mistakeEditError').textContent = err.message + '；输入已保留。';
+      // 多接口保存可能已有部分成功，补读版本以便重试；不覆盖用户输入。
+      try {
+        if (!textSaved) return;
+        const res = await requestApi(`${API}/mistakes/${state.id}`);
+        const row = await res.json();
+        if (mistakeEditIsCurrent(state)) {
+          state.row = row;
+          renderMistakeEditFiles();
+        }
+      } catch { /* 离线时仍保留表单和待上传文件。 */ }
+    }
+  } finally { state.saving = false; button.disabled = false; }
 }
+// 旧入口保留成薄壳，避免还有别处引用
 async function editMistakeDetailTags() {
-  const row = mistakeDetailState?.row;
-  if (!row) return;
-  currentMistakes = currentMistakes.filter(r => r.id !== row.id).concat(row);
-  await openTagPicker('edit', 'mistake', row.id);
+  openMistakeEdit();
 }
 
 async function mistakeReviewRequest(url, body) {
@@ -224,7 +649,7 @@ function renderMistakeReview(state) {
   const answerVisible = p.answerVisible && (typeof mistakeQueueCurrent !== 'function' || !mistakeQueueCurrent(state)
     || p.round === mistakeQueue.rounds[state.id]);
   panel.innerHTML = `<p>${escapeHtml(message)}</p>${answerVisible && p.answer ?
-    `<h2>参考答案</h2><div id="mistakeReviewAnswer" class="detail-content">${escapeHtml(p.answer.content || '')}</div><h2>解析 / 错误原因</h2><div class="detail-content">${escapeHtml(p.answer.explanation || '暂无解析或错误原因')}</div>` : ''}
+    `<h2>参考答案</h2><div id="mistakeReviewAnswer" class="detail-content">${escapeHtml(p.answer.content || '')}</div>${mistakeAttachmentHtml('答案附件', p.answer.fileUrl, p.answer.fileType)}<h2>解析 / 错误原因</h2><div class="detail-content">${escapeHtml(p.answer.explanation || '暂无解析或错误原因')}</div>` : ''}
     <div class="mistake-review-actions">${pending ? '<span>有一次操作待确认，请先重试。</span><button onclick="retryMistakeReview()">重试上次操作</button>' : actions}</div>
     <div id="mistakeReviewError" class="mistake-inline-error" role="alert"></div>`;
   if (mistakeReviewBusy) panel.querySelectorAll('button').forEach(b => { b.disabled = true; });

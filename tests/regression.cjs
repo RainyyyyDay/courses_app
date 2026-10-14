@@ -11,7 +11,13 @@ const { spawn, spawnSync } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
 const { testMistakeMigrations, testMistakeApi } = require('./mistake-backend.cjs');
 const { mistakeBrowserPrelude, mistakeBrowserScenario } = require('./mistake-frontend.cjs');
+const { mistakeEditBrowserScenario } = require('./mistake-edit.cjs');
+const { mistakeListBrowserScenario } = require('./mistake-list.cjs');
 const { testMaterialReviewMigration, testMaterialReviewApi, materialBrowserPrelude, materialBrowserScenario } = require('./material-review.cjs');
+
+// 也允许直接通过测试参数指定屏幕尺寸，避免依赖各平台的环境变量语法。
+const viewportArgument = process.argv.find(arg => /^--viewport=\d+,\d+$/.test(arg));
+if (viewportArgument) process.env.COURSES_TEST_VIEWPORT = viewportArgument.slice('--viewport='.length);
 
 const root = path.resolve(__dirname, '..');
 const source = path.join(root, 'back');
@@ -45,7 +51,7 @@ async function testBackend() {
   before.close();
   const store = require(path.join(temp, 'db/index.js'));
   db = store.db;
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 10);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 11);
   assert.deepEqual(db.prepare('SELECT id, name FROM courses ORDER BY id').all(), existing);
   for (const snapshot of snapshots) assert.deepEqual(db.prepare(snapshot.sql).all(), snapshot.rows);
   const course = store.createCourse('regression course');
@@ -205,6 +211,8 @@ async function testBrowser(data) {
         for (const id of ['materialList','noteList','mistakeList','assessmentList']) check(document.getElementById(id).textContent.includes('暂无'), 'empty state '+id);
         window.fetch = originalFetch;
         check(!document.getElementById('bootErrorBox'), 'unexpected JS or boot error');
+        ${mistakeListBrowserScenario(data)}
+        ${mistakeEditBrowserScenario(data)}
         ${materialBrowserScenario(data)}
         ${mistakeBrowserScenario(data)}
         result.dataset.result = 'passed';
@@ -240,6 +248,8 @@ async function testBrowser(data) {
       browser.on('exit', () => resolve(output));
     });
     assert.match(html, /<pre id="regressionResult" data-result="passed">/, html.match(/<pre id="regressionResult"[^>]*>[\s\S]*?<\/pre>/)?.[0] || 'browser did not complete');
+    console.log('PASS Chrome mistake edit: original CSS reproduction, visible/wrapped labels, inline list edit, search/expand/select, cancel, failure/retry, PATCH/reset rules, filters/scroll, detail reuse, stale requests, shared selectors, viewport ' + (process.env.COURSES_TEST_VIEWPORT || '1280,960'));
+    console.log('PASS Chrome mistake list: shared reading styles, star/view/edit/delete only, live combined checkbox filters, favorite failure/retry/dedup, view/edit/delete/cancel, unified picker entry and completed queue');
     console.log('PASS Chrome reading review: ordinary/picker favorites sync/failure/reload, combined filters/AND/OR/direct tags/status/search/filtered all/dedup, preview, auto-next, skip preserves status/favorite, success counts, retry, independent queues, repeat/pause/actual reload');
     console.log('PASS Chrome: existing pages/tags/CRUD, mistake filters, filtered selection/dedup/partial state, three review queues/repeat, failed request never skips, pause/resume and actual reload recovery');
   } finally { await new Promise(resolve => staticServer.close(resolve)); }

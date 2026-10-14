@@ -15,7 +15,8 @@ function getMistakeReview(id) {
   const mistake = getMistakeDetail(id);
   const progress = progressFor(mistake);
   const blockedReasons = [];
-  if (!mistake.answer_content.trim()) blockedReasons.push('missing_answer');
+  // 答案可以是文字，也可以是一个附件；两者都没有才拦。
+  if (!mistake.answer_content.trim() && !mistake.answer_image_url) blockedReasons.push('missing_answer');
   if (!mistake.content.trim() && !mistake.image_url && !mistake.ocr_text.trim()) blockedReasons.push('missing_question');
   const answerVisible = ['answer', 'completed'].includes(progress.stage);
   let allowedActions = [];
@@ -31,7 +32,8 @@ function getMistakeReview(id) {
     updatedAt: progress.updated_at,
     question: { title: mistake.title, content: mistake.content, ocrText: mistake.ocr_text,
       fileUrl: mistake.image_url, fileType: mistake.file_type },
-    answerVisible, answer: answerVisible ? { content: mistake.answer_content, explanation: mistake.explanation } : null,
+    answerVisible, answer: answerVisible ? { content: mistake.answer_content, explanation: mistake.explanation,
+      fileUrl: mistake.answer_image_url, fileType: mistake.answer_file_type } : null,
     reviewable: !blockedReasons.length, blockedReasons, allowedActions,
   };
 }

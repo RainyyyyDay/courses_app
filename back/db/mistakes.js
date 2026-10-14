@@ -11,7 +11,7 @@ const { findKnowledgeNode, SUBTREE_CTE } = require('./knowledge');
 // ==================== 错题 ====================
 
 const MISTAKE_COLUMNS =
-  'id, course_id, title, image_url, file_type, ocr_text, content, created_at, mistake_type, answer_content, explanation, favorite, review_status, review_revision';
+  'id, course_id, title, image_url, file_type, ocr_text, content, created_at, mistake_type, answer_content, explanation, favorite, review_status, review_revision, answer_image_url, answer_file_type';
 
 // 错题列表：字段和原来完全一样，按加入的先后顺序返回（没有额外排序）。
 // 额外给每条错题补一个 knowledge 数组（知识点标签）；新增字段不影响老前端。
@@ -95,7 +95,9 @@ function updateMistake(id, changes, expectedRevision) {
       throw err;
     }
     const changed = Object.entries(changes).filter(([key, value]) => old[key] !== value);
-    const invalidates = changed.some(([key]) => ['mistake_type', 'content', 'answer_content', 'explanation'].includes(key));
+    // 题目/答案的附件换了或删了，和改文字一样算实质修改：回到未复习，等重新过一遍。
+    const invalidates = changed.some(([key]) => ['mistake_type', 'content', 'answer_content', 'explanation',
+      'image_url', 'file_type', 'answer_image_url', 'answer_file_type'].includes(key));
     if (changed.length) {
       const assignments = changed.map(([key]) => `${key} = ?`);
       if (invalidates) assignments.push("review_revision = review_revision + 1", "review_status = 'unreviewed'");

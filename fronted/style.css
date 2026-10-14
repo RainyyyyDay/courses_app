@@ -903,8 +903,7 @@ body.mistake-review-open { overflow: hidden; }
 .mistake-inline-error { color: #b42318; white-space: pre-wrap; }
 .mistake-state { display: inline-block; border-radius: 4px; background: #f1f3f5; padding: 3px 7px; margin: 5px 6px 5px 0; font-size: 12px; }
 .mistake-state-reviewed { color: #28743c; background: #eaf6ed; }
-#pane-mistakes .mistake-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
-@media (max-width: 600px) { #pane-mistakes .item-row { align-items: flex-start; flex-direction: column; gap: 10px; } }
+@media (max-width: 600px) { #pane-mistakes .item-row.mistake-selectable { align-items: flex-start; flex-direction: column; gap: 10px; } }
 .name-ext {
   flex-shrink: 0;
   font-size: 14px;
@@ -936,10 +935,10 @@ body.mistake-review-open { overflow: hidden; }
 /* 打开选择器时锁住背景页面，别让底下的列表跟着一起滚 */
 body.tag-picker-open { overflow: hidden; }
 
-#tagPickerModal { padding: 0; }          /* 抽屉要贴边，间距交给内部各区块自己管 */
+#tagPickerModal, #mistakeEditModal { padding: 0; }          /* 抽屉要贴边，间距交给内部各区块自己管 */
 
 /* ---------- 弹窗本体：桌面 = 居中弹窗 ---------- */
-#tagPickerModal .tag-sheet {
+#tagPickerModal .tag-sheet, #mistakeEditModal .tag-sheet {
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -953,11 +952,11 @@ body.tag-picker-open { overflow: hidden; }
   transform: translateY(12px) scale(0.98);
   transition: transform 0.26s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
-#tagPickerModal.show .tag-sheet { transform: none; }
+#tagPickerModal.show .tag-sheet, #mistakeEditModal.show .tag-sheet { transform: none; }
 
 /* 抽屉抓手：只在手机形态出现 */
-#tagPickerModal .tag-sheet-grip { display: none; position: relative; flex: 0 0 auto; height: 18px; }
-#tagPickerModal .tag-sheet-grip::after {
+#tagPickerModal .tag-sheet-grip, #mistakeEditModal .tag-sheet-grip { display: none; position: relative; flex: 0 0 auto; height: 18px; }
+#tagPickerModal .tag-sheet-grip::after, #mistakeEditModal .tag-sheet-grip::after {
   content: '';
   position: absolute;
   left: 50%; top: 8px;
@@ -968,7 +967,7 @@ body.tag-picker-open { overflow: hidden; }
 }
 
 /* ---------- 头部：固定不动 ---------- */
-#tagPickerModal .tag-sheet-head {
+#tagPickerModal .tag-sheet-head, #mistakeEditModal .tag-sheet-head {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -976,7 +975,7 @@ body.tag-picker-open { overflow: hidden; }
   padding: 16px 14px 12px 20px;
   border-bottom: 1px solid #eef0f5;
 }
-#tagPickerModal .tag-sheet-head h3 {
+#tagPickerModal .tag-sheet-head h3, #mistakeEditModal .tag-sheet-head h3 {
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
@@ -987,7 +986,7 @@ body.tag-picker-open { overflow: hidden; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-#tagPickerModal .tag-sheet-close {
+#tagPickerModal .tag-sheet-close, #mistakeEditModal .tag-sheet-close {
   flex: 0 0 auto;
   width: 34px; height: 34px;
   display: flex; align-items: center; justify-content: center;
@@ -997,10 +996,10 @@ body.tag-picker-open { overflow: hidden; }
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
-#tagPickerModal .tag-sheet-close:hover { background: #e8eaf1; color: #232a3d; }
+#tagPickerModal .tag-sheet-close:hover, #mistakeEditModal .tag-sheet-close:hover { background: #e8eaf1; color: #232a3d; }
 
 /* ---------- 中间：唯一的滚动区 ---------- */
-#tagPickerModal .tag-sheet-body {
+#tagPickerModal .tag-sheet-body, #mistakeEditModal .tag-sheet-body {
   flex: 1 1 auto;
   min-height: 0;                          /* ★ 关键：不加这句，flex 子项按内容撑高，永远不出现滚动条 */
   overflow-y: auto;
@@ -1011,7 +1010,7 @@ body.tag-picker-open { overflow: hidden; }
 }
 
 /* ---------- 底部：固定不动（已选标签 + 按钮） ---------- */
-#tagPickerModal .tag-sheet-foot {
+#tagPickerModal .tag-sheet-foot, #mistakeEditModal .tag-sheet-foot {
   flex: 0 0 auto;
   padding: 12px 20px 16px;
   border-top: 1px solid #eef0f5;
@@ -1087,27 +1086,27 @@ body.tag-picker-open { overflow: hidden; }
   border: 1px solid #eef0f5;
   border-radius: 12px;
 }
-#tagPickerModal .tag-sheet-section-title { margin: 0; font-size: 13px; font-weight: 600; color: #5b6478; }
+#tagPickerModal .tag-sheet-section-title, #mistakeEditModal .tag-sheet-section-title { margin: 0; font-size: 13px; font-weight: 600; color: #5b6478; }
 
 /* ---------- 底部按钮：看得清、点得准 ---------- */
-#tagPickerModal .modal-actions button {
+#tagPickerModal .modal-actions button, #mistakeEditModal .modal-actions button {
   padding: 10px 18px;
   border-radius: 10px;
   font-size: 15px;
   font-weight: 500;
   transition: background 0.15s ease, filter 0.15s ease;
 }
-#tagPickerModal .btn-cancel { background: #f3f4f8; color: #4a5268; }
-#tagPickerModal .btn-cancel:hover { background: #e8eaf1; }
-#tagPickerModal .btn-confirm { background: #4a6cf7; color: #fff; }
-#tagPickerModal .btn-confirm:hover { filter: brightness(1.06); }
-#tagPickerModal .btn-confirm:disabled { opacity: 0.6; cursor: wait; }
+#tagPickerModal .btn-cancel, #mistakeEditModal .btn-cancel { background: #f3f4f8; color: #4a5268; }
+#tagPickerModal .btn-cancel:hover, #mistakeEditModal .btn-cancel:hover { background: #e8eaf1; }
+#tagPickerModal .btn-confirm, #mistakeEditModal .btn-confirm { background: #4a6cf7; color: #fff; }
+#tagPickerModal .btn-confirm:hover, #mistakeEditModal .btn-confirm:hover { filter: brightness(1.06); }
+#tagPickerModal .btn-confirm:disabled, #mistakeEditModal .btn-confirm:disabled { opacity: 0.6; cursor: wait; }
 
 /* ---------- 窄屏：从底部升起的抽屉 ---------- */
 @media (max-width: 640px) {
-  #tagPickerModal { align-items: flex-end; }
+  #tagPickerModal, #mistakeEditModal { align-items: flex-end; }
 
-  #tagPickerModal .tag-sheet {
+  #tagPickerModal .tag-sheet, #mistakeEditModal .tag-sheet {
     margin: 0;                            /* 必须清掉 margin:auto，否则会盖过 align-items:flex-end */
     max-width: none;
     max-height: 92vh;
@@ -1116,12 +1115,12 @@ body.tag-picker-open { overflow: hidden; }
     transform: translateY(100%);
     transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
   }
-  #tagPickerModal.show .tag-sheet { transform: translateY(0); }
-  #tagPickerModal .tag-sheet-grip { display: block; }
+  #tagPickerModal.show .tag-sheet, #mistakeEditModal.show .tag-sheet { transform: translateY(0); }
+  #tagPickerModal .tag-sheet-grip, #mistakeEditModal .tag-sheet-grip { display: block; }
 
-  #tagPickerModal .tag-sheet-head { padding: 6px 12px 12px 16px; }
-  #tagPickerModal .tag-sheet-body { padding: 14px 16px 12px; }
-  #tagPickerModal .tag-sheet-foot { padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px)); }
+  #tagPickerModal .tag-sheet-head, #mistakeEditModal .tag-sheet-head { padding: 6px 12px 12px 16px; }
+  #tagPickerModal .tag-sheet-body, #mistakeEditModal .tag-sheet-body { padding: 14px 16px 12px; }
+  #tagPickerModal .tag-sheet-foot, #mistakeEditModal .tag-sheet-foot { padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px)); }
 
   /* 手指点得准：整行 44px 高，勾选框和箭头一起放大 */
   #tagPickerModal .tag-row { min-height: 44px; }
@@ -1130,13 +1129,14 @@ body.tag-picker-open { overflow: hidden; }
   #tagPickerModal .tag-label { font-size: 15px; }
 
   /* 按钮并排铺满一行，角落里的按钮不再难点 */
-  #tagPickerModal .modal-actions { gap: 12px; }
-  #tagPickerModal .modal-actions button { flex: 1 1 0; padding: 12px 16px; }
+  #tagPickerModal .modal-actions, #mistakeEditModal .modal-actions { gap: 12px; }
+  #tagPickerModal .modal-actions button, #mistakeEditModal .modal-actions button { flex: 1 1 0; padding: 12px 16px; }
 }
 
 /* 尊重系统的"减少动态效果"设置 */
 @media (prefers-reduced-motion: reduce) {
   #tagPickerModal .tag-sheet,
+  #mistakeEditModal .tag-sheet,
   .modal-mask,
   .modal { transition: none; }
 }
@@ -1189,3 +1189,193 @@ body.material-review-open { overflow: hidden; }
 .reading-review-select-row { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #eee; }
 .reading-review-select-row .material-review-option { flex: 1; min-width: 0; border-bottom: 0; }
 .reading-review-select-row .reading-favorite { flex-shrink: 0; }
+
+/* ============================================================
+   错题卡片内容排布（分类详情页 / 选择错题复习弹窗 共用）
+   ------------------------------------------------------------
+   一行一块，从上到下：
+     名称 + 勾选框（勾选框统一在最右端）
+     状态标签一行：是否复习 / 已收藏（有才显示）/ 知识框架里的标签
+     文件形式 · 创建时间
+     警告（⚠️缺少参考答案，暂不能勾选，请补齐内容。）
+   改这里要一起看 js/mistakes.js 里 loadMistakes() 的模板。
+   ============================================================ */
+.mistake-title-row { display: flex; align-items: center; gap: 10px; }
+.mistake-title-row .title { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
+.mistake-title-row .mistake-select-check,
+#mistakeReviewPicker .mistake-select-check,
+#mistakeReviewPickerDetail .mistake-select-check { margin: 0; flex: 0 0 auto; }
+
+/* 标签行：固定一行不换行；标签多的时候横向滑动，不丢内容也不撑高卡片 */
+.mistake-line {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.mistake-line::-webkit-scrollbar { display: none; }
+.mistake-line > * { flex: 0 0 auto; white-space: nowrap; }
+.mistake-line .mistake-state { margin: 0; }
+
+/* 警告行：整行都能点，点了就去补齐内容 */
+.mistake-inline-error.mistake-repair {
+  display: block;
+  width: 100%;
+  margin: 8px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mistake-inline-error.mistake-repair:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+/* ===== 编辑错题弹窗 =====
+   每块一张卡片：图标 + 标题 + 一句说明 + 内容；卡片之间留白，
+   右上角「已改」小标提示改过哪儿，编辑时才有方向感。 */
+body.mistake-edit-open { overflow: hidden; }
+#tagPickerModal { z-index: 120; }              /* 别的弹窗叠上来时，标签选择器在最上面 */
+
+#mistakeEditModal .tag-sheet-body { padding: 16px 16px 6px; background: #f6f7fb; }
+
+.edit-card {
+  background: #fff;
+  border: 1px solid #e6e9f2;
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 14px;                          /* ★ 板块之间必须留白 */
+  box-shadow: 0 1px 2px rgba(21, 30, 60, 0.04);
+}
+.edit-card:last-child { margin-bottom: 8px; }
+.edit-card-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+.edit-card-icon { font-size: 17px; line-height: 1.25; }
+.edit-card-titles { flex: 1 1 auto; min-width: 0; }
+.edit-card-titles b { display: block; font-size: 15px; color: #232a3d; }
+.edit-card-titles small { display: block; margin-top: 3px; font-size: 12px; color: #8a93a8; line-height: 1.5; }
+.edit-flag {
+  display: none; flex: 0 0 auto; margin-top: 2px;
+  padding: 2px 8px; border-radius: 999px;
+  background: #eef2ff; color: #4a6cf7; font-size: 11px;
+}
+.edit-card-body { display: grid; gap: 10px; }
+.edit-card-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.edit-card-row input { flex: 2 1 190px; }
+.edit-card-row select { flex: 1 1 110px; }
+
+/* 输入框统一成一张「能点、能改」的样子 */
+#mistakeEditModal input:not([type="file"]):not([type="checkbox"]),
+#mistakeEditModal select,
+#mistakeEditModal textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid #dbe0ea;
+  border-radius: 9px;
+  background: #fcfdff;
+  font: inherit;
+  font-size: 14px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+#mistakeEditModal textarea { resize: vertical; }
+#mistakeEditModal input:hover,
+#mistakeEditModal select:hover,
+#mistakeEditModal textarea:hover { border-color: #c7d0e2; }
+#mistakeEditModal input:focus,
+#mistakeEditModal select:focus,
+#mistakeEditModal textarea:focus {
+  outline: none; background: #fff;
+  border-color: #4a6cf7; box-shadow: 0 0 0 3px rgba(74, 108, 247, 0.12);
+}
+
+/* 删除 / 上传 两个并排键 */
+.edit-file-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.edit-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 14px; border: 1px solid #dbe0ea; border-radius: 9px;
+  background: #fff; color: #3d465c; font: inherit; font-size: 13px;
+  cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease;
+}
+.edit-btn:hover { background: #f3f5fb; border-color: #c7d0e2; }
+.edit-btn-danger { color: #c0392b; border-color: #f2d5d0; background: #fff7f6; }
+.edit-btn-danger:hover { background: #ffeae7; border-color: #e9b7b0; }
+.edit-btn-icon { font-size: 13px; line-height: 1; }
+.edit-file-preview { display: flex; }
+
+/* 照片只占一小块，不用为了一张图一直往下翻；点一下看原图 */
+#mistakeEditModal .mistake-edit-thumb {
+  display: block;
+  max-width: 100%;
+  max-height: 150px;
+  border: 1px solid #e6e9f0;
+  border-radius: 10px;
+}
+.mistake-detail-image-capped { max-height: 320px; width: auto; max-width: 100%; border-radius: 8px; }
+
+/* 标签：上面是已选 chips，下面是就地勾选的树 */
+#mistakeEditModal .mistake-tags { margin: 0; min-height: 24px; }
+.edit-tag-tree {
+  min-height: 180px;
+  max-height: 46vh;                              /* 尽量把整个框架摊开给用户看 */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #e6e9f2;
+  border-radius: 10px;
+  padding: 6px;
+  background: #fbfcfe;
+}
+.edit-tag-node { padding: 0; }
+.edit-tag-row { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 2px 6px; border-radius: 8px; transition: background 0.15s ease; }
+.edit-tag-row:hover { background: #eef2ff; }
+.edit-tag-row.is-checked { background: #eef2ff; }
+.edit-tag-toggle {
+  width: 22px; height: 22px; flex: 0 0 auto;
+  padding: 0; border: none; border-radius: 6px; background: none;
+  color: #888; font-size: 11px; line-height: 1; cursor: pointer;
+}
+.edit-tag-toggle:hover { background: #e3e8f7; }
+.edit-tag-toggle-empty { display: inline-block; cursor: default; }
+/* 同时覆盖 .modal input 的满宽样式，复选框不能挤占名称空间。 */
+#mistakeEditModal input.edit-tag-check { width: 17px; height: 17px; flex: 0 0 auto; padding: 0; margin: 0; box-sizing: border-box; }
+.edit-tag-search { min-width: 0; }
+.edit-tag-name { flex: 1 1 auto; min-width: 0; font-size: 14px; cursor: pointer; overflow-wrap: anywhere; }
+.edit-tag-name.tag-folder { color: #a06a00; }
+.edit-tag-name.tag-knowledge { color: #2f7d32; }
+.edit-tag-name.tag-unknown { color: #777; }
+.edit-tag-children { margin-left: 18px; border-left: 2px dashed #eceff6; padding-left: 8px; }
+.edit-tag-empty { padding: 14px 10px; font-size: 13px; color: #9aa4c0; text-align: center; }
+
+/* 名称：可改的名字 + 固定的后缀（后缀跟着附件，改不到） */
+.edit-name-field { display: flex; align-items: center; gap: 8px; flex: 2 1 190px; min-width: 0; }
+.edit-name-field input { flex: 1 1 auto; min-width: 0; }
+.edit-name-field .name-ext { flex: 0 0 auto; padding: 11px 10px; font-size: 13px; }
+
+/* 标签工具条：已选计数 + 一键全展开 / 全收起 */
+.edit-tag-tools { display: flex; align-items: center; gap: 8px; }
+.edit-tag-count { flex: 1 1 auto; font-size: 12px; color: #8a93a8; }
+.edit-mini-btn {
+  padding: 5px 10px; border: 1px solid #dbe0ea; border-radius: 999px;
+  background: #fff; color: #5b6478; font: inherit; font-size: 12px; cursor: pointer;
+}
+.edit-mini-btn:hover { background: #f3f5fb; border-color: #c7d0e2; }
+
+.edit-foot-note { font-size: 12px; color: #9aa4c0; margin-bottom: 8px; }
+#mistakeEditError { max-height: 64px; overflow-y: auto; overflow-wrap: anywhere; }
+
+@media (max-width: 640px) {
+  #mistakeEditModal .tag-sheet-body { padding: 12px 12px 4px; }
+  .edit-card { padding: 12px; border-radius: 12px; margin-bottom: 10px; }
+  .edit-card-row { flex-direction: column; }
+  .edit-name-field { flex: 1 1 auto; width: 100%; }
+  .edit-card-row input, .edit-card-row select { flex: 1 1 auto; }
+  .edit-tag-row { min-height: 44px; }
+  #mistakeEditModal input.edit-tag-check { width: 19px; height: 19px; }
+}

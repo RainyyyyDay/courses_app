@@ -8,7 +8,7 @@
 const { db } = require('./connection');
 
 // ===== 当前程序支持的数据库版本 =====
-const CURRENT_DB_VERSION = 10;
+const CURRENT_DB_VERSION = 11;
 
 // 判断某张表是否已经存在
 function tableExists(name) {
@@ -144,6 +144,25 @@ function migrate() {
         }
       }
       setUserVersion(10);
+      db.exec('COMMIT');
+      version = 10;   // 交给下一步（v11）继续，别再漏了
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+  if (version === 10) {
+    db.exec('BEGIN');
+    try {
+      // 答案也能是一个附件（拍的解题过程、答案 PDF 之类），和答案文字并存。
+      const marked = new Set(db.prepare('PRAGMA table_info(mistakes)').all().map(c => c.name));
+      for (const [name, ddl] of Object.entries({
+        answer_image_url: "TEXT NOT NULL DEFAULT ''",
+        answer_file_type: "TEXT NOT NULL DEFAULT ''",
+      })) {
+        if (!marked.has(name)) db.exec(`ALTER TABLE mistakes ADD COLUMN ${name} ${ddl}`);
+      }
+      setUserVersion(11);
       db.exec('COMMIT');
     } catch (err) {
       db.exec('ROLLBACK');

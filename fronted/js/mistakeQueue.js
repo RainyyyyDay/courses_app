@@ -75,7 +75,7 @@ function renderMistakeReviewPicker() {
     const all = selection.catalog.filter(row => row.course_id === selection.courseId && row.mistake_type === type);
     const eligible = all.filter(row => !mistakeCannotReview(row));
     const count = eligible.filter(row => selection.ids.has(row.id)).length;
-    return `<div class="mistake-review-category"><button data-review-category="${type}" onclick="openMistakeReviewCategory('${type}')" ${loading ? 'disabled' : ''}>${name}<small>${selection.pickerLoading ? '加载中…' : `已选 ${count} / ${eligible.length} 道${all.length > eligible.length ? `；${all.length - eligible.length} 道需补齐内容` : ''}`}</small></button><label><input data-review-category-all="${type}" type="checkbox" ${count && count === eligible.length ? 'checked' : ''} ${loading || !eligible.length ? 'disabled' : ''} onchange="selectMistakeReviewCategory('${type}',this.checked)" />全选</label></div>`;
+    return `<div class="mistake-review-category"><button data-review-category="${type}" onclick="openMistakeReviewCategory('${type}')" ${loading ? 'disabled' : ''}>${name}<small>${selection.pickerLoading ? '加载中…' : `已选 ${count} / ${all.length} 道${all.length > eligible.length ? `；其中 ${all.length - eligible.length} 道需补齐内容` : ''}`}</small></button><label><input data-review-category-all="${type}" type="checkbox" ${count && count === eligible.length ? 'checked' : ''} ${loading || !eligible.length ? 'disabled' : ''} onchange="selectMistakeReviewCategory('${type}',this.checked)" />全选</label></div>`;
   }).join('');
   document.querySelectorAll('[data-review-category-all]').forEach(input => {
     const rows = selection.catalog.filter(row => row.mistake_type === input.dataset.reviewCategoryAll && !mistakeCannotReview(row));
@@ -149,9 +149,10 @@ function renderMistakeSelectionControls() {
   const homeResume = document.getElementById('mistakeHomeReviewResume');
   if (homeResume) homeResume.style.display = saved && !saved.finished ? 'inline-block' : 'none';
   header.style.display = formal ? 'flex' : 'none';
+  header.className = selecting ? 'mistake-toolbar' : 'material-review-entry';
   header.innerHTML = selecting
     ? '<label><input id="mistakeSelectAll" type="checkbox" onchange="selectAllVisibleMistakes(this.checked)" /> 全选当前筛选结果</label><button onclick="clearMistakeSelection()">清空已选</button>' + (!mistakeReviewPicker ? '<button onclick="cancelMistakeSelection()">取消选择</button>' : '')
-    : '<button onclick="enterMistakeSelection()">复习：选择题目</button>' + (saved && !saved.finished && saved.type === mistakeUi.type ? '<button onclick="resumeMistakeQueue()">继续上次复习</button>' : '');
+    : '<button onclick="enterMistakeReviewFromHome()">开始复习</button>' + (saved && !saved.finished && saved.type === mistakeUi.type ? '<button onclick="resumeMistakeQueue()">继续上次复习</button>' : '');
   footer.style.display = selecting && !mistakeReviewPicker ? 'flex' : 'none';
   footer.innerHTML = selecting ? `<span>已选择 <strong id="mistakeSelectedCount">${mistakeSelection.ids.size}</strong> 道题</span><button id="mistakeQueueStart" onclick="startMistakeQueue()">开始复习</button><span id="mistakeSelectionError" class="mistake-inline-error" role="alert"></span>` : '';
   updateMistakeSelectionControls();

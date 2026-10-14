@@ -148,7 +148,8 @@
     <div class="tab-pane" id="pane-mistakes">
       <!-- 不限制文件类型：题目的扫描件 / PDF 也能直接上传 -->
       <input type="file" id="mistakeFile" style="display:none" onchange="uploadMistake()" />
-      <div class="entry-btns">
+      <!-- 上传 / 手动输入：只在「错题」大页出现；进了四个分类的详情页会由 renderMistakeCategories() 隐藏 -->
+      <div class="entry-btns" id="mistakeEntryBtns">
         <button class="upload-btn" onclick="document.getElementById('mistakeFile').click()">＋ 上传文件</button>
         <button class="upload-btn upload-btn-plain" onclick="openManualModal('mistake')">＋ 手动输入</button>
       </div>
@@ -158,19 +159,17 @@
         <button id="mistakeHomeReviewResume" type="button" onclick="resumeMistakeQueue()" style="display:none;">继续上次复习</button>
       </div>
       <div id="mistakeCategories" class="mistake-categories"></div>
-      <div id="mistakeFilters" class="mistake-workspace" style="display:none;">
+      <div id="mistakeFilters" class="reading-browse-filters" style="display:none;">
         <div class="mistake-toolbar">
           <button type="button" onclick="mistakeSelectionCurrent() && mistakeSelection.mixed ? returnToMistakeReviewPicker() : openMistakeCategory(null)">← 错题分类</button>
           <h2 id="mistakeCategoryTitle"></h2>
         </div>
-        <form class="mistake-filter-form" onsubmit="event.preventDefault();applyMistakeFilters();">
-          <label>搜索<input id="mistakeSearch" type="search" maxlength="500" placeholder="标题、题目文字" /></label>
-          <label>收藏<select id="mistakeFavoriteFilter"><option value="">全部</option><option value="true">已收藏</option><option value="false">未收藏</option></select></label>
-          <label>复习状态<select id="mistakeStatusFilter"><option value="">全部</option><option value="reviewed">已复习</option><option value="unreviewed">未复习</option></select></label>
-          <button type="submit">筛选</button>
-          <button type="button" onclick="clearMistakeFilters()">清空筛选</button>
+        <form class="reading-browse-controls" onsubmit="event.preventDefault();applyMistakeFilters();">
+          <input id="mistakeSearch" type="search" maxlength="500" aria-label="搜索标题或正文" placeholder="搜索标题或正文" oninput="applyMistakeFilters()" />
+          <label><input id="mistakeFavoriteFilter" type="checkbox" onchange="applyMistakeFilters()" />收藏</label>
+          <select id="mistakeStatusFilter" aria-label="复习状态" onchange="applyMistakeFilters()"><option value="">全部复习状态</option><option value="reviewed">已复习</option><option value="unreviewed">未复习</option></select>
         </form>
-        <details class="mistake-tag-filter"><summary>知识点标签（匹配任一所选标签）</summary><div id="mistakeFilterTags"></div></details>
+        <details><summary>知识点标签（可多选）</summary><div id="mistakeFilterTags" class="reading-browse-tags"></div></details>
       </div>
       <div id="mistakeSelectionHeader" class="mistake-toolbar" style="display:none;"></div>
       <div id="mistakeList"></div>
@@ -230,27 +229,17 @@
       <div id="mistakeDetailContent" class="detail-content"></div>
       <!-- 上传的不是图片时（PDF 扫描件等），这里显示一个打开文件的入口 -->
       <div id="mistakeDetailFile" class="detail-actions" style="display:none;"></div>
-      <div class="mistake-toolbar">
+      <div class="mistake-toolbar" id="mistakeReviewToolbar" style="display:none;">
         <button id="mistakeReviewToggle" type="button" onclick="toggleMistakeReviewMode()">进入复习</button>
       </div>
       <div id="mistakeReviewPanel" class="mistake-workspace" style="display:none;" aria-live="polite"></div>
       <div id="mistakeReadPanel" class="mistake-workspace">
         <h2>参考答案</h2><div id="mistakeAnswerText" class="detail-content"></div>
+        <div id="mistakeDetailAnswerFile" class="detail-actions" style="display:none;"></div>
         <h2>解析 / 错误原因</h2><div id="mistakeExplanationText" class="detail-content"></div>
-        <details id="mistakeEditor">
-          <summary>编辑题目、分类和答案</summary>
-          <form class="mistake-edit-form" onsubmit="event.preventDefault();saveMistakeDetail();">
-            <label>标题<input id="mistakeEditTitle" required /></label>
-            <label>类型<select id="mistakeEditType"><option value="knowledge">知识类</option><option value="thinking">思维类</option><option value="execution">执行类</option><option value="unclassified">待分类</option></select></label>
-            <label>题目文字<textarea id="mistakeEditContent" rows="4"></textarea></label>
-            <label>参考答案<textarea id="mistakeEditAnswer" rows="4"></textarea></label>
-            <label>解析 / 错误原因（可选）<textarea id="mistakeEditExplanation" rows="3"></textarea></label>
-            <p class="detail-meta">修改题目、分类、答案或解析后，会变为未复习；原附件保留。</p>
-            <button id="mistakeEditSave" type="submit">保存修改</button>
-            <button type="button" onclick="editMistakeDetailTags()">编辑标签</button>
-            <div id="mistakeEditError" class="mistake-inline-error" role="alert"></div>
-          </form>
-        </details>
+        <div class="mistake-toolbar">
+          <button type="button" onclick="openMistakeEdit()">编辑</button>
+        </div>
       </div>
       </div><!-- mistakeDetailBody -->
     </div>
@@ -389,6 +378,126 @@
         <button type="button" onclick="closeMistakeReviewPicker()">关闭</button>
         <button id="mistakeReviewPickerStart" type="button" class="btn-confirm" onclick="startMistakeQueue()" disabled>开始复习</button>
       </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 编辑错题弹窗：一块一块来 —— 名称与分类 / 标签 / 题目 / 答案 / 错因
+       每块一张卡片，卡片之间留白；改过的块右上角亮起「已改」，一眼看得出改了哪儿。
+       题目和答案都只有一个输入框：想打字就打字，想传文件就点「上传新内容」。 -->
+  <div class="modal-mask" id="mistakeEditModal">
+    <div class="modal modal-wide tag-sheet" role="dialog" aria-modal="true" aria-labelledby="mistakeEditModalTitle">
+      <div class="tag-sheet-grip" aria-hidden="true"></div>
+      <div class="tag-sheet-head">
+        <h3 id="mistakeEditModalTitle">编辑错题</h3>
+        <button type="button" class="tag-sheet-close" onclick="closeMistakeEdit()" title="关闭" aria-label="关闭">×</button>
+      </div>
+
+      <div class="tag-sheet-body" id="mistakeEditBody">
+        <section class="edit-card">
+          <div class="edit-card-head">
+            <span class="edit-card-icon">🏷️</span>
+            <div class="edit-card-titles">
+              <b>名称与分类</b>
+              <small>列表显示的标题；分类决定它归属哪一类。文件后缀由附件决定，不可修改</small>
+            </div>
+            <span class="edit-flag" id="mistakeEditFlagName">已改</span>
+          </div>
+          <div class="edit-card-body edit-card-row">
+            <div class="edit-name-field">
+              <input id="mistakeEditTitle" placeholder="名称" aria-label="名称" oninput="refreshMistakeEditDirty()" />
+              <span class="name-ext" id="mistakeEditNameExt" style="display:none;"></span>
+            </div>
+            <select id="mistakeEditType" aria-label="分类" onchange="refreshMistakeEditDirty()">
+              <option value="knowledge">知识类</option><option value="thinking">思维类</option><option value="execution">执行类</option><option value="unclassified">待分类</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="edit-card">
+          <div class="edit-card-head">
+            <span class="edit-card-icon">🔖</span>
+            <div class="edit-card-titles">
+              <b>标签</b>
+              <small>勾选知识框架中的分类或知识点；保存时一并生效</small>
+            </div>
+            <span class="edit-flag" id="mistakeEditFlagTags">已改</span>
+          </div>
+          <div class="edit-card-body">
+            <div class="mistake-tags" id="mistakeEditTags"></div>
+            <input class="edit-tag-search" id="mistakeEditTagSearch" type="search" maxlength="100" autocomplete="off"
+              placeholder="搜索分类 / 知识点" aria-label="搜索分类 / 知识点" oninput="searchMistakeEditTags(this.value)" />
+            <div class="edit-tag-tools">
+              <span class="edit-tag-count" id="mistakeEditTagCount">已选 0 项</span>
+              <button type="button" class="edit-mini-btn" onclick="toggleAllMistakeEditTags(true)">全展开</button>
+              <button type="button" class="edit-mini-btn" onclick="toggleAllMistakeEditTags(false)">全收起</button>
+            </div>
+            <div class="edit-tag-tree" id="mistakeEditTagTree"></div>
+          </div>
+        </section>
+
+        <section class="edit-card">
+          <div class="edit-card-head">
+            <span class="edit-card-icon">📄</span>
+            <div class="edit-card-titles">
+              <b>题目</b>
+              <small>可上传图片或 PDF 附件，也可直接录入题目文字</small>
+            </div>
+            <span class="edit-flag" id="mistakeEditFlagQuestion">已改</span>
+          </div>
+          <div class="edit-card-body">
+            <div class="edit-file-preview" id="mistakeEditQuestionFile" style="display:none;"></div>
+            <div class="edit-file-actions">
+              <button type="button" class="edit-btn edit-btn-danger" id="mistakeEditQuestionRemove" style="display:none;" onclick="removeMistakeEditQuestionFile()"><span class="edit-btn-icon">🗑</span>删除原题</button>
+              <button type="button" class="edit-btn" id="mistakeEditQuestionUploadBtn" onclick="document.getElementById('mistakeEditQuestionUpload').click()"><span class="edit-btn-icon">⬆</span><span id="mistakeEditQuestionUploadLabel">上传新内容</span></button>
+            </div>
+            <input type="file" id="mistakeEditQuestionUpload" style="display:none" onchange="chooseMistakeEditQuestionFile(this)" />
+            <textarea id="mistakeEditContent" rows="4" placeholder="题目内容" oninput="refreshMistakeEditDirty()"></textarea>
+          </div>
+        </section>
+
+        <section class="edit-card">
+          <div class="edit-card-head">
+            <span class="edit-card-icon">✅</span>
+            <div class="edit-card-titles">
+              <b>答案</b>
+              <small>可填写答案文字或上传答案附件；填写后方可进入复习</small>
+            </div>
+            <span class="edit-flag" id="mistakeEditFlagAnswer">已改</span>
+          </div>
+          <div class="edit-card-body">
+            <div class="edit-file-preview" id="mistakeEditAnswerFile" style="display:none;"></div>
+            <div class="edit-file-actions">
+              <button type="button" class="edit-btn edit-btn-danger" id="mistakeEditAnswerRemove" style="display:none;" onclick="removeMistakeEditAnswerFile()"><span class="edit-btn-icon">🗑</span>删除原答案</button>
+              <button type="button" class="edit-btn" id="mistakeEditAnswerUploadBtn" onclick="document.getElementById('mistakeEditAnswerUpload').click()"><span class="edit-btn-icon">⬆</span><span id="mistakeEditAnswerUploadLabel">上传新内容</span></button>
+            </div>
+            <input type="file" id="mistakeEditAnswerUpload" style="display:none" onchange="chooseMistakeEditAnswerFile(this)" />
+            <textarea id="mistakeEditAnswer" rows="4" placeholder="参考答案" oninput="refreshMistakeEditDirty()"></textarea>
+          </div>
+        </section>
+
+        <section class="edit-card">
+          <div class="edit-card-head">
+            <span class="edit-card-icon">💡</span>
+            <div class="edit-card-titles">
+              <b>错因</b>
+              <small>选填：解析或错误原因</small>
+            </div>
+            <span class="edit-flag" id="mistakeEditFlagExplanation">已改</span>
+          </div>
+          <div class="edit-card-body">
+            <textarea id="mistakeEditExplanation" rows="3" placeholder="解析 / 错误原因" oninput="refreshMistakeEditDirty()"></textarea>
+          </div>
+        </section>
+      </div>
+
+      <div class="tag-sheet-foot">
+        <div class="edit-foot-note">修改题目、答案、解析、分类或附件后，本题将重置为「未复习」</div>
+        <div class="modal-actions">
+          <button class="btn-cancel" type="button" onclick="closeMistakeEdit()">取消</button>
+          <button class="btn-confirm" id="mistakeEditSave" type="button" onclick="saveMistakeDetail()">保存修改</button>
+        </div>
+        <div id="mistakeEditError" class="mistake-inline-error" role="alert"></div>
       </div>
     </div>
   </div>

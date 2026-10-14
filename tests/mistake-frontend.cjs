@@ -143,9 +143,9 @@ function mistakeBrowserScenario(data) {
     document.getElementById('mistakeSearch').value = '浏览器搜索';
     await applyMistakeFilters();
     check(currentMistakes.length === 1 && currentMistakes[0].id === knowledge.id, 'search');
-    const favoriteButton = document.querySelector('[data-mistake-id="' + knowledge.id + '"] button:nth-child(3)');
+    const favoriteButton = document.querySelector('[data-mistake-favorite="' + knowledge.id + '"]');
     await toggleMistakeFavorite(knowledge.id, true, favoriteButton);
-    document.getElementById('mistakeFavoriteFilter').value = 'true';
+    document.getElementById('mistakeFavoriteFilter').checked = true;
     document.getElementById('mistakeStatusFilter').value = 'unreviewed';
     await changeMistakeTagFilter(${data.child.id}, true);
     check(currentMistakes.length === 1 && currentMistakes[0].favorite === 1, 'combined favorites/status/tag/search');
@@ -193,6 +193,7 @@ function mistakeBrowserScenario(data) {
     check(pending.body.action === 'recall', 'pending action recorded');
     await submitMistakeReview('judge', 'correct', true);
     await toggleMistakeReviewMode();
+    await openMistakeEdit();
     document.getElementById('mistakeEditExplanation').value = '修改解析';
     await saveMistakeDetail();
     check(mistakeDetailState.row.explanation === '修改解析' && mistakeDetailState.row.review_status === 'unreviewed', 'detail edit resets status');
@@ -236,6 +237,7 @@ function mistakeBrowserScenario(data) {
     await submitMistakeReview('judge', 'correct', true);
     check(mistakeDetailState.progress.reviewStatus === 'reviewed', 'execution correct');
     await toggleMistakeReviewMode();
+    await openMistakeEdit();
     document.getElementById('mistakeEditType').value = 'unclassified';
     await saveMistakeDetail();
     await toggleMistakeReviewMode();
@@ -266,7 +268,7 @@ function mistakeBrowserScenario(data) {
     check(!tagPickerState, 'unclassified creation saves');
     const unclassified = currentMistakes.find(r => r.title === '浏览器待分类题');
     check(unclassified?.mistake_type === 'unclassified' && unclassified.review_status === 'unreviewed', 'unclassified creation type and default status');
-    check(document.querySelector('[data-mistake-id="' + unclassified.id + '"] .mistake-actions').textContent.includes('复习'), 'unclassified single review entry');
+    check(!document.querySelector('[data-mistake-id="' + unclassified.id + '"] .mistake-actions').textContent.includes('复习'), 'unclassified has no single review entry');
     document.getElementById('mistakeSearch').value = '待分类自行';
     document.getElementById('mistakeStatusFilter').value = 'unreviewed';
     await changeMistakeTagFilter(${data.child.id}, true);
@@ -378,7 +380,7 @@ function mistakeBrowserScenario(data) {
     checkbox.click(); check(mistakeSelection.ids.size === 2, 'checkbox multiselect');
     checkbox.click(); check(mistakeSelection.ids.size === 1, 'checkbox deselect');
     document.getElementById('mistakeSearch').value = '浏览器搜索';
-    document.getElementById('mistakeFavoriteFilter').value = 'true';
+    document.getElementById('mistakeFavoriteFilter').checked = true;
     document.getElementById('mistakeStatusFilter').value = 'unreviewed';
     await changeMistakeTagFilter(${data.child.id}, true);
     check(currentMistakes.length === 1 && currentMistakes[0].id === knowledge.id, 'selection combined search favorite status tags');

@@ -44,6 +44,15 @@ function keepFileExtension(title, fileUrl) {
   return name + ext;
 }
 
+// 换掉或删掉附件时，把磁盘上那个旧文件也清掉。
+// 只认「/uploads/文件名」这一种形式（文件名限定为安全字符），
+// 不把数据库里的值直接当成路径用；删不掉也不影响记录本身。
+function removeUpload(fileUrl) {
+  const match = /^\/uploads\/([A-Za-z0-9._-]+)$/.exec(String(fileUrl || ''));
+  if (!match) return;
+  fs.rm(path.join(uploadDir, match[1]), { force: true }, () => {});
+}
+
 // 从 multipart/form-data 的请求体里解析节点 id 数组（可以完全不传）。
 // 错题用字段名 knowledgeIds，资料 / 笔记用 nodeIds，格式完全一样，所以共用一个解析函数。
 // 以后前端挑一种写法即可，下面三种都支持：
@@ -530,6 +539,42 @@ app.patch('/api/courses/:courseId/mistakes/:mistakeId', mistakeApi((req, res) =>
   if (body.expectedRevision !== undefined && (!Number.isSafeInteger(body.expectedRevision) || body.expectedRevision < 1)) mistakeError(400, 'INVALID_ARGUMENT', 'expectedRevision 必须是正整数');
   if (!Object.keys(changes).length) mistakeError(400, 'INVALID_ARGUMENT', '至少提交一个编辑字段');
   res.json(db.updateMistake(row.id, changes, body.expectedRevision));
+}));
+
+// 题目附件：先在前端删掉旧的，再传新的；标题后缀跟着新文件走。
+app.put('/api/courses/:courseId/mistakes/:mistakeId/question-file', upload.single('file'), mistakeApi((req, res) => {
+  const row = scopedMistake(req);
+  if (!req.file) mistakeError(400, 'INVALID_ARGUMENT', '请选择要上传的文件');
+  const url = '/uploads/' + req.file.filename;
+  removeUpload(row.image_url);
+  res.json(db.updateMistake(row.id, {
+    image_url: url,
+    file_type: req.file.mimetype,
+    title: keepFileExtension(row.title, url),
+  }));
+}));
+
+app.delete('/api/courses/:courseId/mistakes/:mistakeId/question-file', mistakeApi((req, res) => {
+  const row = scopedMistake(req);
+  if (!row.image_url) mistakeError(400, 'INVALID_ARGUMENT', '这道题本来就没有题目附件');
+  removeUpload(row.image_url);
+  res.json(db.updateMistake(row.id, { image_url: '', file_type: '' }));
+}));
+
+// 答案附件：图片或 PDF 都行，可以和答案文字同时存在。
+app.put('/api/courses/:courseId/mistakes/:mistakeId/answer-file', upload.single('file'), mistakeApi((req, res) => {
+  const row = scopedMistake(req);
+  if (!req.file) mistakeError(400, 'INVALID_ARGUMENT', '请选择要上传的文件');
+  const url = '/uploads/' + req.file.filename;
+  removeUpload(row.answer_image_url);
+  res.json(db.updateMistake(row.id, { answer_image_url: url, answer_file_type: req.file.mimetype }));
+}));
+
+app.delete('/api/courses/:courseId/mistakes/:mistakeId/answer-file', mistakeApi((req, res) => {
+  const row = scopedMistake(req);
+  if (!row.answer_image_url) mistakeError(400, 'INVALID_ARGUMENT', '这道题本来就没有答案附件');
+  removeUpload(row.answer_image_url);
+  res.json(db.updateMistake(row.id, { answer_image_url: '', answer_file_type: '' }));
 }));
 
 app.get('/api/courses/:courseId/mistakes/:mistakeId/review', mistakeApi((req, res) => {
