@@ -1450,6 +1450,39 @@ body.mistake-edit-open { overflow: hidden; }
 .edit-foot-note { font-size: 12px; color: #9aa4c0; margin-bottom: 8px; }
 #mistakeEditError { max-height: 64px; overflow-y: auto; overflow-wrap: anywhere; }
 
+/* 考前复习计划沿用内容卡片、筛选条与 tag-sheet 弹窗。 */
+.detail-tabs { overflow-x: auto; }
+.detail-tabs .dtab { flex-shrink: 0; white-space: nowrap; }
+.plan-card h2 { margin: 0 0 10px; font-size: 19px; }
+.plan-title { border: 0; background: none; color: inherit; font: inherit; padding: 0; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.plan-progress { display: flex; gap: 12px; align-items: center; margin-top: 16px; }
+.plan-progress progress { flex: 1; min-width: 0; height: 12px; accent-color: #4a6cf7; }
+.plan-progress span { min-width: 40px; font-size: 14px; }
+.plan-create { width: min(760px, 94vw); }
+body.plan-modal-open { overflow: hidden; }
+.plan-fields { border: 0; padding: 0; margin: 0 0 20px; min-width: 0; }
+.plan-fields legend { font-weight: 600; margin-bottom: 12px; }
+.plan-fields > label, .plan-dates label, .plan-settings label { display: block; font-size: 14px; }
+.plan-fields input:not([type=checkbox]), .plan-settings input { width: 100%; box-sizing: border-box; margin: 6px 0 12px; padding: 10px; border: 1px solid #dce1ec; border-radius: 8px; font: inherit; }
+.plan-dates { display: flex; gap: 16px; }
+.plan-dates label { flex: 1; min-width: 0; }
+.plan-option { border-bottom: 1px solid #edf0f5; padding: 12px 0; }
+.plan-option > span { min-width: 0; overflow-wrap: anywhere; }
+.plan-option small { display: block; color: #7e879e; margin-top: 5px; }
+.plan-day summary { cursor: pointer; font-weight: 600; line-height: 1.8; }
+.plan-day summary span { display: block; font-size: 13px; color: #7e879e; font-weight: 400; }
+.plan-day-types > div, .plan-task { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #edf0f5; }
+.plan-day-types { margin: 12px 0; }
+.plan-task span { min-width: 0; overflow-wrap: anywhere; }
+.plan-task small { flex-shrink: 0; color: #7e879e; }
+.plan-settings { margin-top: 18px; }
+.plan-settings summary { cursor: pointer; margin-bottom: 12px; }
+@media (max-width: 640px) {
+  .plan-create { width: 100%; }
+  .plan-dates { flex-direction: column; gap: 0; }
+  .plan-task { flex-wrap: wrap; }
+}
+
 @media (max-width: 640px) {
   #mistakeEditModal .tag-sheet-body { padding: 12px 12px 4px; }
   .edit-card { padding: 12px; border-radius: 12px; margin-bottom: 10px; }

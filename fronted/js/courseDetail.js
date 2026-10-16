@@ -56,6 +56,7 @@ function switchTab(tab, el = null) {
   if (tab === 'notes') loadNotes();
   if (tab === 'assessments') loadAssessments();
   if (tab === 'mistakes') loadMistakes();
+  if (tab === 'reviewPlans') loadReviewPlans();
   if (tab === 'knowledge') loadTree();
 
   // 只有切到“知识框架”时，右上角才显示 ➕

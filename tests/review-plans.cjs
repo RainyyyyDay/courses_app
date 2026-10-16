@@ -1,0 +1,143 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const {spawnSync} = require('node:child_process');
+const {DatabaseSync} = require('node:sqlite');
+const {schedulePlan,planDates,planToday} = require('../back/db/reviewPlanSchedule');
+
+function testReviewPlanMigrations(source,temp) {
+  for (const n of [1,12,13,86,120]) {
+    const items=Array.from({length:n},(_,i)=>({type:['material','note','mistake'][i%3],id:i+1}));
+    const result=schedulePlan(items,'2026-10-16','2026-10-28');
+    const dates=planDates('2026-10-16','2026-10-28');
+    const counts=dates.map(date=>result.filter(row=>row.scheduled_date===date).length);
+    assert.equal(result.length,n); assert.equal(new Set(result.map(row=>row.type+':'+row.id)).size,n);
+    assert.ok(result.every(row=>row.scheduled_date>='2026-10-16' && row.scheduled_date<'2026-10-28'));
+    assert.ok(Math.max(...counts)-Math.min(...counts)<=1);
+    assert.deepEqual(schedulePlan([...items].reverse(),'2026-10-16','2026-10-28'),result,'stable schedule');
+  }
+  assert.deepEqual(planDates('2028-02-28','2028-03-01'),['2028-02-28','2028-02-29']);
+  assert.deepEqual(planDates('2026-12-31','2027-01-02'),['2026-12-31','2027-01-01']);
+  for (const dates of [['2026-02-30','2026-03-02'],['bad','2026-10-28'],['2026-10-28','2026-10-28'],['2026-10-28','2026-10-16']]) assert.throws(()=>planDates(...dates));
+  for (const version of [10,11]) {
+    const fixture=path.join(temp,'plan-migration-'+version); fs.mkdirSync(fixture);
+    fs.cpSync(path.join(source,'db'),path.join(fixture,'db'),{recursive:true});
+    const schema=fs.readFileSync(path.join(source,'db/schema.js'),'utf8');
+    const oldSchema=schema.replace('CURRENT_DB_VERSION = 12','CURRENT_DB_VERSION = 11').replace('if (getUserVersion() === 11)','if (false)');
+    assert.notEqual(oldSchema,schema);
+    fs.writeFileSync(path.join(fixture,'db/schema.js'),oldSchema);
+    const script=`
+      const assert=require('node:assert/strict'),fs=require('node:fs');
+      const store=require('./db/index.js'),d=store.db;
+      const c=store.createCourse('migration data');
+      const m=store.createMaterial(c.id,'old material','/uploads/m.pdf','application/pdf',[],'original body');
+      store.setMaterialReviewStatus(m.id,c.id,'reviewed'); store.setMaterialFavorite(m.id,c.id,true);
+      const w=store.createMistake(c.id,'old mistake','','question','',[],{mistakeType:'knowledge',answerContent:'answer'});
+      store.applyMistakeReview(w.id,{action:'start',requestId:'old-start',expectedVersion:0},true);
+      if (${version}===10) { d.exec('ALTER TABLE mistakes DROP COLUMN answer_image_url; ALTER TABLE mistakes DROP COLUMN answer_file_type; PRAGMA user_version=10'); }
+      const tables=d.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
+      const snapshots=tables.map(({name})=>({name,columns:d.prepare('PRAGMA table_info('+name+')').all().map(c=>c.name).join(','),rows:d.prepare('SELECT * FROM '+name+' ORDER BY rowid').all()}));
+      fs.copyFileSync(${JSON.stringify(path.join(source,'db/schema.js'))},'db/schema.js');
+      delete require.cache[require.resolve('./db/schema.js')];
+      if (${version}===11) {
+        d.exec('CREATE TABLE idx_review_plans_course(id INTEGER)');
+        assert.throws(()=>require('./db/schema.js'));
+        assert.equal(d.prepare('PRAGMA user_version').get().user_version,11);
+        assert.equal(d.prepare("SELECT count(*) n FROM sqlite_master WHERE name='review_plans'").get().n,0);
+        d.exec('DROP TABLE idx_review_plans_course');
+      }
+      require('./db/schema.js');
+      assert.equal(d.prepare('PRAGMA user_version').get().user_version,12,'single startup reaches v12');
+      for(const s of snapshots) assert.deepEqual(d.prepare('SELECT '+s.columns+' FROM '+s.name+' ORDER BY rowid').all(),s.rows);
+      const p=store.createReviewPlan(c.id,{name:'plan',startDate:'2026-10-16',examDate:'2026-10-28',selectedItems:[{type:'material',id:m.id}]});
+      const before=JSON.stringify(store.getReviewPlan(c.id,p.id));
+      delete require.cache[require.resolve('./db/schema.js')]; require('./db/schema.js');
+      assert.equal(JSON.stringify(store.getReviewPlan(c.id,p.id)),before);
+      const other=store.createCourse('other'),foreign=store.createMaterial(other.id,'foreign','','',[],'body');
+      assert.throws(()=>d.prepare("INSERT INTO review_plan_items(plan_id,item_type,item_id,scheduled_date,sort_order,title_snapshot) VALUES (?,'material',?,'2026-10-16',1,'bad')").run(p.id,foreign.id));
+      assert.deepEqual(d.prepare('PRAGMA foreign_key_check').all(),[]);d.close();
+    `;
+    const result=spawnSync(process.execPath,['-e',script],{cwd:fixture,windowsHide:true,encoding:'utf8'});
+    assert.equal(result.status,0,result.stderr);
+  }
+  console.log('PASS review plan schedule/migration: balanced/stable/bounded dates, leap/year boundaries, v10/v11 to v12 once, rollback, repeat safety, source data unchanged, course constraint');
+}
+
+async function testReviewPlanApi({base,temp}) {
+  async function api(method,url,body,status=method==='POST' && !/\/review(?:\/events)?(?:\?|$)/.test(url) ? 201 : 200) {
+    const response=await fetch(base+url,{method,...(body===undefined?{}:{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})});
+    const data=await response.json();assert.equal(response.status,status,JSON.stringify(data));return data;
+  }
+  const course=await api('POST','/courses',{name:'plan API'}), other=await api('POST','/courses',{name:'other plan API'});
+  const c='/courses/'+course.id, prefix=c+'/review-plans';
+  const m=await api('POST',c+'/materials',{title:'material',content:'body'});
+  const n=await api('POST',c+'/notes',{title:'note',content:'body'});
+  const w=await api('POST',c+'/mistakes',{title:'mistake',content:'question',mistakeType:'knowledge',answerContent:'answer'});
+  const foreign=await api('POST','/courses/'+other.id+'/materials',{title:'foreign',content:'body'});
+  const today=planToday(),tomorrow=new Date(Date.parse(today+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+  const body={name:'final',startDate:today,examDate:tomorrow,selectedItems:[{type:'material',id:m.id},{type:'note',id:n.id},{type:'mistake',id:w.id}]};
+  await api('PATCH',c+'/materials/'+m.id+'/review',{reviewStatus:'reviewed'});
+  const plan=await api('POST',prefix,body,201), second=await api('POST',prefix,{...body,name:'second'},201);
+  assert.equal(plan.total,3);assert.equal(plan.pending,3);assert.equal(plan.completed,0);assert.equal(plan.days.length,1);assert.equal(plan.todayStats.pending,3);
+  const url=prefix+'/'+plan.id;
+  let items=await api('GET',url+'/items');
+  assert.ok(items.every(item=>item.status==='pending' && item.scheduled_date===today));
+  const task=type=>items.find(item=>item.item_type===type);
+  for(const invalid of [{selectedItems:[]},{startDate:tomorrow},{examDate:today},{examDate:'2026-02-30'},{name:' '},
+    {selectedItems:[body.selectedItems[0],body.selectedItems[0]]},{selectedItems:[{type:'material',id:foreign.id}]},
+    {selectedItems:[{type:'bad',id:1}]},{selectedItems:[{type:'note',id:'1'}]},{selectedItems:[{type:'note',id:999999999}]},
+    {selectedItems:[{type:'note',id:n.id,courseId:other.id}]}]) await api('POST',prefix,{...body,...invalid},400);
+  await api('GET','/courses/'+other.id+'/review-plans/'+plan.id,undefined,404);
+  await api('GET',url+'/items?status=completed').then(rows=>assert.equal(rows.length,0));
+  await api('GET',url+'/items?scheduledDate='+tomorrow).then(rows=>assert.equal(rows.length,0));
+  await api('GET',url+'/items?status=reviewed',undefined,400);
+  await api('GET',url+'/items?scheduledDate=bad',undefined,400);
+  await api('GET',url+'/items?scheduledDate='+today+'&scheduledDate='+today,undefined,400);
+  await api('PATCH',url,{examDate:tomorrow},400);
+  const candidates=await api('GET',prefix+'/candidates');assert.equal(candidates.length,3);assert.ok(candidates.every(row=>row.course_id===course.id && !('nodes' in row)));
+  const readUrl=c+'/materials/'+m.id+'/review?planItemId='+task('material').id;
+  await api('GET',c+'/materials/'+m.id+'/review');assert.equal((await api('GET',url)).completed,0,'open not complete');
+  await api('PATCH',readUrl,{reviewStatus:'unreviewed'},400);
+  await api('PATCH',c+'/materials/'+m.id+'/review?planItemId='+task('note').id,{reviewStatus:'reviewed'},404);
+  // 故障注入只操作隔离数据库，验证内容写入和任务回写同事务回滚。
+  const d=new DatabaseSync(path.join(temp,'data/app.db'));
+  try {
+    await api('PATCH',c+'/materials/'+m.id+'/review',{reviewStatus:'unreviewed'});
+    d.exec("CREATE TRIGGER reject_plan_completion BEFORE UPDATE OF status ON review_plan_items WHEN NEW.status='completed' BEGIN SELECT RAISE(ABORT,'plan rollback'); END");
+    await api('PATCH',readUrl,{reviewStatus:'reviewed'},500);
+    assert.equal((await api('GET',c+'/materials/'+m.id+'/review')).review_status,'unreviewed');
+    assert.equal((await api('GET',url)).completed,0);
+    const review=c+'/mistakes/'+w.id+'/review',context='?planItemId='+task('mistake').id;
+    let p=await api('POST',review+context,{action:'start',requestId:'plan-start',expectedVersion:0});
+    const operation={action:'recall',recall:'forgotten',requestId:'plan-forgotten',expectedVersion:p.version};
+    await api('POST',review+'/events'+context,operation,500);
+    assert.equal((await api('GET',review)).version,p.version);assert.equal((await api('GET',url)).completed,0);
+    d.exec('DROP TRIGGER reject_plan_completion');
+    const completed=await api('POST',review+'/events'+context,operation);
+    assert.equal(completed.stage,'completed');assert.equal(completed.reviewStatus,'unreviewed');
+    assert.deepEqual(await api('POST',review+'/events'+context,operation),completed,'same requestId remains idempotent');
+    const otherTask=(await api('GET',prefix+'/'+second.id+'/items')).find(row=>row.item_type==='mistake');
+    await api('POST',review+'/events?planItemId='+otherTask.id,operation,409);
+    await api('POST',review+'/events'+context,{...operation,requestId:'new-stale'},409);
+    await api('PATCH',readUrl,{reviewStatus:'reviewed'});
+    const firstTime=(await api('GET',url+'/items')).find(row=>row.item_type==='material').completed_at;
+    await api('PATCH',readUrl,{reviewStatus:'reviewed'});
+    assert.equal((await api('GET',url+'/items')).find(row=>row.item_type==='material').completed_at,firstTime);
+    assert.equal((await api('GET',url)).completed,2);assert.equal((await api('GET',prefix+'/'+second.id)).completed,0);
+    await api('PATCH',url,{status:'archived',name:'renamed'});
+    await api('PATCH',c+'/notes/'+n.id+'/review?planItemId='+task('note').id,{reviewStatus:'reviewed'},409);
+    await api('PATCH',url,{status:'active'});
+    await api('DELETE','/notes/'+n.id);
+    const changed=await api('GET',url);assert.equal(changed.skipped,1);assert.equal(changed.completed,2);assert.equal(changed.completionRate,100);
+    items=await api('GET',url+'/items?status=skipped');assert.equal(items[0].title_snapshot,'note');assert.equal(items[0].source_deleted,1);
+    const empty=await api('POST',prefix,{...body,selectedItems:[{type:'material',id:m.id}]},201);
+    await api('DELETE','/materials/'+m.id);
+    const skipped=await api('GET',prefix+'/'+empty.id);assert.equal(skipped.skipped,1);assert.equal(skipped.completed,0);assert.equal(skipped.completionRate,0);
+    await api('DELETE',url);assert.equal(d.prepare('SELECT count(*) n FROM review_plan_items WHERE plan_id=?').get(plan.id).n,0);
+    await api('GET',url,undefined,404);
+    await api('DELETE',c);assert.equal(d.prepare('SELECT count(*) n FROM review_plans WHERE course_id=?').get(course.id).n,0);
+    assert.deepEqual(d.prepare('PRAGMA foreign_key_check').all(),[]);
+  } finally {d.close();}
+  console.log('PASS review plan APIs: creation/invalid/duplicates/course scope/fixed selection, completion semantics, atomic reading/mistake rollback, idempotency/context/version, archive, deletion/skipped/cascades');
+}
+module.exports={testReviewPlanMigrations,testReviewPlanApi};

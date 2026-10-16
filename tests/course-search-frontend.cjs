@@ -17,6 +17,7 @@ function courseSearchBrowserScenario(data) {
         if (String(url).includes('/search?')) searches.push(new URL(url));
         return originalFetch(url,options);
       };
+      const trackedSearchFetch = window.fetch;
       check([...document.querySelectorAll('.course-search-types input')].every(box => box.checked), 'default all types');
       check(results.textContent.includes('输入关键词') && searches.length === 0, 'empty keyword does not load whole course');
       setQuery('矩'); setQuery('矩阵'); setQuery('矩阵 ');
@@ -49,7 +50,7 @@ function courseSearchBrowserScenario(data) {
         : originalFetch(url,options);
       await openCourseSearchResult(courseSearchState.rows.find(row => row.type === 'material' && row.id === fixture.m));
       check(currentView.type === 'courseSearch' && results.querySelectorAll('button').length === 4, 'wrong-course detail safely returns to search');
-      window.fetch = originalFetch;
+      window.fetch = trackedSearchFetch;
       typeBox('materials').click(); typeBox('mistakes').click(); await settle();
       check(courseSearchState.total === 1 && courseSearchState.rows[0].type === 'note' && searches.at(-1).searchParams.get('types') === 'notes', 'single type combined with keyword');
       typeBox('materials').click(); await settle();

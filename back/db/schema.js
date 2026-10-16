@@ -8,7 +8,7 @@
 const { db } = require('./connection');
 
 // ===== 当前程序支持的数据库版本 =====
-const CURRENT_DB_VERSION = 11;
+const CURRENT_DB_VERSION = 12;
 
 // 判断某张表是否已经存在
 function tableExists(name) {
@@ -169,6 +169,75 @@ function migrate() {
       throw err;
     }
   }
+  // 读取实际版本，兼容旧 v10 分支没有推进局部 version 的情况；旧迁移保持原样。
+  if (getUserVersion() === 11) {
+    db.exec('BEGIN');
+    try {
+      upgradeToV12();
+      setUserVersion(12);
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+}
+
+function upgradeToV12() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS review_plans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      name TEXT NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 100),
+      start_date TEXT NOT NULL,
+      exam_date TEXT NOT NULL CHECK (exam_date > start_date),
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_review_plans_course ON review_plans(course_id, status);
+    CREATE TABLE IF NOT EXISTS review_plan_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      plan_id INTEGER NOT NULL REFERENCES review_plans(id) ON DELETE CASCADE,
+      item_type TEXT NOT NULL CHECK (item_type IN ('material','note','mistake')),
+      item_id INTEGER NOT NULL CHECK (item_id > 0),
+      scheduled_date TEXT NOT NULL,
+      sort_order INTEGER NOT NULL CHECK (sort_order >= 0),
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','completed','skipped')),
+      completed_at TEXT,
+      title_snapshot TEXT NOT NULL,
+      source_deleted INTEGER NOT NULL DEFAULT 0 CHECK (source_deleted IN (0,1)),
+      review_round INTEGER,
+      review_revision INTEGER,
+      UNIQUE(plan_id, item_type, item_id),
+      CHECK ((status = 'completed' AND completed_at IS NOT NULL) OR (status != 'completed' AND completed_at IS NULL))
+    );
+    CREATE INDEX IF NOT EXISTS idx_review_plan_day ON review_plan_items(plan_id, scheduled_date, status, sort_order);
+    CREATE INDEX IF NOT EXISTS idx_review_plan_source ON review_plan_items(item_type, item_id);
+    CREATE TRIGGER IF NOT EXISTS review_plan_fixed_course BEFORE UPDATE OF course_id ON review_plans
+      WHEN NEW.course_id != OLD.course_id BEGIN SELECT RAISE(ABORT, 'plan course is immutable'); END;
+  `);
+  for (const [type, table] of [['material','materials'],['note','notes'],['mistake','mistakes']]) {
+    for (const [suffix, event] of [['insert','INSERT'],['update','UPDATE OF plan_id, item_type, item_id, scheduled_date']]) {
+      db.exec(`CREATE TRIGGER IF NOT EXISTS review_plan_${type}_${suffix} BEFORE ${event} ON review_plan_items
+        WHEN NEW.item_type = '${type}' BEGIN
+          SELECT RAISE(ABORT, 'plan item must belong to its course and date range') WHERE NOT EXISTS (
+            SELECT 1 FROM ${table} r JOIN review_plans p ON p.id = NEW.plan_id
+            WHERE r.id = NEW.item_id AND r.course_id = p.course_id
+              AND NEW.scheduled_date >= p.start_date AND NEW.scheduled_date < p.exam_date);
+        END`);
+    }
+    db.exec(`CREATE TRIGGER IF NOT EXISTS review_plan_${type}_deleted AFTER DELETE ON ${table} BEGIN
+      UPDATE review_plan_items SET source_deleted = 1,
+        status = CASE WHEN status = 'pending' THEN 'skipped' ELSE status END
+        WHERE item_type = '${type}' AND item_id = OLD.id;
+    END`);
+  }
+  db.exec(`CREATE TRIGGER IF NOT EXISTS review_plan_mistake_changed AFTER UPDATE OF review_revision ON mistakes
+    WHEN NEW.review_revision != OLD.review_revision BEGIN
+      UPDATE review_plan_items SET review_round = NULL, review_revision = NULL
+        WHERE item_type = 'mistake' AND item_id = NEW.id AND status = 'pending';
+    END`);
 }
 
 // 只增加字段和单题复习结构，不改写旧题目、附件或标签。

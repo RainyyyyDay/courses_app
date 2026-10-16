@@ -16,6 +16,8 @@ const { mistakeListBrowserScenario } = require('./mistake-list.cjs');
 const { testMaterialReviewMigration, testMaterialReviewApi, materialBrowserPrelude, materialBrowserScenario } = require('./material-review.cjs');
 const { seedCourseSearchFixtures, testCourseSearchData, testCourseSearchApi } = require('./course-search.cjs');
 const { courseSearchBrowserScenario } = require('./course-search-frontend.cjs');
+const {testReviewPlanMigrations,testReviewPlanApi} = require('./review-plans.cjs');
+const {reviewPlanBrowserPrelude,reviewPlanBrowserScenario} = require('./review-plans-frontend.cjs');
 
 // 也允许直接通过测试参数指定屏幕尺寸，避免依赖各平台的环境变量语法。
 const viewportArgument = process.argv.find(arg => /^--viewport=\d+,\d+$/.test(arg));
@@ -53,7 +55,7 @@ async function testBackend() {
   before.close();
   const store = require(path.join(temp, 'db/index.js'));
   db = store.db;
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 11);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 12);
   assert.deepEqual(db.prepare('SELECT id, name FROM courses ORDER BY id').all(), existing);
   for (const snapshot of snapshots) assert.deepEqual(db.prepare(snapshot.sql).all(), snapshot.rows);
   const course = store.createCourse('regression course');
@@ -179,12 +181,14 @@ async function testBrowser(data) {
       result.id = 'regressionResult';
       function check(ok, text) { if (!ok) throw new Error(text); }
       try {
+        if (await reviewPlanBrowserRestore(check,waitUntil)) return;
         const readingRestored = await materialBrowserRestore(check, waitUntil);
         if (readingRestored) {
           if (readingRestored === 'materials') { ${materialBrowserScenario(data, 'notes')} return; }
           ${mistakeBrowserScenario(data)} return;
         }
         ${mistakeBrowserPrelude()}
+        ${reviewPlanBrowserScenario()}
         await loadCourses();
         check(document.querySelectorAll('#courseList .course-item').length > 0, 'course render');
         openCourse(${data.course.id}, 'browser course');
@@ -226,11 +230,11 @@ async function testBrowser(data) {
         result.textContent = 'browser interactions passed';
       } catch (err) {
         result.dataset.result = 'failed';
-        result.textContent = err.stack;
+        result.textContent = err.stack + (typeof courseSearchState !== 'undefined' && courseSearchState ? ' Search diagnostics: ' + JSON.stringify({q:courseSearchState.q,error:courseSearchState.error,loaded:courseSearchState.loaded,loading:courseSearchState.loading,request:courseSearchState.request}) : '');
       }
       document.body.appendChild(result);
     });`;
-  const materialPrelude = materialBrowserPrelude();
+  const materialPrelude = materialBrowserPrelude() + reviewPlanBrowserPrelude();
   new vm.Script(materialPrelude + script, { filename: 'browser-regression.js' });
   const index = path.join(front, 'index.html');
   fs.writeFileSync(index, fs.readFileSync(index, 'utf8').replace('</body>', `<script>${materialPrelude}${script}</script></body>`));
@@ -260,6 +264,7 @@ async function testBrowser(data) {
     console.log('PASS Chrome mistake edit: original CSS reproduction, visible/wrapped labels, inline list edit, search/expand/select, cancel, failure/retry, PATCH/reset rules, filters/scroll, detail reuse, stale requests, shared selectors, viewport ' + (process.env.COURSES_TEST_VIEWPORT || '1280,960'));
     console.log('PASS Chrome mistake list: shared reading styles, star/view/edit/delete only, live combined checkbox filters, favorite failure/retry/dedup, view/edit/delete/cancel, unified picker entry and completed queue');
     console.log('PASS Chrome course search: scoped real API/all types, debounce/stale cancellation, type combinations, empty/no results/errors/retry, all details/return/scroll, 105-row pagination, safe text/wrapping, course switching');
+    console.log('PASS Chrome review plans: create/filter/fixed mixed selection/preview, original review controllers, skip/retry, two actual refreshes, isolated ordinary queues, negative judgment completion, archive/deletion, overdue and empty/completed states');
     console.log('PASS Chrome reading review: ordinary/picker favorites sync/failure/reload, combined filters/AND/OR/direct tags/status/search/filtered all/dedup, preview, auto-next, skip preserves status/favorite, success counts, retry, independent queues, repeat/pause/actual reload');
     console.log('PASS Chrome: existing pages/tags/CRUD, mistake filters, filtered selection/dedup/partial state, three review queues/repeat, failed request never skips, pause/resume and actual reload recovery');
   } finally { await new Promise(resolve => staticServer.close(resolve)); }
@@ -350,10 +355,12 @@ async function testFrontend() {
     testMistakeMigrations(source, temp);
     testMaterialReviewMigration(source, temp);
     testCourseSearchData(source, temp);
+    testReviewPlanMigrations(source,temp);
     const backend = await testBackend();
     await testMistakeApi(backend);
     await testMaterialReviewApi(backend);
     await testCourseSearchApi(backend);
+    await testReviewPlanApi({...backend,temp});
     if (!process.argv.includes('--backend-only')) {
       await testFrontend();
       await testBrowser(backend);

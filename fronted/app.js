@@ -8,6 +8,8 @@
 
 /* ========== 回车提交 & 点遮罩关闭 ========== */
 document.addEventListener('DOMContentLoaded', () => {
+  // compositionend 不是 Chrome 支持的内联事件属性，使用标准事件监听。
+  document.getElementById('courseSearchQuery').addEventListener('compositionend', e => changeCourseSearchQuery(e.target.value));
   document.getElementById('courseNameInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') addCourse();
   });
@@ -84,6 +86,7 @@ loadCourses();
       if (savedTab === 'mistakes') await restoreMistakeLocation(Number(savedCourseId));
       if (savedTab === 'materials') await restoreMaterialReviewLocation(Number(savedCourseId));
       if (savedTab === 'notes') await restoreNoteReviewLocation(Number(savedCourseId));
+      if (savedTab === 'reviewPlans') await restoreReviewPlanLocation(Number(savedCourseId));
     } else {
       console.warn('上次打开的那门课已经不存在了，留在课程列表');
       forgetLastPage();

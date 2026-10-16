@@ -1,15 +1,15 @@
 // 资料与笔记共用阅读复习控制器和界面；数据、队列与存储键始终独立。
-function createReadingReview(kind, label, resumeId) {
+function createReadingReview(kind, label, resumeId, options = {}) {
   const state = {kind, label, selection:null, queue:null, row:null, busy:false, request:0};
   const el = suffix => document.getElementById('materialReview' + suffix);
   const current = () => state.queue?.courseId === currentCourseId && currentView.type === 'readingReview' && currentView.reviewKind === kind;
   const store = value => {
-    try { localStorage.setItem((kind === 'materials' ? 'material' : 'note') + '-review-queue:' + currentCourseId, JSON.stringify(value)); }
+    try { localStorage.setItem(options.storageKey || (kind === 'materials' ? 'material' : 'note') + '-review-queue:' + currentCourseId, JSON.stringify(value)); }
     catch { /* 当前浏览器禁用存储时仍可完成本轮；实际状态已保存到后端。 */ }
   };
   function read() {
     try {
-      const saved = JSON.parse(localStorage.getItem((kind === 'materials' ? 'material' : 'note') + '-review-queue:' + currentCourseId));
+      const saved = JSON.parse(localStorage.getItem(options.storageKey || (kind === 'materials' ? 'material' : 'note') + '-review-queue:' + currentCourseId));
       if (!saved || saved.courseId !== currentCourseId || saved.kind && saved.kind !== kind || !Array.isArray(saved.ids) || !saved.ids.length
         || saved.ids.some(id => !Number.isSafeInteger(id) || id < 1) || new Set(saved.ids).size !== saved.ids.length
         || !Number.isInteger(saved.index) || saved.index < 0 || saved.index > saved.ids.length || !saved.results || typeof saved.results !== 'object') return null;
@@ -106,6 +106,12 @@ function createReadingReview(kind, label, resumeId) {
     state.renderSelection();
   };
   state.clear = () => { if (state.selection && !state.busy) { state.selection.ids.clear(); state.renderSelection(); } };
+  // 调度层只提供固定对象和存储位置；阅读、提交、跳过及重试仍走同一控制器。
+  state.startItems = async ids => {
+    if (state.busy || !ids.length) return;
+    state.queue = {kind,courseId:currentCourseId,ids:[...ids],index:0,results:{},skipped:[],pending:null,active:true,finished:false};
+    store(state.queue); await state.show();
+  };
   const successes = () => state.queue.ids.filter(id=>state.queue.results[id] === 'reviewed').length;
   state.start = async () => {
     const s = state.selection;
@@ -133,7 +139,8 @@ function createReadingReview(kind, label, resumeId) {
   };
   const api = async (id,status) => {
     const courseId = state.queue.courseId;
-    const response = await requestApi(`${API}/courses/${courseId}/${kind}/${id}/review`, status ? {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewStatus:status})} : undefined);
+    const context = status && options.planItems ? `?planItemId=${options.planItems[id]}` : '';
+    const response = await requestApi(`${API}/courses/${courseId}/${kind}/${id}/review${context}`, status ? {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewStatus:status})} : undefined);
     const row = await response.json();
     if (row.id !== id || row.course_id !== courseId || !['reviewed','unreviewed'].includes(row.review_status) || status && row.review_status !== status) throw new Error(`${label}复习响应无效，请重新确认`);
     return row;
@@ -153,6 +160,7 @@ function createReadingReview(kind, label, resumeId) {
     el('Title').textContent = '加载中…'; el('Status').textContent = ''; el('OpenFile').style.display = 'none';
     el('Complete').style.display = queue.finished ? 'block' : 'none'; el('Item').style.display = queue.finished ? 'none' : 'block';
     if (queue.finished || queue.index === queue.ids.length) {
+      if (options.onFinish) { queue.active = false; store(queue); await options.onFinish(); return; }
       el('Progress').textContent = `已处理 ${queue.ids.length} / ${queue.ids.length} 条 · 成功复习 ${successes()} 条`;
       el('Actions').innerHTML = ''; el('Complete').style.display = 'block';
       el('Complete').innerHTML = `<h2>本轮${label}复习完成</h2><p>成功复习 ${successes()} 条，跳过 ${queue.skipped.length} 条。跳过的内容保留原有状态。</p><button onclick="pauseMaterialReview()">返回${label}列表</button>`;
@@ -205,6 +213,7 @@ function createReadingReview(kind, label, resumeId) {
   state.pause = async () => {
     if (state.busy) return;
     if (state.queue?.courseId === currentCourseId) { state.queue.active = false; store(state.queue); }
+    if (options.onExit) { ++state.request; state.row = null; await options.onExit(); return; }
     ++state.request; state.row = null; currentView = {type:'course',tab:kind}; showPageOnly('detailPage'); switchTab(kind);
   };
   state.end = async () => { if (!state.busy) { store(null); state.queue = null; await state.pause(); } };
