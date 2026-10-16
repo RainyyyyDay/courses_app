@@ -952,6 +952,55 @@ body.mistake-review-open { overflow: hidden; }
 .mistake-selectable { cursor: pointer; }
 .mistake-select-check { flex: 0 0 auto; width: 20px; height: 20px; margin: 8px 12px 0 0; }
 
+/* 复习完成弹窗：正确率 100% 时整页飘一层彩带，彩带在弹窗卡片后面，不挡内容。 */
+.mistake-complete { position: relative; z-index: 1; text-align: center; }
+.mistake-complete h3 { font-size: 19px; line-height: 1.5; margin-bottom: 10px; }
+.mistake-complete p { margin: 0 0 16px; color: #5b6273; font-size: 14px; line-height: 1.6; }
+.mistake-complete .modal-actions { justify-content: center; flex-wrap: wrap; }
+.mistake-complete .modal-actions button {
+  padding: 10px 16px; border: 1px solid #d7dae3; border-radius: 8px;
+  background: #f3f4f8; color: #333; font: inherit; cursor: pointer;
+}
+.mistake-complete .modal-actions button:hover { background: #e8eaf1; }
+.mistake-complete .modal-actions button.btn-primary { background: #4a6cf7; border-color: #4a6cf7; color: #fff; }
+.mistake-complete .modal-actions button.btn-primary:hover { filter: brightness(1.06); }
+/* 彩带层：铺满整个页面，压在弹窗卡片下面，从顶飘到底再淡出。 */
+.mistake-confetti { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+.mistake-confetti > span {
+  position: absolute; top: 0; opacity: 0;
+  animation-name: mistake-confetti-fall; animation-timing-function: linear; animation-fill-mode: forwards;
+}
+/* 彩带一边落一边摆 + 扭，避免整条直挺挺地平移下去。 */
+.mistake-streamer svg {
+  display: block;
+  animation-name: mistake-flutter; animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite; animation-direction: alternate;
+  animation-duration: var(--flutter, 1.4s); animation-delay: var(--flutter-delay, 0s);
+}
+@keyframes mistake-flutter {
+  0% { transform: translateX(calc(var(--amp, 8px) * -1)) rotate(calc(var(--tilt, 0deg) - var(--sway, 14deg))); }
+  100% { transform: translateX(var(--amp, 8px)) rotate(calc(var(--tilt, 0deg) + var(--sway, 14deg))); }
+}
+/* 碎片形状也随机：小方片 / 细长条 / 圆点，落的过程中翻面。 */
+.mistake-bit { width: var(--w, 7px); height: var(--h, 14px); border-radius: var(--r, 1.5px); }
+.mistake-bit > i {
+  display: block; width: 100%; height: 100%;
+  border-radius: inherit; background: inherit;
+  animation-name: mistake-tumble; animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite; animation-direction: alternate;
+  animation-duration: var(--tumble, 0.7s);
+}
+@keyframes mistake-tumble {
+  0% { transform: rotate3d(1, 1, 0, -42deg) scaleX(0.55); }
+  100% { transform: rotate3d(1, 1, 0, 42deg) scaleX(1); }
+}
+@keyframes mistake-confetti-fall {
+  0% { transform: translate3d(0, -32vh, 0) rotate(var(--tilt, 0deg)); opacity: 0; }
+  10% { opacity: 1; }
+  78% { opacity: 1; }
+  100% { transform: translate3d(var(--drift, 0px), 112vh, 0) rotate(calc(var(--tilt, 0deg) + var(--spin, 200deg))); opacity: 0; }
+}
+
 /* ============================================================
    标签选择器（错题 / 资料 / 笔记 的上传与编辑共用）
    ------------------------------------------------------------

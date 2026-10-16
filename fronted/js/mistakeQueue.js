@@ -227,7 +227,7 @@ async function resumeMistakeQueue() {
   const saved = readMistakeQueue();
   if (!saved || saved.finished) return;
   mistakeQueue = saved; mistakeSelection = null;
-  if (saved.index === saved.ids.length) { showMistakeQueueComplete(); return; }
+  if (saved.index === saved.ids.length) { await showMistakeQueueComplete(); return; }
   await openMistakeDetail(saved.ids[saved.index], true);
 }
 async function prepareMistakeQueueItem(state) {
@@ -244,6 +244,25 @@ async function prepareMistakeQueueItem(state) {
     if (p.allowedActions.includes('start')) await submitMistakeReview('start');
   }
   if (mistakeDetailIsCurrent(state) && mistakeQueueCurrent(state)) renderMistakeReview(state);
+  // 最后一题在进来之前就判完了（比如中途暂停过）：同样直接收尾。
+  await tryFinishMistakeQueue(state, state.progress);
+}
+
+// 复习队列的最后一题判完就该结束了：不需要用户再点按钮，自动弹完成弹窗。
+let mistakeQueueAutoFinishing = false;
+function mistakeQueueShouldAutoFinish(state, progress) {
+  if (!mistakeQueue || !mistakeQueueCurrent(state) || !progress) return false;
+  if (mistakeQueue.index !== mistakeQueue.ids.length - 1) return false;
+  return progress.stage === 'completed'
+    && progress.round === mistakeQueue.rounds[state.id]
+    && progress.reviewable
+    && progress.mistakeType === mistakeQueueTypeFor(state.id);
+}
+async function tryFinishMistakeQueue(state, progress) {
+  // 布尔锁：收尾过程中触发的重渲染不会再进来一次，失败也不会反复重试。
+  if (mistakeQueueAutoFinishing || !mistakeQueueShouldAutoFinish(state, progress)) return;
+  mistakeQueueAutoFinishing = true;
+  try { await nextMistakeQueueItem(); } finally { mistakeQueueAutoFinishing = false; }
 }
 function renderMistakeQueueBanner() {
   const box = document.getElementById('mistakeQueueBanner');
@@ -255,8 +274,10 @@ function renderMistakeQueueBanner() {
   const valid = p?.reviewable && p.courseId === mistakeQueue.courseId && p.mistakeType === mistakeQueueTypeFor(state.id);
   const completed = valid && p.stage === 'completed' && p.round === mistakeQueue.rounds[state.id];
   const pending = mistakeStorageGet(mistakePendingKey(state)) || state.pending;
+  // 最后一题不再有「下一题 / 完成」按钮：判完自动收尾。
+  const last = mistakeQueue.index + 1 === mistakeQueue.ids.length;
   box.innerHTML = `<strong>第 ${mistakeQueue.index + 1} / ${mistakeQueue.ids.length} 题</strong> · 已完成 ${mistakeQueue.index + (completed ? 1 : 0)} 题
-    <div class="mistake-toolbar"><button id="mistakeQueueNext" onclick="nextMistakeQueueItem()" ${!completed || pending || mistakeReviewBusy || mistakeQueueLoading ? 'disabled' : ''}>${mistakeQueue.index + 1 === mistakeQueue.ids.length ? '完成本轮' : '下一题'}</button><button onclick="pauseMistakeQueue()">返回列表，稍后继续</button><button onclick="endMistakeQueue()">结束本轮</button></div>${p && !valid ? '<p class="mistake-inline-error">本题已改变分类或缺少内容，请退出并补齐；不会自动跳过。</p>' : ''}`;
+    <div class="mistake-toolbar">${last ? '' : `<button id="mistakeQueueNext" onclick="nextMistakeQueueItem()" ${!completed || pending || mistakeReviewBusy || mistakeQueueLoading ? 'disabled' : ''}>下一题</button>`}<button onclick="pauseMistakeQueue()">返回列表，稍后继续</button><button onclick="endMistakeQueue()">结束本轮</button></div>${p && !valid ? '<p class="mistake-inline-error">本题已改变分类或缺少内容，请退出并补齐；不会自动跳过。</p>' : ''}`;
 }
 async function nextMistakeQueueItem() {
   const state = mistakeDetailState;
@@ -270,7 +291,7 @@ async function nextMistakeQueueItem() {
       || mistakeStorageGet(mistakePendingKey(state)) || state.pending) throw new Error('请先完成并确认本题复习');
     mistakeQueue.index += 1; saveMistakeQueue();
     if (mistakeQueue.index === mistakeQueue.ids.length) {
-      mistakeQueue.finished = true; saveMistakeQueue(); showMistakeQueueComplete();
+      mistakeQueue.finished = true; saveMistakeQueue(); await showMistakeQueueComplete();
     } else {
       currentView = { type: 'mistake', id: mistakeQueue.ids[mistakeQueue.index], review: true };
       await renderMistakeDetailPage(currentView.id, true);
@@ -283,13 +304,157 @@ function showMistakeQueueComplete() {
   currentView = { type: 'mistakeQueueComplete' };
   document.getElementById('mistakeDetailTitle').textContent = '本轮复习完成';
   document.getElementById('mistakeDetailBody').style.display = 'none';
-  const box = document.getElementById('mistakeQueueComplete');
-  box.style.display = 'block';
-  box.innerHTML = `<h2>本轮 ${mistakeQueue.ids.length} 道题已全部处理</h2><p>判断结果已保存。答错或不记得的题目仍为未复习。</p><button onclick="pauseMistakeQueue()">返回错题列表</button>`;
   forgetMistakeDetailLocation();
+  return openMistakeCompleteModal();
+}
+
+// ===== 复习完成弹窗 =====
+// 过完全部所选题后弹出：正确率 100% 飘彩带 + 恭喜；三个去向 —— 取消（回错题大页）/ 再来一遍 / 开始新复习。
+function mistakeConfettiHtml() {
+  // 尊重系统「减少动态效果」偏好：关掉动画就什么都不放。
+  if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) return '';
+  const colors = ['#f7c948', '#ef6f5a', '#4a6cf7', '#38b6d9', '#f2a33c', '#7d5fe0', '#2fbf71', '#f5f0d8'];
+  const num = (min, max) => min + Math.random() * (max - min);
+  const int = (min, max) => Math.round(num(min, max));
+  const pick = list => list[Math.floor(Math.random() * list.length)];
+
+  // 每条彩带都是现算的波浪线：段数、振幅、左右起手都随机；三分之一再挂一个小圈，
+  // 所以不会出现两条一样的、也不会是「一根直条」的僵硬化形状。
+  function streamerPath(height) {
+    const mid = 26;
+    // 段数少一点、振幅大一点：出来是长而缓的波浪，不是密密的锯齿。
+    const segs = int(2, 3);
+    const amp = num(12, 24);
+    const step = (height - 8) / segs;
+    let dir = Math.random() < 0.5 ? 1 : -1;
+    let y = 4;
+    let d = `M ${mid} ${y}`;
+    for (let i = 0; i < segs; i += 1) {
+      const next = y + step;
+      const bend = dir * amp * num(1.2, 2);
+      d += ` C ${(mid + bend).toFixed(1)} ${(y + step * num(0.2, 0.35)).toFixed(1)},`
+        + ` ${(mid - bend).toFixed(1)} ${(y + step * num(0.65, 0.8)).toFixed(1)},`
+        + ` ${mid} ${next.toFixed(1)}`;
+      y = next;
+      dir = -dir;
+    }
+    if (Math.random() < 0.25) {
+      // 在中间缠一个圈，像纸带打卷。
+      const cy = 4 + step * Math.round(num(1, segs - 1));
+      const r = num(9, 14);
+      d += ` M ${(mid - r).toFixed(1)} ${cy.toFixed(1)} a ${r.toFixed(1)} ${r.toFixed(1)} 0 1 1 ${(r * 2).toFixed(1)} 0`
+        + ` a ${r.toFixed(1)} ${r.toFixed(1)} 0 1 1 -${(r * 2).toFixed(1)} 0`;
+    }
+    return d;
+  }
+
+  let html = '';
+
+  for (let i = 0; i < 12; i += 1) {
+    const height = 200;
+    const d = streamerPath(height);
+    const color = pick(colors);
+    const accent = pick(colors.filter(c => c !== color));
+    const left = Math.round(-6 + Math.random() * 106);
+    const delay = num(0, 0.5).toFixed(2);
+    const duration = num(1.9, 3).toFixed(2);
+    const drift = int(-90, 90);
+    const spin = int(-70, 70);
+    const tilt = int(-40, 40);
+    // 渲染高度决定长度：彩带按 52:200 的比例缩放，细长一条。
+    const h = int(190, 330);
+    const w = Math.round(h * 0.26);
+    // 第二遍描边用 dash 断成几段，做出参考图里那种一段黄一段蓝的彩带。
+    html += `<span class="mistake-streamer" style="left:${left}%;--drift:${drift}px;--spin:${spin}deg;--tilt:${tilt}deg;`
+      + `--amp:${int(5, 16)}px;--sway:${int(8, 26)}deg;--flutter:${num(1, 1.8).toFixed(2)}s;--flutter-delay:${num(0, 0.4).toFixed(2)}s;`
+      + `animation-delay:${delay}s;animation-duration:${duration}s">`
+      + `<svg viewBox="0 0 52 ${height}" width="${w}" height="${h}" aria-hidden="true">`
+      + `<path d="${d}" fill="none" stroke="${color}" stroke-width="4.2" stroke-linecap="round"/>`
+      + `<path d="${d}" fill="none" stroke="${accent}" stroke-width="4.2" stroke-linecap="round" stroke-dasharray="${int(70, 150)} ${int(170, 320)}" stroke-dashoffset="${int(0, 140)}"/>`
+      + `</svg></span>`;
+  }
+
+  // 小碎片：方的、细长条、圆的都有，落的过程中自己翻面。
+  const shapes = [
+    { w: 7, h: 14, r: '1.5px' },
+    { w: 4, h: 16, r: '2px' },
+    { w: 9, h: 9, r: '2px' },
+    { w: 8, h: 8, r: '50%' }
+  ];
+  for (let i = 0; i < 24; i += 1) {
+    const shape = pick(shapes);
+    const left = Math.round(Math.random() * 100);
+    const delay = num(0, 0.55).toFixed(2);
+    const duration = num(1.4, 2.4).toFixed(2);
+    const drift = int(-70, 70);
+    const spin = int(-540, 540);
+    const tilt = int(-60, 60);
+    html += `<span class="mistake-bit" style="left:${left}%;background:${pick(colors)};--drift:${drift}px;--spin:${spin}deg;--tilt:${tilt}deg;`
+      + `--w:${shape.w}px;--h:${shape.h}px;--r:${shape.r};--tumble:${num(0.5, 0.9).toFixed(2)}s;`
+      + `animation-delay:${delay}s;animation-duration:${duration}s"><i></i></span>`;
+  }
+  return html;
+}
+// 这一轮的正确率：每题判断后的最终状态就是答案（「正确 / 已掌握」= 已复习）。
+async function mistakeQueueRoundScore() {
+  const ids = mistakeQueue?.ids || [];
+  if (!ids.length) return null;
+  try {
+    const rows = await requestList(`${API}/courses/${mistakeQueue.courseId}/mistakes`);
+    const reviewed = new Set(rows.filter(row => row.review_status === 'reviewed').map(row => row.id));
+    return { correct: ids.filter(id => reviewed.has(id)).length, total: ids.length };
+  } catch { return null; }
+}
+async function openMistakeCompleteModal() {
+  const box = document.getElementById('mistakeCompleteModal');
+  if (!box) return;
+  const score = await mistakeQueueRoundScore();
+  const perfect = !!score && score.correct === score.total;
+  document.getElementById('mistakeCompleteTitle').textContent = perfect ? '恭喜你！你成功复习了所有所选题' : '本轮复习完成';
+  document.getElementById('mistakeCompleteText').textContent = score
+    ? `本轮 ${score.total} 道题，答对 ${score.correct} 道，正确率 ${Math.round(score.correct / score.total * 100)}%。${perfect ? '' : '答错或不记得的题目仍为未复习，可以再来一遍。'}`
+    : '判断结果已保存。答错或不记得的题目仍为未复习。';
+  const confetti = document.getElementById('mistakeCompleteConfetti');
+  if (!confetti.dataset.bound) {
+    // 飘出屏幕的碎片自己移除，别在页面上留一堆动画节点。
+    confetti.addEventListener('animationend', event => { if (event.target.parentNode === confetti) event.target.remove(); });
+    confetti.dataset.bound = '1';
+  }
+  confetti.innerHTML = perfect ? mistakeConfettiHtml() : '';
+  box.classList.add('show');
+  document.body.classList.add('mistake-review-open');
+  document.getElementById('mistakeCompleteTitle').focus();
+}
+function closeMistakeCompleteModal() {
+  const box = document.getElementById('mistakeCompleteModal');
+  if (!box || !box.classList.contains('show')) return;
+  box.classList.remove('show');
+  document.body.classList.remove('mistake-review-open');
+  document.getElementById('mistakeCompleteConfetti').innerHTML = '';
+}
+async function cancelMistakeComplete() {
+  closeMistakeCompleteModal();
+  await pauseMistakeQueue();
+}
+async function replayMistakeQueue() {
+  if (!mistakeQueue || mistakeReviewBusy || mistakeQueueLoading) return;
+  closeMistakeCompleteModal();
+  mistakeQueue.index = 0;
+  mistakeQueue.rounds = {};
+  mistakeQueue.finished = false;
+  saveMistakeQueue();
+  navStack = [];
+  await openMistakeDetail(mistakeQueue.ids[0], true);
+}
+async function startNewMistakeReview() {
+  if (mistakeReviewBusy || mistakeQueueLoading) return;
+  closeMistakeCompleteModal();
+  await pauseMistakeQueue();
+  await enterMistakeReviewFromHome();
 }
 async function pauseMistakeQueue() {
   if (mistakeReviewBusy) return;
+  closeMistakeCompleteModal();
   forgetMistakeDetailLocation();
   ensureMistakeUi();
   if (mistakeQueue?.courseId === currentCourseId) { mistakeUi.type = mistakeQueue.type === 'mixed' ? null : mistakeQueue.type; rememberMistakeUi(); }

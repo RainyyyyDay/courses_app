@@ -21,8 +21,7 @@ function mistakeBrowserPrelude() {
         document.querySelector('[data-review-action="judge-false"]').click();
         await waitUntil(() => mistakeDetailState.progress.stage === 'completed' && !mistakeReviewBusy, 'unclassified restored judgment');
         check(mistakeDetailState.progress.reviewStatus === 'unreviewed', 'unclassified needs review saved');
-        await nextMistakeQueueItem();
-        check(currentView.type === 'mistakeQueueComplete', 'unclassified restored queue completes');
+        await waitUntil(() => currentView.type === 'mistakeQueueComplete', 'unclassified restored queue completes');
         await backFromDetail(); await openMistakeCategory('unclassified'); await clearMistakeFilters();
         check(document.querySelector('[data-mistake-id="' + restored.id + '"]').textContent.includes('未复习'), 'unclassified list reflects judgment');
         sessionStorage.removeItem('mistake-regression-refresh');
@@ -49,7 +48,8 @@ function mistakeBrowserPrelude() {
         await submitMistakeReview('recall', 'recall', 'forgotten');
         check(mistakeDetailState.progress.reviewStatus === 'unreviewed', 'queue forgotten stays unreviewed');
         await nextMistakeQueueItem();
-        check(currentView.type === 'mistakeQueueComplete' && document.getElementById('mistakeQueueComplete').textContent.includes('2 道'), 'queue completion page');
+        check(currentView.type === 'mistakeQueueComplete' && document.getElementById('mistakeCompleteModal').classList.contains('show')
+          && document.getElementById('mistakeCompleteText').textContent.includes('2 道'), 'queue completion modal');
       }
       await backFromDetail();
       if (!mistakeUi.type) await openMistakeCategory('knowledge');
@@ -308,16 +308,23 @@ function mistakeBrowserScenario(data) {
       }
       await startReviewFromHome(type, row.id);
       check(mistakeDetailState.progress.stage === 'question', 'queue automatic start ' + type);
+      check(!document.getElementById('mistakeQueueNext'), 'last question has no manual finish button ' + type);
       await submitMistakeReview('reveal_answer');
       await submitMistakeReview('judge', key, true);
-      await nextMistakeQueueItem();
-      check(currentView.type === 'mistakeQueueComplete', 'single queue completes ' + type);
+      check(currentView.type === 'mistakeQueueComplete', 'last judgment auto-completes the queue ' + type);
+      check(document.getElementById('mistakeCompleteModal').classList.contains('show')
+        && document.getElementById('mistakeCompleteTitle').textContent.includes('恭喜')
+        && document.getElementById('mistakeCompleteConfetti').children.length > 0, 'perfect round celebrates ' + type);
       await backFromDetail(); await loadMistakes();
       await startReviewFromHome(type, row.id);
       check(mistakeDetailState.progress.stage === 'question' && mistakeDetailState.progress.reviewStatus === 'reviewed', 'reviewed allowed new round ' + type);
       await submitMistakeReview('reveal_answer'); await submitMistakeReview('judge', key, false);
       check(mistakeDetailState.progress.reviewStatus === 'unreviewed', 'repeat wrong updates state ' + type);
-      await nextMistakeQueueItem(); await backFromDetail();
+      check(currentView.type === 'mistakeQueueComplete', 'wrong last judgment still auto-completes ' + type);
+      check(document.getElementById('mistakeCompleteModal').classList.contains('show')
+        && !document.getElementById('mistakeCompleteTitle').textContent.includes('恭喜')
+        && !document.getElementById('mistakeCompleteConfetti').children.length, 'imperfect round shows plain completion ' + type);
+      await backFromDetail();
     }
     // 弹窗快速全选与各分类手动选择共用集合和一个混合队列。
     await openMistakeCategory(null); await enterMistakeReviewFromHome();
@@ -366,6 +373,30 @@ function mistakeBrowserScenario(data) {
     }
     check(currentView.type === 'mistakeQueueComplete', 'mixed queue completion');
     await backFromDetail();
+    // 完成弹窗的三个去向：再来一遍 / 开始新复习 / 取消。
+    const completeButtons = () => [...document.querySelectorAll('#mistakeCompleteModal .modal-actions button')];
+    // 用思维类（揭示答案 + 已掌握）跑单题轮，避免动到后面几步依赖的知识类状态。
+    const finishSingleRound = async () => {
+      await startReviewFromHome('thinking', thinking.id);
+      await submitMistakeReview('reveal_answer');
+      await submitMistakeReview('judge', 'mastered', true);
+      await waitUntil(() => document.getElementById('mistakeCompleteModal').classList.contains('show'), 'completion modal after single round');
+    };
+    await finishSingleRound();
+    check(completeButtons().map(b => b.textContent.trim()).join('|') === '取消|再来一遍|开始新复习', 'three completion choices');
+    completeButtons()[1].click();
+    await waitUntil(() => currentView.type === 'mistake' && currentView.id === thinking.id && !document.getElementById('mistakeCompleteModal').classList.contains('show'), 'replay restarts the same queue');
+    check(mistakeQueue.index === 0 && !mistakeQueue.finished, 'replay resets queue progress');
+    await submitMistakeReview('reveal_answer');
+    await submitMistakeReview('judge', 'mastered', true);
+    completeButtons()[2].click();
+    await waitUntil(() => mistakeReviewPicker && document.getElementById('mistakeReviewPicker').classList.contains('show'), 'start new review opens the picker');
+    check(!document.getElementById('mistakeCompleteModal').classList.contains('show') && !mistakeQueue, 'new review drops the finished queue');
+    await cancelMistakeSelection();
+    await finishSingleRound();
+    completeButtons()[0].click();
+    await waitUntil(() => !document.getElementById('mistakeCompleteModal').classList.contains('show') && currentView.type === 'course' && !mistakeQueue, 'cancel returns home');
+    check(!mistakeUi.type, 'cancel lands on the mistake home page');
     const secondForm = new FormData();
     secondForm.set('title','队列第二题'); secondForm.set('content','队列第二题正文');
     secondForm.set('mistakeType','knowledge'); secondForm.set('answerContent','第二答案');
