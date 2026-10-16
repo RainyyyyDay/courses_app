@@ -113,10 +113,10 @@ function mistakeListBrowserScenario(data) {
       await waitUntil(() => mistakeDetailState.progress.stage === 'answer' && !mistakeReviewBusy, 'queue reveals answer');
       document.querySelector('[data-review-action="judge-true"]').click();
       await waitUntil(() => mistakeDetailState.progress.reviewStatus === 'reviewed' && !mistakeReviewBusy, 'queue judgment saved');
-      await waitUntil(() => currentView.type === 'mistakeQueueComplete' && !mistakeQueueLoading, 'last judgment auto-completes the queue');
+      await waitUntil(() => currentView.type === 'mistakeQueueComplete' && !mistakeQueueLoading && mistakeConfettiLayerState() !== 'none', 'last judgment auto-completes the queue');
       check(document.getElementById('mistakeCompleteModal').classList.contains('show')
         && document.getElementById('mistakeCompleteTitle').textContent.includes('恭喜')
-        && document.getElementById('mistakeCompleteConfetti').children.length > 0, 'perfect round celebrates with confetti');
+        && mistakeConfettiLayerState() === 'lib', 'perfect round celebrates with canvas-confetti');
       await backFromDetail(); await openMistakeCategory('knowledge'); await clearMistakeFilters();
       card(second.id).querySelector('.mistake-actions button:nth-child(4)').click();
       await waitUntil(() => document.getElementById('confirmModal').classList.contains('show'), 'delete opens existing confirmation');

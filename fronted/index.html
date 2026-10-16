@@ -382,6 +382,10 @@
 
   <!-- 复习完成弹窗：过完全部所选题后出现；正确率 100% 时飘彩带 -->
   <div id="mistakeCompleteModal" class="modal-mask" onclick="if(event.target===this)cancelMistakeComplete()" onkeydown="if(event.key==='Escape'){event.preventDefault();cancelMistakeComplete()}">
+    <!-- 彩带分两层，都在弹窗卡片后面：库可用时用 canvas-confetti，否则退回自绘 CSS 版 -->
+    <div id="mistakeLibConfetti" class="mistake-confetti" style="display:none" aria-hidden="true">
+      <canvas id="mistakeConfettiCanvas"></canvas>
+    </div>
     <div id="mistakeCompleteConfetti" class="mistake-confetti" aria-hidden="true"></div>
     <div class="modal mistake-complete" role="dialog" aria-modal="true" aria-labelledby="mistakeCompleteTitle">
       <h3 id="mistakeCompleteTitle" tabindex="-1"></h3>
@@ -600,6 +604,8 @@
   -->
 
   <!-- 基础设施 -->
+  <!-- 第三方：canvas-confetti（已本地化，断网可用；MIT，见 vendor/canvas-confetti/LICENSE） -->
+  <script src="vendor/canvas-confetti/confetti.browser.js"></script>
   <script src="js/config.js"></script>
   <script src="js/state.js"></script>
   <script src="js/utils.js"></script>

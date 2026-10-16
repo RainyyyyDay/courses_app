@@ -314,7 +314,7 @@ function mistakeBrowserScenario(data) {
       check(currentView.type === 'mistakeQueueComplete', 'last judgment auto-completes the queue ' + type);
       check(document.getElementById('mistakeCompleteModal').classList.contains('show')
         && document.getElementById('mistakeCompleteTitle').textContent.includes('恭喜')
-        && document.getElementById('mistakeCompleteConfetti').children.length > 0, 'perfect round celebrates ' + type);
+        && mistakeConfettiLayerState() !== 'none', 'perfect round celebrates ' + type);
       await backFromDetail(); await loadMistakes();
       await startReviewFromHome(type, row.id);
       check(mistakeDetailState.progress.stage === 'question' && mistakeDetailState.progress.reviewStatus === 'reviewed', 'reviewed allowed new round ' + type);
@@ -323,7 +323,7 @@ function mistakeBrowserScenario(data) {
       check(currentView.type === 'mistakeQueueComplete', 'wrong last judgment still auto-completes ' + type);
       check(document.getElementById('mistakeCompleteModal').classList.contains('show')
         && !document.getElementById('mistakeCompleteTitle').textContent.includes('恭喜')
-        && !document.getElementById('mistakeCompleteConfetti').children.length, 'imperfect round shows plain completion ' + type);
+        && mistakeConfettiLayerState() === 'none', 'imperfect round shows plain completion ' + type);
       await backFromDetail();
     }
     // 弹窗快速全选与各分类手动选择共用集合和一个混合队列。

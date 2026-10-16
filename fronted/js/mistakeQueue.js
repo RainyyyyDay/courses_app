@@ -405,6 +405,83 @@ async function mistakeQueueRoundScore() {
     return { correct: ids.filter(id => reviewed.has(id)).length, total: ids.length };
   } catch { return null; }
 }
+
+// ===== 完成弹窗的彩带 =====
+// 用 canvas-confetti（本地第三方包，见 vendor/canvas-confetti）的官方 Realistic Look 配方：
+// 200 片按 5 组分不同的扩散角 / 初速度 / 衰减一起打出去，铺满整屏再自然落下消失。
+// 画布挂在弹窗遮罩里、卡片下面，所以不会盖住文字和按钮；库没加载成功时退回自绘的 CSS 彩带。
+let mistakeConfettiLayer = 'none';
+const MISTAKE_CONFETTI_COUNT = 200;
+function mistakeConfettiLayerState() { return mistakeConfettiLayer; }
+function bindMistakeCssConfetti(host) {
+  if (host.dataset.bound) return;
+  // 飘出屏幕的碎片自己移除，别在页面上留一堆动画节点。
+  host.addEventListener('animationend', event => { if (event.target.parentNode === host) event.target.remove(); });
+  host.dataset.bound = '1';
+}
+function stopMistakeCompleteConfetti() {
+  mistakeConfettiLayer = 'none';
+  const lib = document.getElementById('mistakeLibConfetti');
+  if (lib) lib.style.display = 'none';
+  const css = document.getElementById('mistakeCompleteConfetti');
+  if (css) css.innerHTML = '';
+}
+// 官方 Realistic Look 配方（https://www.kirilv.com/canvas-confetti/ 首页那段），一行没改。
+function mistakeConfettiBurst(fireOne) {
+  const count = MISTAKE_CONFETTI_COUNT;
+  const defaults = { origin: { y: 0.7 } };
+  const fire = (particleRatio, opts) => fireOne({
+    ...defaults,
+    ...opts,
+    particleCount: Math.floor(count * particleRatio),
+  });
+  fire(0.25, {
+    spread: 26,
+    startVelocity: 55,
+  });
+  fire(0.2, {
+    spread: 60,
+  });
+  fire(0.35, {
+    spread: 100,
+    decay: 0.91,
+    scalar: 0.8,
+  });
+  fire(0.1, {
+    spread: 120,
+    startVelocity: 25,
+    decay: 0.92,
+    scalar: 1.2,
+  });
+  fire(0.1, {
+    spread: 120,
+    startVelocity: 45,
+  });
+}
+async function startMistakeCompleteConfetti(perfect) {
+  stopMistakeCompleteConfetti();
+  const css = document.getElementById('mistakeCompleteConfetti');
+  if (!perfect || !css) return;
+  // 系统开了「减少动态效果」就什么都不放。
+  if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const lib = document.getElementById('mistakeLibConfetti');
+  if (typeof confetti === 'function' && lib) {
+    try {
+      const canvas = document.getElementById('mistakeConfettiCanvas');
+      lib.style.display = 'block';
+      // 画布只 create 一次，以后复用；resize: true 让库自己把画布对齐到视口。
+      canvas.__fire = canvas.__fire || confetti.create(canvas, { resize: true, useWorker: false });
+      mistakeConfettiBurst(canvas.__fire);
+      mistakeConfettiLayer = 'lib';
+      return;
+    } catch {
+      lib.style.display = 'none';
+    }
+  }
+  css.innerHTML = mistakeConfettiHtml();
+  bindMistakeCssConfetti(css);
+  mistakeConfettiLayer = 'css';
+}
 async function openMistakeCompleteModal() {
   const box = document.getElementById('mistakeCompleteModal');
   if (!box) return;
@@ -414,23 +491,17 @@ async function openMistakeCompleteModal() {
   document.getElementById('mistakeCompleteText').textContent = score
     ? `本轮 ${score.total} 道题，答对 ${score.correct} 道，正确率 ${Math.round(score.correct / score.total * 100)}%。${perfect ? '' : '答错或不记得的题目仍为未复习，可以再来一遍。'}`
     : '判断结果已保存。答错或不记得的题目仍为未复习。';
-  const confetti = document.getElementById('mistakeCompleteConfetti');
-  if (!confetti.dataset.bound) {
-    // 飘出屏幕的碎片自己移除，别在页面上留一堆动画节点。
-    confetti.addEventListener('animationend', event => { if (event.target.parentNode === confetti) event.target.remove(); });
-    confetti.dataset.bound = '1';
-  }
-  confetti.innerHTML = perfect ? mistakeConfettiHtml() : '';
   box.classList.add('show');
   document.body.classList.add('mistake-review-open');
   document.getElementById('mistakeCompleteTitle').focus();
+  await startMistakeCompleteConfetti(perfect);
 }
 function closeMistakeCompleteModal() {
   const box = document.getElementById('mistakeCompleteModal');
   if (!box || !box.classList.contains('show')) return;
   box.classList.remove('show');
   document.body.classList.remove('mistake-review-open');
-  document.getElementById('mistakeCompleteConfetti').innerHTML = '';
+  stopMistakeCompleteConfetti();
 }
 async function cancelMistakeComplete() {
   closeMistakeCompleteModal();
