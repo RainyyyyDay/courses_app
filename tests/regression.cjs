@@ -14,6 +14,8 @@ const { mistakeBrowserPrelude, mistakeBrowserScenario } = require('./mistake-fro
 const { mistakeEditBrowserScenario } = require('./mistake-edit.cjs');
 const { mistakeListBrowserScenario } = require('./mistake-list.cjs');
 const { testMaterialReviewMigration, testMaterialReviewApi, materialBrowserPrelude, materialBrowserScenario } = require('./material-review.cjs');
+const { seedCourseSearchFixtures, testCourseSearchData, testCourseSearchApi } = require('./course-search.cjs');
+const { courseSearchBrowserScenario } = require('./course-search-frontend.cjs');
 
 // 也允许直接通过测试参数指定屏幕尺寸，避免依赖各平台的环境变量语法。
 const viewportArgument = process.argv.find(arg => /^--viewport=\d+,\d+$/.test(arg));
@@ -78,6 +80,7 @@ async function testBackend() {
   const count = db.prepare('SELECT count(*) AS n FROM mistakes').get().n;
   assert.throws(() => store.createMistake(course.id, 'must rollback', '', '', '', [999999999], { mistakeType: 'knowledge' }));
   assert.equal(db.prepare('SELECT count(*) AS n FROM mistakes').get().n, count);
+  const searchFixture = seedCourseSearchFixtures(store);
   db.close();
   db = null;
 
@@ -156,7 +159,7 @@ async function testBackend() {
     }
     assert.fail(logs);
   };
-  return { base, course, child, other, cases, restart };
+  return { base, course, child, other, cases, restart, searchFixture };
 }
 
 async function testBrowser(data) {
@@ -214,6 +217,7 @@ async function testBrowser(data) {
         for (const id of ['materialList','noteList','mistakeList','assessmentList']) check(document.getElementById(id).textContent.includes('暂无'), 'empty state '+id);
         window.fetch = originalFetch;
         check(!document.getElementById('bootErrorBox'), 'unexpected JS or boot error');
+        ${courseSearchBrowserScenario(data)}
         ${mistakeListBrowserScenario(data)}
         ${mistakeEditBrowserScenario(data)}
         ${materialBrowserScenario(data)}
@@ -255,6 +259,7 @@ async function testBrowser(data) {
     assert.match(html, /<pre id="regressionResult" data-result="passed">/, html.match(/<pre id="regressionResult"[^>]*>[\s\S]*?<\/pre>/)?.[0] || 'browser did not complete');
     console.log('PASS Chrome mistake edit: original CSS reproduction, visible/wrapped labels, inline list edit, search/expand/select, cancel, failure/retry, PATCH/reset rules, filters/scroll, detail reuse, stale requests, shared selectors, viewport ' + (process.env.COURSES_TEST_VIEWPORT || '1280,960'));
     console.log('PASS Chrome mistake list: shared reading styles, star/view/edit/delete only, live combined checkbox filters, favorite failure/retry/dedup, view/edit/delete/cancel, unified picker entry and completed queue');
+    console.log('PASS Chrome course search: scoped real API/all types, debounce/stale cancellation, type combinations, empty/no results/errors/retry, all details/return/scroll, 105-row pagination, safe text/wrapping, course switching');
     console.log('PASS Chrome reading review: ordinary/picker favorites sync/failure/reload, combined filters/AND/OR/direct tags/status/search/filtered all/dedup, preview, auto-next, skip preserves status/favorite, success counts, retry, independent queues, repeat/pause/actual reload');
     console.log('PASS Chrome: existing pages/tags/CRUD, mistake filters, filtered selection/dedup/partial state, three review queues/repeat, failed request never skips, pause/resume and actual reload recovery');
   } finally { await new Promise(resolve => staticServer.close(resolve)); }
@@ -344,9 +349,11 @@ async function testFrontend() {
   try {
     testMistakeMigrations(source, temp);
     testMaterialReviewMigration(source, temp);
+    testCourseSearchData(source, temp);
     const backend = await testBackend();
     await testMistakeApi(backend);
     await testMaterialReviewApi(backend);
+    await testCourseSearchApi(backend);
     if (!process.argv.includes('--backend-only')) {
       await testFrontend();
       await testBrowser(backend);

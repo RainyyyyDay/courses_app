@@ -10,7 +10,7 @@
 
 // 只显示其中一个页面容器，其余隐藏。沿用原有 SPA 的 display 切换方式，不引入路由。
 function showPageOnly(pageId) {
-  ['listPage', 'detailPage', 'nodeDetailPage', 'mistakeDetailPage', 'resourceDetailPage', 'materialReviewPage'].forEach(id => {
+  ['listPage', 'detailPage', 'courseSearchPage', 'nodeDetailPage', 'mistakeDetailPage', 'resourceDetailPage', 'materialReviewPage'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = (id === pageId) ? 'block' : 'none';
   });
@@ -23,6 +23,7 @@ async function backFromDetail() {
     return;
   }
   if (currentView.type === 'mistake') forgetMistakeDetailLocation();
+  if (currentView.type === 'courseSearch') cancelCourseSearchRequest();
   const prev = navStack.pop();
 
   if (!prev) {
@@ -31,7 +32,10 @@ async function backFromDetail() {
     return;
   }
 
-  if (prev.type === 'node') {
+  if (prev.type === 'courseSearch' && prev.courseId === currentCourseId) {
+    currentView = prev;
+    renderCourseSearchPage();
+  } else if (prev.type === 'node') {
     currentView = { type: 'node', id: prev.id };
     await renderNodeDetailPage(prev.id);
   } else if (prev.type === 'mistake') {

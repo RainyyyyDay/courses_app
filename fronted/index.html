@@ -106,7 +106,10 @@
       <button class="back-btn" onclick="backToList()">←</button>
       <h1 id="detailTitle">课程</h1>
     </div>
-    <button class="add-btn" id="treeBtn" onclick="event.stopPropagation();openAddMenu(null, event)" style="display:none;" title="添加内容">＋</button>
+    <div class="course-header-actions">
+      <button class="course-search-entry" id="courseSearchOpen" type="button" onclick="openCourseSearch()">搜索本课程</button>
+      <button class="add-btn" id="treeBtn" onclick="event.stopPropagation();openAddMenu(null, event)" style="display:none;" title="添加内容">＋</button>
+    </div>
   </div>
 
   <div class="detail-tabs">
@@ -180,6 +183,38 @@
     </div>
   </div>
 </div>
+
+  <!-- 课程内统一搜索：复用原有详情页，返回时恢复本页状态。 -->
+  <div id="courseSearchPage">
+    <div class="header">
+      <div class="header-left">
+        <button class="back-btn" type="button" onclick="backFromDetail()" aria-label="返回课程">←</button>
+        <h1>搜索本课程</h1>
+      </div>
+      <span id="courseSearchCourse" class="course-search-course"></span>
+    </div>
+    <div class="course-search-content">
+      <form class="course-search-controls" onsubmit="event.preventDefault();requestCourseSearch()">
+        <div class="course-search-input-row">
+          <input id="courseSearchQuery" type="search" maxlength="500" autocomplete="off" placeholder="搜索资料、笔记和错题"
+            aria-label="搜索本课程的关键词" oninput="changeCourseSearchQuery(this.value,event.isComposing)"
+            oncompositionend="changeCourseSearchQuery(this.value)" />
+          <button class="course-search-submit" type="submit">搜索</button>
+        </div>
+        <fieldset class="course-search-types">
+          <legend>内容类型</legend>
+          <label><input type="checkbox" value="materials" checked onchange="changeCourseSearchType(this.value,this.checked)" />资料</label>
+          <label><input type="checkbox" value="notes" checked onchange="changeCourseSearchType(this.value,this.checked)" />笔记</label>
+          <label><input type="checkbox" value="mistakes" checked onchange="changeCourseSearchType(this.value,this.checked)" />错题</label>
+        </fieldset>
+      </form>
+      <div id="courseSearchCount" class="course-search-count" role="status" aria-live="polite"></div>
+      <div id="courseSearchError" class="course-search-error" role="alert"></div>
+      <button id="courseSearchRetry" class="course-search-secondary" type="button" onclick="retryCourseSearch()" hidden>重试搜索</button>
+      <div id="courseSearchResults" class="course-search-results"></div>
+      <button id="courseSearchMore" class="course-search-more" type="button" onclick="requestCourseSearch(true)" hidden>加载更多</button>
+    </div>
+  </div>
 
   <!-- 节点详情页（folder / knowledge 通用） -->
   <div id="nodeDetailPage">
@@ -616,6 +651,7 @@
   <script src="js/noteReview.js"></script>
   <script src="js/mistakeDetail.js"></script>
   <script src="js/mistakeQueue.js"></script>
+  <script src="js/courseSearch.js"></script>
 
   <!-- 知识框架 -->
   <script src="js/knowledgeTree.js"></script>
