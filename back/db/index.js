@@ -32,4 +32,6 @@ module.exports = {
   ...require('./assessments'),
   ...require('./mistakes'),
   ...require('./mistakeReview'),
+  ...require('./courseSearch'),
+  ...require('./reviewPlans'),
 };

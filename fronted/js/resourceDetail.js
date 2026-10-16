@@ -7,6 +7,7 @@
  */
 
 /* ========== 资源详情（资料 / 笔记通用，不复制两套页面） ========== */
+let resourceDetailRequest = 0;
 
 async function openResourceDetail(resourceType, resourceId) {
   navStack.push(currentView);
@@ -15,6 +16,10 @@ async function openResourceDetail(resourceType, resourceId) {
 }
 
 async function renderResourceDetailPage(resourceType, resourceId) {
+  const request = ++resourceDetailRequest;
+  const courseId = currentCourseId;
+  const isCurrent = () => request === resourceDetailRequest && currentCourseId === courseId
+    && currentView.type === 'resource' && currentView.resourceType === resourceType && currentView.id === resourceId;
   showPageOnly('resourceDetailPage');
 
   const label = resourceType === 'note' ? '笔记' : '资料';
@@ -33,8 +38,12 @@ async function renderResourceDetailPage(resourceType, resourceId) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.message || ('找不到' + label));
     }
-    renderResourceDetail(resourceType, await res.json());
+    const row = await res.json();
+    if (!isCurrent()) return;
+    if (row.course_id !== courseId) throw new Error('这条内容不属于当前课程');
+    renderResourceDetail(resourceType, row);
   } catch (err) {
+    if (!isCurrent()) return;
     console.warn('加载资源详情失败:', err.message);
     showToast(err.message || ('加载' + label + '详情失败'));
     await backFromDetail(); // 资源可能已被删掉，退回来源页

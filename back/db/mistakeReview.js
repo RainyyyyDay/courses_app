@@ -1,6 +1,7 @@
 // 单题复习：当前步骤独立保存，最终状态只存在 mistakes.review_status。
 const { db } = require('./connection');
 const { getMistakeDetail } = require('./mistakes');
+const { reviewPlanContext, completePlanItem } = require('./reviewPlans');
 
 function fail(status, code, message) {
   throw Object.assign(new Error(message), { status, code });
@@ -66,9 +67,9 @@ function validateOperation(body, startOnly = false) {
   return Object.fromEntries(Object.keys(body).sort().map(key => [key, body[key]]));
 }
 
-function applyMistakeReview(id, body, startOnly = false) {
+function applyMistakeReview(id, body, startOnly = false, planItemId = null) {
   const operation = validateOperation(body, startOnly);
-  const requestJson = JSON.stringify(operation);
+  const requestJson = JSON.stringify(planItemId === null ? operation : {operation,planItemId});
   db.exec('BEGIN');
   try {
     const prior = db.prepare('SELECT request_json, response_json FROM mistake_review_events WHERE mistake_id = ? AND request_id = ?')
@@ -79,6 +80,8 @@ function applyMistakeReview(id, body, startOnly = false) {
       return JSON.parse(prior.response_json);
     }
     const mistake = getMistakeDetail(id);
+    const planItem = planItemId === null ? null : reviewPlanContext(planItemId,mistake.course_id,'mistake',id);
+    if (planItem?.status === 'completed') fail(409,'PLAN_ITEM_COMPLETED','本次计划任务已完成，请返回计划');
     const progress = progressFor(mistake);
     if (progress.version !== operation.expectedVersion) fail(409, 'VERSION_CONFLICT', '复习步骤已改变，请重新查询');
     const view = getMistakeReview(id);
@@ -107,6 +110,12 @@ function applyMistakeReview(id, body, startOnly = false) {
       status = positive ? 'reviewed' : 'unreviewed';
       result = usesMastered ? (positive ? 'mastered' : 'needs_review') : (positive ? 'correct' : 'incorrect');
       stage = 'completed';
+    }
+    if (planItem) {
+      // 旧完成步骤不能抵扣任务；实际动作仍须经过原步骤机及 expectedVersion 校验。
+      // 若其他入口推进过同题，仍由原 expectedVersion / allowedActions 校验；记录本次实际动作的轮次。
+      db.prepare('UPDATE review_plan_items SET review_round=?,review_revision=? WHERE id=?').run(round,mistake.review_revision,planItem.id);
+      if (stage === 'completed') completePlanItem(planItem);
     }
     const now = new Date().toISOString();
     db.prepare(`INSERT INTO mistake_review_progress (mistake_id, stage, recall, round, version, review_revision, updated_at)

@@ -8,7 +8,8 @@ async function openMistakeDetail(mistakeId, review = false) {
   currentView = { type: 'mistake', id: mistakeId, review };
   await renderMistakeDetailPage(mistakeId, review);
 }
-function forgetMistakeDetailLocation() { mistakeStorageSet('mistake-detail:' + currentCourseId, null); }
+function mistakeDetailLocationKey(courseId) { return mistakeQueue?.planContext ? mistakeQueue.storageKey + ':detail' : 'mistake-detail:' + courseId; }
+function forgetMistakeDetailLocation() { mistakeStorageSet(mistakeDetailLocationKey(currentCourseId), null); }
 async function restoreMistakeLocation(courseId) {
   const saved = mistakeStorageGet('mistake-detail:' + courseId);
   if (saved && Number.isSafeInteger(saved.id) && saved.id > 0 && currentCourseId === courseId) {
@@ -37,13 +38,14 @@ function mistakeDetailIsCurrent(state) {
 async function renderMistakeDetailPage(mistakeId, review = false) {
   const request = ++mistakeDetailRequest;
   const courseId = currentCourseId;
-  const state = { id: mistakeId, courseId, review, row: null, progress: null };
+  const state = { id: mistakeId, courseId, review, row: null, progress: null,
+    planItemId: mistakeQueue?.planContext?.items?.[mistakeId] || null };
   mistakeDetailState = state;
   showPageOnly('mistakeDetailPage');
   const detailBody = document.getElementById('mistakeDetailBody');
   if (detailBody) detailBody.style.display = 'block';
   if (typeof renderMistakeQueueBanner === 'function') renderMistakeQueueBanner();
-  mistakeStorageSet('mistake-detail:' + courseId, { id: mistakeId, review,
+  mistakeStorageSet(mistakeDetailLocationKey(courseId), { id: mistakeId, review,
     queue: typeof mistakeQueueCurrent === 'function' && !!mistakeQueueCurrent(state) });
   document.getElementById('mistakeDetailTitle').textContent = review ? '错题复习' : '错题详情';
   document.getElementById('mistakeDetailName').textContent = '加载中…';
@@ -592,7 +594,7 @@ async function mistakeReviewRequest(url, body) {
   return json;
 }
 function mistakeReviewUrl(state) { return `${API}/courses/${state.courseId}/mistakes/${state.id}/review`; }
-function mistakePendingKey(state) { return 'mistake-pending:' + state.courseId + ':' + state.id; }
+function mistakePendingKey(state) { return (state.planItemId ? 'plan-mistake-pending:' + state.planItemId : 'mistake-pending:' + state.courseId) + ':' + state.id; }
 async function refreshMistakeReview(state = mistakeDetailState) {
   if (!state) return;
   try {
@@ -675,7 +677,7 @@ async function submitMistakeReview(action, key, value) {
   const requestId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2);
   const body = { action, requestId, expectedVersion: state.progress.version };
   if (key) body[key] = value;
-  const pending = { body, start: action === 'start' };
+  const pending = { body, start: action === 'start', planItemId:state.planItemId };
   mistakeStorageSet(mistakePendingKey(state), pending);
   state.pending = pending; // localStorage 不可用时，仍能在当前页面重试。
   await sendMistakeReview(state, pending);
@@ -690,7 +692,8 @@ async function sendMistakeReview(state, pending) {
   let saved = false;
   if (mistakeDetailIsCurrent(state)) renderMistakeReview(state);
   try {
-    const progress = await mistakeReviewRequest(mistakeReviewUrl(state) + (pending.start ? '' : '/events'), pending.body);
+    const progress = await mistakeReviewRequest(mistakeReviewUrl(state) + (pending.start ? '' : '/events')
+      + (pending.planItemId ? '?planItemId=' + pending.planItemId : ''), pending.body);
     mistakeStorageSet(mistakePendingKey(state), null); state.pending = null;
     saved = true;
     if (mistakeDetailIsCurrent(state)) {

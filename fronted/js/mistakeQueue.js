@@ -125,13 +125,13 @@ function mistakeQueueCurrent(state = mistakeDetailState) {
     && mistakeQueue.ids[mistakeQueue.index] === state.id;
 }
 function mistakeCannotReview(row) {
-  if (!String(row.answer_content || '').trim()) return '缺少参考答案';
+  if (!String(row.answer_content || '').trim() && !row.answer_image_url) return '缺少参考答案';
   if (!String(row.content || '').trim() && !row.image_url && !String(row.ocr_text || '').trim()) return '缺少题目内容';
   return '';
 }
-function saveMistakeQueue() { mistakeStorageSet('mistake-queue:' + currentCourseId, mistakeQueue); }
-function readMistakeQueue() {
-  const saved = mistakeStorageGet('mistake-queue:' + currentCourseId);
+function saveMistakeQueue() { mistakeStorageSet(mistakeQueue?.storageKey || 'mistake-queue:' + currentCourseId, mistakeQueue); }
+function readMistakeQueue(storageKey = 'mistake-queue:' + currentCourseId) {
+  const saved = mistakeStorageGet(storageKey);
   if (!saved || saved.courseId !== currentCourseId || !(Object.hasOwn(MISTAKE_TYPES, saved.type) || saved.type === 'mixed')
     || !Array.isArray(saved.ids) || !saved.ids.length || saved.ids.some(id => !Number.isSafeInteger(id) || id < 1)
     || new Set(saved.ids).size !== saved.ids.length || !Number.isInteger(saved.index) || saved.index < 0 || saved.index > saved.ids.length
@@ -237,6 +237,8 @@ async function prepareMistakeQueueItem(state) {
     renderMistakeQueueBanner();
     return;
   }
+  // 计划仍 pending 而题目已完成，说明完成来自其他入口；需实际再复习，不能抵扣计划。
+  if (mistakeQueue.planContext && p.stage === 'completed') delete mistakeQueue.rounds[state.id];
   if (mistakeQueue.rounds[state.id] === undefined) {
     // completed 可能是以前的复习，必须新开一轮；未完成步骤则继续。
     mistakeQueue.rounds[state.id] = p.stage === 'idle' || p.stage === 'completed' ? p.round + 1 : p.round;
@@ -300,6 +302,7 @@ async function nextMistakeQueueItem() {
   finally { mistakeQueueLoading = false; renderMistakeQueueBanner(); }
 }
 function showMistakeQueueComplete() {
+  if (mistakeQueue?.planContext) return returnFromPlanReview();
   showPageOnly('mistakeDetailPage');
   currentView = { type: 'mistakeQueueComplete' };
   document.getElementById('mistakeDetailTitle').textContent = '本轮复习完成';
@@ -525,6 +528,7 @@ async function startNewMistakeReview() {
 }
 async function pauseMistakeQueue() {
   if (mistakeReviewBusy) return;
+  if (mistakeQueue?.planContext) { forgetMistakeDetailLocation(); return returnFromPlanReview(); }
   closeMistakeCompleteModal();
   forgetMistakeDetailLocation();
   ensureMistakeUi();
@@ -535,6 +539,9 @@ async function pauseMistakeQueue() {
 }
 async function endMistakeQueue() {
   if (mistakeReviewBusy) return;
+  if (mistakeQueue?.planContext) {
+    mistakeStorageSet(mistakeQueue.storageKey,null); forgetMistakeDetailLocation(); return returnFromPlanReview();
+  }
   mistakeStorageSet('mistake-queue:' + currentCourseId, null); mistakeQueue = null;
   await pauseMistakeQueue();
 }

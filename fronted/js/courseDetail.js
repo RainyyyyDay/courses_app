@@ -8,6 +8,7 @@
 
 /* ========== 课程详情 ========== */
 function openCourse(id, name, restoreTab = 'materials') {
+  if (typeof resetCourseSearch === 'function' && courseSearchState?.courseId !== id) resetCourseSearch();
   currentCourseId = id;
   currentCourseName = name;
   closeTagPicker(); // 切课程时关掉知识点选择器，避免残留上一门课程的选择
@@ -25,6 +26,7 @@ function openCourse(id, name, restoreTab = 'materials') {
 }
 
 function backToList() {
+  if (typeof cancelCourseSearchRequest === 'function') cancelCourseSearchRequest();
   localStorage.setItem('currentPage', 'list');
   localStorage.removeItem('currentCourseId');
   localStorage.removeItem('currentCourseName');
@@ -54,6 +56,7 @@ function switchTab(tab, el = null) {
   if (tab === 'notes') loadNotes();
   if (tab === 'assessments') loadAssessments();
   if (tab === 'mistakes') loadMistakes();
+  if (tab === 'reviewPlans') loadReviewPlans();
   if (tab === 'knowledge') loadTree();
 
   // 只有切到“知识框架”时，右上角才显示 ➕
