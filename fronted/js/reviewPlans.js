@@ -41,92 +41,144 @@ function switchReviewPlanCard(delta) {
 }
 function renderReviewPlanCarousel() {
   const {plans,index}=reviewPlanCarousel,plan=plans[index],box=document.getElementById('reviewPlanList');
-  box.innerHTML = plan ? `<div class="review-plan-controls">${plans.length>1 ? '<button type="button" aria-label="上一个计划" onclick="switchReviewPlanCard(-1)">←</button>' : ''}<span>当前计划 ${index+1} / ${plans.length}</span>${plans.length>1 ? '<button type="button" aria-label="下一个计划" onclick="switchReviewPlanCard(1)">→</button>' : ''}</div><article class="detail-card plan-card" data-plan-id="${plan.id}">
-      <h2><button class="plan-title" onclick="openReviewPlan(${plan.id})">${escapeHtml(plan.name)}</button></h2>
+  box.innerHTML = plan ? `<article class="detail-card plan-card" data-plan-id="${plan.id}">
+      <div class="review-plan-card-top"><h2><button class="plan-title" onclick="openReviewPlan(${plan.id})">${escapeHtml(plan.name)}</button></h2><div class="review-plan-controls" role="group" aria-label="切换复习计划">${plans.length>1 ? '<button type="button" aria-label="上一个计划" onclick="switchReviewPlanCard(-1)">←</button>' : ''}<span aria-live="polite">当前计划 ${index+1} / ${plans.length}</span>${plans.length>1 ? '<button type="button" aria-label="下一个计划" onclick="switchReviewPlanCard(1)">→</button>' : ''}</div></div>
       <span class="material-review-badge">${{active:'进行中',completed:'已完成',expired:'已过期'}[plan.reviewState]}</span>
       <p>考试：${escapeHtml(plan.exam_date)} · ${plan.remainingDays ? `剩余 ${plan.remainingDays} 天` : '已到考试日期'}${plan.status==='archived' ? ' · 已归档' : ''}</p>
       ${planProgressHtml(plan)}<p>今日 ${plan.todayStats.pending} 项待复习</p>
       <div class="mistake-toolbar"><button onclick="openReviewPlan(${plan.id})">查看计划</button><button onclick="startReviewPlanDay(${plan.id},'${plan.today}')" ${plan.status!=='active' || !plan.todayStats.pending ? 'disabled' : ''}>开始今日复习</button></div>
-    </article>` : '<p class="empty">还没有考前复习计划，点击上方按钮创建。</p>';
+    </article>` : '<div class="review-center-empty"><p>还没有考前复习计划</p><span>点击右上角「创建计划」，安排每日复习任务。</span></div>';
 }
 function openReviewPlanCreate() {
-  if (reviewPlanCreate?.busy) return;
-  reviewPlanCreate = {courseId:currentCourseId,rows:[],ids:new Set(),loading:true,busy:false};
-  document.getElementById('reviewPlanForm').reset();
-  document.getElementById('reviewPlanStart').value = planLocalDate();
-  document.getElementById('reviewPlanCreateError').textContent = '';
-  document.getElementById('reviewPlanModal').classList.add('show'); document.body.classList.add('plan-modal-open');
-  document.getElementById('reviewPlanName').focus(); renderReviewPlanSelection(); loadReviewPlanCandidates();
+  if(reviewPlanCreate?.busy)return;
+  reviewPlanCreate={courseId:currentCourseId,rows:[],ids:new Set(),tab:'material',filters:createReviewPickerFilters(),loading:true,busy:false,preview:null,validationTouched:false,returnFocus:document.activeElement};
+  document.getElementById('reviewPlanForm').reset();document.getElementById('reviewPlanStart').value=planLocalDate();
+  document.getElementById('reviewPlanCreateError').textContent='';
+  document.getElementById('reviewPlanSelector').hidden=false;document.getElementById('reviewPlanContentPreview').hidden=true;
+  restoreReviewPlanFilters();
+  document.getElementById('reviewPlanModal').classList.add('show');document.body.classList.add('plan-modal-open');
+  document.getElementById('reviewPlanName').focus();renderReviewPlanSelection();return loadReviewPlanCandidates();
 }
 function closeReviewPlanCreate() {
-  if (reviewPlanCreate?.busy) return;
-  reviewPlanCreate = null; document.getElementById('reviewPlanModal').classList.remove('show'); document.body.classList.remove('plan-modal-open');
+  if(reviewPlanCreate?.busy)return;
+  const focus=reviewPlanCreate?.returnFocus;reviewPlanCreate=null;
+  document.getElementById('reviewPlanContentPreviewBody').replaceChildren();
+  document.getElementById('reviewPlanModal').classList.remove('show');document.body.classList.remove('plan-modal-open');
+  if(focus?.isConnected)focus.focus({preventScroll:true});
 }
 async function loadReviewPlanCandidates() {
-  const state = reviewPlanCreate; if (!state) return;
-  state.loading = true; renderReviewPlanSelection();
+  const state=reviewPlanCreate;if(!state)return;state.loading=true;renderReviewPlanSelection();
   try {
-    const rows = await requestList(reviewPlanApi('candidates'));
-    if (reviewPlanCreate!==state || currentCourseId!==state.courseId) return;
-    state.rows = rows; state.loading = false; document.getElementById('reviewPlanCreateError').textContent = ''; renderReviewPlanSelection();
-  } catch(err) {
-    if (reviewPlanCreate===state) document.getElementById('reviewPlanCreateError').innerHTML = `${escapeHtml(err.message)}<button type="button" onclick="loadReviewPlanCandidates()">重试加载</button>`;
-  }
+    // 原计划候选接口仍决定可选范围；现有总复习候选补充直接关联标签/OCR，不请求知识树。
+    const [rows,tagged]=await Promise.all([requestList(reviewPlanApi('candidates')),requestList(reviewSessionApi('candidates',state.courseId))]);
+    if(reviewPlanCreate!==state || currentCourseId!==state.courseId)return;
+    const byKey=new Map(tagged.map(row=>[row.type+':'+row.id,row]));
+    state.rows=rows.map(row=>({...row,nodes:byKey.get(row.type+':'+row.id)?.nodes || [],ocr_text:byKey.get(row.type+':'+row.id)?.ocr_text || ''}));
+    state.loading=false;document.getElementById('reviewPlanCreateError').textContent='';renderReviewPlanSelection();
+  }catch(err){if(reviewPlanCreate===state){state.loading=false;renderReviewPlanSelection();document.getElementById('reviewPlanCreateError').innerHTML=`${escapeHtml(err.message)}<button type="button" onclick="loadReviewPlanCandidates()">重试加载</button>`;}}
 }
+function saveReviewPlanFilters() {
+  const s=reviewPlanCreate;if(!s)return;
+  Object.assign(s.filters[s.tab],{q:document.getElementById('reviewPlanSearch').value,favorite:document.getElementById('reviewPlanFavorite').checked,
+    status:document.getElementById('reviewPlanStatus').value,category:document.getElementById('reviewPlanMistakeType').value});
+}
+function restoreReviewPlanFilters() {
+  const s=reviewPlanCreate,f=s.filters[s.tab];
+  document.getElementById('reviewPlanSearch').value=f.q;document.getElementById('reviewPlanFavorite').checked=f.favorite;
+  document.getElementById('reviewPlanStatus').value=f.status;document.getElementById('reviewPlanMistakeType').value=f.category;
+  document.getElementById('reviewPlanMistakeType').hidden=s.tab!=='mistake';
+}
+function rememberReviewPlanScroll() {
+  const s=reviewPlanCreate;if(s && !s.preview)s.filters[s.tab].scroll=document.getElementById('reviewPlanCandidates').scrollTop;
+}
+function switchReviewPlanTab(type) {
+  const s=reviewPlanCreate;if(!s || s.busy || s.preview || !Object.hasOwn(s.filters,type) || s.tab===type)return;
+  saveReviewPlanFilters();rememberReviewPlanScroll();s.tab=type;restoreReviewPlanFilters();renderReviewPlanSelection();
+}
+function toggleReviewPlanTags() {const s=reviewPlanCreate;if(!s || s.busy)return;s.filters[s.tab].tagsOpen=!s.filters[s.tab].tagsOpen;renderReviewPickerTags(s,'reviewPlan','changeReviewPlanTag');}
+function changeReviewPlanTag(id,checked) {const s=reviewPlanCreate;if(!s || s.busy)return;const tags=s.filters[s.tab].tags;if(checked)tags.add(id);else tags.delete(id);renderReviewPlanSelection();}
 function filteredReviewPlanCandidates() {
-  if (!reviewPlanCreate) return [];
-  const value = id=>document.getElementById(id).value;
-  const q = value('reviewPlanSearch').trim().toLowerCase(), type = value('reviewPlanType'), category = value('reviewPlanMistakeType');
-  const status = value('reviewPlanStatus'), favorite = document.getElementById('reviewPlanFavorite').checked;
-  return reviewPlanCreate.rows.filter(row=>(!type || row.type===type) && (!category || row.type!=='mistake' || row.mistake_type===category)
-    && (!status || row.review_status===status) && (!favorite || !!row.favorite) && (!q || `${row.title}\n${row.content}`.toLowerCase().includes(q)));
+  const s=reviewPlanCreate;if(!s)return [];saveReviewPlanFilters();
+  const f=s.filters[s.tab],q=f.q.trim().toLowerCase();
+  return s.rows.filter(row=>row.type===s.tab && (!f.category || row.type!=='mistake' || row.mistake_type===f.category)
+    && (!f.status || row.review_status===f.status) && (!f.favorite || !!row.favorite)
+    && (!q || `${row.title}\n${row.content}\n${row.ocr_text || ''}`.toLowerCase().includes(q))
+    && (!f.tags.size || row.nodes.some(tag=>f.tags.has(tag.id))));
 }
 function renderReviewPlanSelection() {
-  const state = reviewPlanCreate; if (!state) return;
-  const rows = filteredReviewPlanCandidates();
-  document.getElementById('reviewPlanCandidates').innerHTML = state.loading ? '<p class="loading-tip">加载中…</p>' : rows.length ? rows.map(row=>{
-    const key = row.type+':'+row.id;
-    return `<label class="material-review-option plan-option"><input type="checkbox" data-plan-choice="${key}" ${state.ids.has(key) ? 'checked' : ''} ${state.busy || !row.reviewable ? 'disabled' : ''} onchange="selectReviewPlanItem('${key}',this.checked)" /><span><strong>${escapeHtml(row.title)}</strong><small>${PLAN_TYPE_LABELS[row.type]}${row.mistake_type ? ' · '+MISTAKE_TYPES[row.mistake_type] : ''} · ${row.review_status==='reviewed' ? '已复习' : '未复习'}${row.favorite ? ' · ★ 收藏' : ''}${!row.reviewable ? ' · 请先补齐题目或答案' : ''}</small></span></label>`;
-  }).join('') : '<p class="empty">没有符合条件的内容。</p>';
-  const eligible = rows.filter(row=>row.reviewable), count = eligible.filter(row=>state.ids.has(row.type+':'+row.id)).length;
-  const all = document.getElementById('reviewPlanSelectAll');
-  all.checked = !!eligible.length && count===eligible.length; all.indeterminate = count>0 && count<eligible.length;
-  all.disabled = state.loading || state.busy || !eligible.length;
-  document.getElementById('reviewPlanGenerate').disabled = state.busy || state.loading || !state.ids.size;
+  const s=reviewPlanCreate;if(!s)return;
+  const rows=filteredReviewPlanCandidates(),list=document.getElementById('reviewPlanCandidates'),scroll=s.filters[s.tab].scroll,focused=document.activeElement?.dataset.planChoice;
+  document.querySelectorAll('#reviewPlanModules [role=tab]').forEach(button=>{const selected=button.id==='reviewPlanTab-'+s.tab;button.setAttribute('aria-selected',String(selected));button.tabIndex=selected ? 0 : -1;button.disabled=s.busy;});
+  document.getElementById('reviewPlanPanel').setAttribute('aria-labelledby','reviewPlanTab-'+s.tab);
+  document.getElementById('reviewPlanListTitle').textContent=PLAN_TYPE_LABELS[s.tab]+'列表';
+  renderReviewPickerTags(s,'reviewPlan','changeReviewPlanTag');
+  list.innerHTML=s.loading ? '<p class="loading-tip">加载中…</p>' : rows.length ? rows.map(row=>reviewPickerCard(row,s.ids.has(row.type+':'+row.id),s.busy,'data-plan-choice','selectReviewPlanItem','openReviewPlanPreview')).join('') : '<p class="empty">没有符合条件的内容。</p>';
+  list.scrollTop=scroll;if(focused)list.querySelector(`[data-plan-choice="${focused}"]`)?.focus({preventScroll:true});
+  const eligible=rows.filter(row=>row.reviewable),count=eligible.filter(row=>s.ids.has(row.type+':'+row.id)).length,all=document.getElementById('reviewPlanSelectAll');
+  all.checked=!!eligible.length && count===eligible.length;all.indeterminate=count>0 && count<eligible.length;all.disabled=s.loading || s.busy || !eligible.length;
+  document.getElementById('reviewPlanCount').textContent=`已选择 ${s.ids.size} 项`;
+  document.getElementById('reviewPlanCounts').textContent=['material','note','mistake'].map(type=>`${PLAN_TYPE_LABELS[type]} ${[...s.ids].filter(key=>key.startsWith(type+':')).length}`).join(' · ');
+  for(const id of ['reviewPlanName','reviewPlanStart','reviewPlanExam','reviewPlanSearch','reviewPlanFavorite','reviewPlanStatus','reviewPlanMistakeType','reviewPlanTagsToggle'])document.getElementById(id).disabled=s.busy;
   renderReviewPlanPreview();
 }
 function selectReviewPlanItem(key,checked) {
-  const state = reviewPlanCreate; if (!state || state.busy || state.loading) return;
-  if (checked) state.ids.add(key); else state.ids.delete(key); renderReviewPlanSelection();
+  const s=reviewPlanCreate;if(!s || s.busy || s.loading || !s.rows.some(row=>row.type+':'+row.id===key && row.reviewable))return;
+  rememberReviewPlanScroll();if(checked)s.ids.add(key);else s.ids.delete(key);renderReviewPlanSelection();
 }
 function selectAllReviewPlanItems(checked) {
-  const state = reviewPlanCreate; if (!state || state.busy || state.loading) return;
-  for (const row of filteredReviewPlanCandidates().filter(row=>row.reviewable)) {
-    const key = row.type+':'+row.id; if (checked) state.ids.add(key); else state.ids.delete(key);
-  }
+  const s=reviewPlanCreate;if(!s || s.busy || s.loading)return;rememberReviewPlanScroll();
+  for(const row of filteredReviewPlanCandidates().filter(row=>row.reviewable)){const key=row.type+':'+row.id;if(checked)s.ids.add(key);else s.ids.delete(key);}
   renderReviewPlanSelection();
 }
-function clearReviewPlanItems() { if (reviewPlanCreate && !reviewPlanCreate.busy) { reviewPlanCreate.ids.clear(); renderReviewPlanSelection(); } }
+function clearReviewPlanItems() {if(reviewPlanCreate && !reviewPlanCreate.busy){rememberReviewPlanScroll();reviewPlanCreate.ids.clear();renderReviewPlanSelection();}}
+function reviewPlanInputError() {
+  const name=document.getElementById('reviewPlanName').value.trim(),start=document.getElementById('reviewPlanStart').value,exam=document.getElementById('reviewPlanExam').value;
+  if(!name)return '请填写计划名称';if(name.length>100)return '计划名称不能超过 100 字';
+  if(!start)return '请选择开始日期';if(!exam)return '请选择考试日期';
+  const valid=value=>/^[1-9]\d{3}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value+'T00:00:00Z')) && new Date(Date.parse(value+'T00:00:00Z')).toISOString().slice(0,10)===value;
+  if(!valid(start) || !valid(exam))return '请选择有效日期';
+  const days=(Date.parse(exam+'T00:00:00Z')-Date.parse(start+'T00:00:00Z'))/86400000;
+  if(days<=0)return '考试日期必须晚于开始日期，考试当天不安排复习';
+  if(days>3660)return '复习计划不能超过 3660 天';
+  return '';
+}
 function renderReviewPlanPreview() {
-  if (!reviewPlanCreate) return;
-  const start = document.getElementById('reviewPlanStart').value, exam = document.getElementById('reviewPlanExam').value;
-  const days = (Date.parse(exam+'T00:00:00Z')-Date.parse(start+'T00:00:00Z'))/86400000, count = reviewPlanCreate.ids.size;
-  document.getElementById('reviewPlanPreview').textContent = `共选择 ${count} 项。` + (Number.isFinite(days) && days>0
-    ? `复习 ${days} 天，考试还有 ${Math.max(0,Math.round((Date.parse(exam+'T00:00:00Z')-Date.parse(planLocalDate()+'T00:00:00Z'))/86400000))} 天，每天约 ${Math.floor(count/days)}～${Math.ceil(count/days)} 项。考试当天不排任务。`
-    : '请选择有效日期，考试日期必须晚于开始日期。');
+  const s=reviewPlanCreate;if(!s)return;
+  const start=document.getElementById('reviewPlanStart').value,exam=document.getElementById('reviewPlanExam').value,error=reviewPlanInputError();
+  const days=(Date.parse(exam+'T00:00:00Z')-Date.parse(start+'T00:00:00Z'))/86400000,count=s.ids.size;
+  document.getElementById('reviewPlanValidation').textContent=s.validationTouched || document.getElementById('reviewPlanName').value || exam ? error : '';
+  document.getElementById('reviewPlanGenerate').disabled=s.busy || s.loading || !count || !!error;
+  document.getElementById('reviewPlanPreview').textContent=`共选择 ${count} 项。`+(Number.isFinite(days) && days>0 && days<=3660
+    ? `复习 ${days} 天，每天约 ${Math.floor(count/days)}～${Math.ceil(count/days)} 项。考试当天不排任务。` : '请选择开始日期和考试日期，考试当天不排任务。');
+}
+async function openReviewPlanPreview(key,trigger=document.activeElement) {
+  const s=reviewPlanCreate;if(!s || s.busy || s.loading)return;
+  const row=s.rows.find(row=>row.type+':'+row.id===key);if(!row)return;saveReviewPlanFilters();rememberReviewPlanScroll();
+  return openReviewPickerPreview(s,row,trigger,REVIEW_PICKER_PREVIEWS.plan,()=>reviewPlanCreate===s,'openReviewPlanPreview');
+}
+function closeReviewPlanPreview() {if(reviewPlanCreate)closeReviewPickerPreview(reviewPlanCreate,REVIEW_PICKER_PREVIEWS.plan,'reviewPlanTab-'+reviewPlanCreate.tab);}
+function handleReviewPlanPickerKey(event) {
+  const s=reviewPlanCreate;if(!s)return;
+  if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(s.preview)closeReviewPlanPreview();else closeReviewPlanCreate();return;}
+  const tabs=[...document.querySelectorAll('#reviewPlanModules [role=tab]')],index=tabs.indexOf(event.target);
+  if(index>=0 && !s.busy && ['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){
+    event.preventDefault();const next=event.key==='Home' ? 0 : event.key==='End' ? 2 : (index+(event.key==='ArrowRight' ? 1 : 2))%3;
+    switchReviewPlanTab(['material','note','mistake'][next]);tabs[next].focus();
+  }
+  trapReviewPickerFocus(event,'reviewPlanModal');
 }
 async function createReviewPlan() {
-  const state = reviewPlanCreate; if (!state || state.busy || state.loading || !state.ids.size) return;
-  const body = {name:document.getElementById('reviewPlanName').value,startDate:document.getElementById('reviewPlanStart').value,
+  const state=reviewPlanCreate;if(!state || state.busy || state.loading || state.preview)return;
+  const error=reviewPlanInputError();if(error || !state.ids.size){state.validationTouched=true;renderReviewPlanPreview();document.getElementById('reviewPlanCreateError').textContent=error || '请至少选择一项复习内容';return;}
+  const body={name:document.getElementById('reviewPlanName').value.trim(),startDate:document.getElementById('reviewPlanStart').value,
     examDate:document.getElementById('reviewPlanExam').value,selectedItems:[...state.ids].map(key=>{const [type,id]=key.split(':');return {type,id:Number(id)};})};
-  state.busy = true; renderReviewPlanSelection(); document.getElementById('reviewPlanCreateError').textContent = '';
+  state.busy=true;renderReviewPlanSelection();document.getElementById('reviewPlanCreateError').textContent='';
   try {
-    const response = await requestApi(reviewPlanApi(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const plan = await response.json();
-    if (state!==reviewPlanCreate || state.courseId!==currentCourseId) return;
-    state.busy = false; closeReviewPlanCreate(); await openReviewPlan(plan.id);
-  } catch(err) { if (state===reviewPlanCreate) document.getElementById('reviewPlanCreateError').textContent = err.message; }
-  finally { state.busy = false; renderReviewPlanSelection(); }
+    const response=await requestApi(reviewPlanApi(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),plan=await response.json();
+    if(state!==reviewPlanCreate || state.courseId!==currentCourseId)return;
+    state.busy=false;closeReviewPlanCreate();await openReviewPlan(plan.id);
+  }catch(err){if(state===reviewPlanCreate)document.getElementById('reviewPlanCreateError').textContent=err.message;}
+  finally{state.busy=false;renderReviewPlanSelection();}
 }
 async function openReviewPlan(id) {
   const request = ++reviewPlanRequest, courseId = currentCourseId;

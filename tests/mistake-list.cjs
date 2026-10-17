@@ -22,10 +22,11 @@ function mistakeListBrowserScenario(data) {
       check(parentNode && !parentNode.is_system, 'child tag sits under a folder');
       await waitUntil(() => document.querySelector('#mistakeFilterTags input[value="' + parentNode.id + '"]'), 'parent tag filter loaded');
       document.querySelector('#mistakeFilterTags input[value="' + parentNode.id + '"]').click();
-      await waitUntil(() => !document.querySelector('#mistakeList .loading-tip') && mistakeUi.nodeIds.includes(parentNode.id), 'parent tag live filter');
+      // 列表与标签分别异步加载；列表完成不代表可点击的标签已重新挂载。
+      await waitUntil(() => !document.querySelector('#mistakeList .loading-tip') && mistakeUi.nodeIds.includes(parentNode.id) && document.querySelector('#mistakeFilterTags input[value="' + parentNode.id + '"]:checked'), 'parent tag live filter');
       check(currentMistakes.length === 2, 'parent tag matches child-tagged mistakes');
       document.querySelector('#mistakeFilterTags input[value="' + parentNode.id + '"]').click();
-      await waitUntil(() => !document.querySelector('#mistakeList .loading-tip') && mistakeUi.nodeIds.length === 0, 'parent tag filter cleared');
+      await waitUntil(() => !document.querySelector('#mistakeList .loading-tip') && mistakeUi.nodeIds.length === 0 && document.querySelector('#mistakeFilterTags input[value="' + parentNode.id + '"]:not(:checked)'), 'parent tag filter cleared');
       check(currentMistakes.length === 2, 'clearing parent tag restores list');
       const card = id => document.querySelector('[data-mistake-id="' + id + '"]');
       const star = id => card(id)?.querySelector('[data-mistake-favorite]');

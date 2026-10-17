@@ -21,6 +21,8 @@ const {reviewPlanBrowserPrelude,reviewPlanBrowserScenario} = require('./review-p
 const {testReviewCenterMigration,testReviewCenterApi}=require('./review-center.cjs');
 const {reviewCenterBrowserPrelude,reviewCenterBrowserScenario}=require('./review-center-frontend.cjs');
 const {runBrowser}=require('./browser-driver.cjs');
+const {reviewCenterLayoutScenario}=require('./review-center-layout.cjs');
+const {reviewPlanPickerScenario}=require('./review-plan-picker.cjs');
 
 // 也允许直接通过测试参数指定屏幕尺寸，避免依赖各平台的环境变量语法。
 const viewportArgument = process.argv.find(arg => /^--viewport=\d+,\d+$/.test(arg));
@@ -194,6 +196,14 @@ async function testBrowser(data) {
           ${mistakeBrowserScenario(data)} return;
         }
         ${mistakeBrowserPrelude()}
+        if(!sessionStorage.getItem('review-plan-picker-done')) {
+          ${reviewPlanPickerScenario({pickerOnly:process.argv.includes('--review-plan-picker-only')})}
+          sessionStorage.setItem('review-plan-picker-done','true');
+        }
+        if(!sessionStorage.getItem('review-center-layout-done')) {
+          ${reviewCenterLayoutScenario({layoutOnly:process.argv.includes('--review-center-layout-only')})}
+          sessionStorage.setItem('review-center-layout-done','true');
+        }
         ${reviewCenterBrowserScenario({modalOnly:process.argv.includes('--total-review-modal-only')})}
         ${reviewPlanBrowserScenario()}
         await loadCourses();
@@ -261,6 +271,10 @@ async function testBrowser(data) {
     const location=failure.match(/http:\/\/127\.0\.0\.1:\d+\/:(\d+):\d+/);
     const context=location ? '\nScenario source: '+fs.readFileSync(index,'utf8').split(/\r?\n/).slice(Number(location[1])-2,Number(location[1])+1).join('\n') : '';
     assert.match(html, /<pre id="regressionResult" data-result="passed">/, failure+context);
+    console.log('PASS Chrome plan picker: 960px/90vh layout, date/name validation, equal tabs/independent filters/tags, mixed typed selection/all/unselect, long filename alignment/scroll/footer, shared text/image/PDF preview and state restoration, failed create/retry/double-click, existing total picker, actual viewport '+viewport.join('x'));
+    if(process.argv.includes('--review-plan-picker-only'))return;
+    console.log('PASS Chrome review page layout: independent panels/empty states, compact creation entry, inline carousel, recent rows/separators, long titles/no overlap/no overflow, original create/view/today/history/resume/repeat actions, actual viewport '+viewport.join('x'));
+    if(process.argv.includes('--review-center-layout-only'))return;
     if(process.argv.includes('--total-review-modal-only')) {
       console.log('PASS Chrome total review modal: specified six-part layout, equal tabs/independent filters, mixed selection/counts, actual text/image/PDF previews, failure/retry/stale responses, scroll restoration/fixed controls/no overflow, viewport ' + (process.env.COURSES_TEST_VIEWPORT || '1280,960'));
       return;

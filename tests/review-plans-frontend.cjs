@@ -88,7 +88,7 @@ function reviewPlanBrowserScenario() {
       ]) {ordinary[key]=JSON.stringify(value);localStorage.setItem(key,ordinary[key]);}
       const originalFetch=window.fetch,knowledgeCalls=[];
       window.fetch=(url,options)=>{if(String(url).includes('knowledge-tree'))knowledgeCalls.push(url);return originalFetch(url,options);};
-      document.querySelector('#pane-reviewPlans .upload-btn').click();
+      document.querySelector('#pane-reviewPlans .review-panel-heading [onclick="openReviewPlanCreate()"]').click();
       await waitUntil(()=>reviewPlanCreate && !reviewPlanCreate.loading,'plan candidates loaded');
       document.getElementById('reviewPlanName').value='<期末复习> & 计划';document.getElementById('reviewPlanExam').value=tomorrow;
       document.getElementById('reviewPlanFavorite').checked=true;renderReviewPlanSelection();
@@ -97,7 +97,7 @@ function reviewPlanBrowserScenario() {
       document.getElementById('reviewPlanStatus').value='unreviewed';renderReviewPlanSelection();
       check(filteredReviewPlanCandidates().length===0 && reviewPlanCreate.ids.size===1,'AND filter preserves hidden selection');
       document.getElementById('reviewPlanFavorite').checked=false;document.getElementById('reviewPlanStatus').value='';renderReviewPlanSelection();
-      selectAllReviewPlanItems(true);check(reviewPlanCreate.ids.size===4,'mixed fixed selection');
+      for(const type of ['material','note','mistake']){switchReviewPlanTab(type);selectAllReviewPlanItems(true);}check(reviewPlanCreate.ids.size===4,'mixed fixed selection');
       check(document.getElementById('reviewPlanPreview').textContent.includes('共选择 4 项'),'creation preview');
       window.fetch=async()=>{throw new TypeError('offline');};await createReviewPlan();
       check(reviewPlanCreate.ids.size===4 && document.getElementById('reviewPlanCreateError').textContent,'failed create preserves form/selection');
