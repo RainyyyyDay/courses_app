@@ -30,21 +30,25 @@ function planCalendarHtml() {
     const date = planCalendarDate(c.year, c.month, day);
     const info = c.dayMap.get(date);
     const count = info ? info.items.length : 0;
+    const overdue = !!info && date < today && info.state !== 'done';
     const classes = ['plan-calendar-cell'];
     if (!info) classes.push('is-empty');
     else classes.push('has-items');
     if (date === today) classes.push('is-today');
     if (info && info.state === 'done') classes.push('is-done');
+    if (overdue) classes.push('is-overdue');
     if (date === c.examDate) classes.push('is-exam');
     const mark = date === c.examDate ? '<span class="plan-calendar-mark is-exam-mark">试</span>'
       : info && info.state === 'done' ? '<span class="plan-calendar-mark is-check">✓</span>'
-        : info && date === today ? '<span class="plan-calendar-mark is-today-mark">▶</span>' : '';
+        : overdue ? '<span class="plan-calendar-mark is-overdue-mark">!</span>'
+          : info && date === today ? '<span class="plan-calendar-mark is-today-mark">▼</span>' : '';
     const title = info ? `${date} · ${count} 项 · 约 ${info.minutes} 分钟` : (date === c.examDate ? `${date} · 考试日` : '');
     cells.push(`<div class="${classes.join(' ')}" ${info ? `onclick="openPlanScheduleDay('${date}')"` : ''} ${title ? `title="${escapeHtml(title)}"` : ''}><span class="plan-calendar-day">${day}</span>${mark}${info ? `<span class="plan-calendar-count">${count} 项</span>` : ''}</div>`);
   }
   return `<div class="plan-calendar-head"><button type="button" onclick="shiftPlanCalendar(-1)" aria-label="上个月">‹</button><strong>${c.year} 年 ${c.month + 1} 月</strong><button type="button" onclick="shiftPlanCalendar(1)" aria-label="下个月">›</button></div>
     <div class="plan-calendar-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
-    <div class="plan-calendar-grid">${cells.join('')}</div>`;
+    <div class="plan-calendar-grid">${cells.join('')}</div>
+    <p class="plan-calendar-legend"><span class="is-today-mark">▼</span> 今天要复习 · <span class="is-check">✓</span> 已全部通过 · <span class="is-overdue-mark">!</span> 已过期未完成 · <span class="is-exam-mark">试</span> 考试日</p>`;
 }
 function planScheduleHtml(schedule) {
   if (!schedule || !Array.isArray(schedule.days)) return '';
@@ -59,7 +63,7 @@ function planScheduleHtml(schedule) {
   };
   const warnings = (feasibility.warnings || []).map(text => `<li>${escapeHtml(text)}</li>`).join('');
   return `<section class="detail-card plan-schedule"><h2>智能排期预览</h2>
-    <p class="detail-meta">按当前记忆状态估算：到考试前共 ${total} 次复习${feasibility.feasible ? '' : '，有内容排不下'}。点击有安排的日期可以查看当天内容；▶ 为今天，✓ 为当天已全部通过。</p>
+    <p class="detail-meta">按当前记忆状态估算：到考试前共 ${total} 次复习${feasibility.feasible ? '' : '，有内容排不下'}。点击有安排的日期可以查看当天内容，图例见日历下方。</p>
     <div id="reviewPlanCalendar">${planCalendarHtml()}</div>
     ${warnings ? `<ul class="plan-schedule-warnings">${warnings}</ul>` : ''}</section>`;
 }
@@ -75,6 +79,7 @@ function shiftPlanCalendar(delta) {
 function openPlanScheduleDay(date) {
   const day = planCalendar?.dayMap.get(date);
   if (!day) return;
+  const overdue = date < planLocalDate() && day.state !== 'done';
   const rows = ['mistake', 'material', 'note'].map(type => {
     const items = day.items.filter(item => item.type === type);
     if (!items.length) return ''; // 没有内容的类型不显示
@@ -84,6 +89,10 @@ function openPlanScheduleDay(date) {
   document.getElementById('reviewPlanDayTitle').textContent = `${date} · ${day.items.length} 项 · 约 ${day.minutes} 分钟`;
   document.getElementById('reviewPlanDayBody').innerHTML = `${day.state === 'done' ? '<p class="plan-day-done">当天已全部通过 ✓</p>'
     : day.state === 'partial' ? '<p class="plan-day-partial">当天还有未通过或跳过，可以继续。</p>' : ''}${rows}`;
+  if (overdue) {
+    document.getElementById('reviewPlanDayBody').insertAdjacentHTML('afterbegin',
+      '<p class="plan-day-overdue">这一天的复习期限已过，未完成的项目可以继续复习或等待重新排期。</p>');
+  }
   document.getElementById('reviewPlanDayModal').classList.add('show');
   document.body.classList.add('plan-day-open');
 }

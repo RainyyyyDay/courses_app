@@ -970,13 +970,25 @@ body.mistake-review-open { overflow: hidden; }
 .plan-calendar-cell.has-items:hover { border-color: #4a6cf7; background: #e3e9ff; }
 .plan-calendar-cell.is-today { border-color: #4a6cf7; background: #dde6ff; box-shadow: inset 0 0 0 1px #4a6cf7; }
 .plan-calendar-cell.is-done { border-color: #7fd3a5; background: #e8f8ef; }
+.plan-calendar-cell.is-overdue { border-color: #eb9a9a; background: #fdeeee; }
 .plan-calendar-cell.is-exam { border-color: #eeb04a; background: #fff5e2; }
 .plan-calendar-day { font-weight: 600; }
 .plan-calendar-mark { position: absolute; top: 4px; right: 6px; font-size: 11px; color: #4a6cf7; }
-.plan-calendar-mark.is-check { color: #1f9d5b; font-weight: 700; }
+.plan-calendar-mark.is-check { color: #1f9d5b; font-weight: 700; font-size: 16px; }
+.plan-calendar-mark.is-overdue-mark { color: #d64545; font-weight: 700; }
+.plan-calendar-mark.is-today-mark { color: #4a6cf7; font-size: 13px; animation: plan-pointer-bounce 1.1s ease-in-out infinite; }
 .plan-calendar-mark.is-exam-mark { color: #b7791f; font-weight: 700; }
 .plan-calendar-count { display: block; margin-top: 8px; color: #5b6a8a; }
 .plan-calendar-cell.is-empty .plan-calendar-count { display: none; }
+.plan-calendar-legend { margin: 10px 0 0; color: #8a93a5; font-size: 12px; line-height: 1.8; }
+.plan-calendar-legend .is-today-mark { color: #4a6cf7; }
+.plan-calendar-legend .is-check { color: #1f9d5b; font-weight: 700; }
+.plan-calendar-legend .is-overdue-mark { color: #d64545; font-weight: 700; }
+.plan-calendar-legend .is-exam-mark { color: #b7791f; font-weight: 700; }
+@keyframes plan-pointer-bounce {
+  0%, 100% { transform: translateY(-2px); }
+  50% { transform: translateY(2px); }
+}
 
 /* 排期日历：当天任务弹窗 */
 .review-day-dialog { max-width: 430px; }
@@ -989,6 +1001,7 @@ body.mistake-review-open { overflow: hidden; }
 .review-day-card button { padding: 7px 14px; border: 0; border-radius: 7px; background: #4a6cf7; color: #fff; cursor: pointer; }
 .plan-day-done { color: #1f9d5b; font-size: 13px; margin: 4px 0 8px; }
 .plan-day-partial { color: #b45309; font-size: 13px; margin: 4px 0 8px; }
+.plan-day-overdue { color: #c0392b; font-size: 13px; margin: 4px 0 8px; }
 @media(max-width:540px) {
   .plan-calendar-cell { min-height: 46px; padding: 4px; }
   .plan-calendar-count { margin-top: 6px; font-size: 11px; }

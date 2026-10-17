@@ -39,6 +39,8 @@ function reviewPlanBrowserPrelude() {
       check(document.getElementById('reviewPlanDetailBody').textContent.includes('今日 1 项待复习'),'today keeps the failed item pending');
       check(document.getElementById('reviewPlanDetailBody').textContent.includes('智能排期预览'),'plan detail shows scheduling preview');
       check(document.querySelectorAll('#reviewPlanCalendar .plan-calendar-cell.has-items').length>0,'schedule calendar marks review days');
+      check(document.querySelector('#reviewPlanCalendar .plan-calendar-cell.is-today .is-today-mark'),'today with unfinished items shows the moving pointer');
+      check(document.querySelector('#reviewPlanCalendar .plan-calendar-legend').textContent.includes('已过期未完成'),'calendar legend explains overdue');
       const scheduleCell=document.querySelector('#reviewPlanCalendar .plan-calendar-cell.has-items');
       openPlanScheduleDay(scheduleCell.getAttribute('onclick').match(/'([0-9-]+)'/)[1]);
       check(document.getElementById('reviewPlanDayModal').classList.contains('show') && document.querySelectorAll('#reviewPlanDayBody .review-day-card').length>0,'clicking a day opens only populated type cards');
