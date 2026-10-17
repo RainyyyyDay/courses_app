@@ -107,6 +107,7 @@
       <h1 id="detailTitle">课程</h1>
     </div>
     <div class="course-header-actions">
+      <button class="course-search-entry" id="totalReviewOpen" type="button" onclick="openTotalReview()">总复习</button>
       <button class="course-search-entry" id="courseSearchOpen" type="button" onclick="openCourseSearch()">搜索本课程</button>
       <button class="add-btn" id="treeBtn" onclick="event.stopPropagation();openAddMenu(null, event)" style="display:none;" title="添加内容">＋</button>
     </div>
@@ -117,7 +118,7 @@
     <div class="dtab" onclick="switchTab('notes', this)">笔记</div>
     <div class="dtab" onclick="switchTab('assessments', this)">考核</div>
     <div class="dtab" onclick="switchTab('mistakes', this)">错题</div>
-    <div class="dtab" onclick="switchTab('reviewPlans', this)">考前复习计划</div>
+    <div class="dtab" onclick="switchTab('reviewPlans', this)">复习</div>
     <div class="dtab" onclick="switchTab('knowledge', this)">知识框架</div>
   </div>
 
@@ -183,8 +184,10 @@
       <div id="treeContainer"></div>
     </div>
     <div class="tab-pane" id="pane-reviewPlans">
+      <h2 class="review-section-heading">复习计划</h2>
       <button class="upload-btn" onclick="openReviewPlanCreate()">＋ 创建复习计划</button>
       <div id="reviewPlanList"></div>
+      <section class="review-recent"><div class="review-section-heading"><h2>最近复习</h2><button type="button" onclick="openReviewHistory()">查看全部记录</button></div><div id="reviewRecentList"></div></section>
     </div>
   </div>
 </div>
@@ -666,6 +669,50 @@
     </form>
   </div>
 
+  <div id="reviewHistoryPage" style="display:none"><div class="header"><div class="header-left"><button class="back-btn" onclick="backToReviewPlans()">←</button><h1>全部复习记录</h1></div></div><div class="tab-content">
+    <div class="reading-browse-controls"><select id="reviewHistoryStatus" aria-label="记录状态" onchange="loadReviewHistory()"><option value="all">全部状态</option><option value="ongoing">进行中</option><option value="completed">已完成</option></select><select id="reviewHistorySource" aria-label="复习来源" onchange="loadReviewHistory()"><option value="all">全部来源</option><option value="plan">考前计划</option><option value="total">总复习</option><option value="material">资料</option><option value="note">笔记</option><option value="mistake">错题</option></select></div>
+    <div id="reviewHistoryList"></div><button id="reviewHistoryMore" type="button" onclick="loadReviewHistory(true)" hidden>加载更多</button>
+  </div></div>
+  <div id="reviewSessionDetailPage" style="display:none"><div class="header"><div class="header-left"><button class="back-btn" onclick="openReviewHistory()">←</button><h1>复习记录详情</h1></div></div><div id="reviewSessionDetailBody" class="tab-content"></div></div>
+  <div id="centerReviewToolbar" class="review-session-bar" style="display:none"></div>
+  <div id="totalReviewModal" class="modal-mask" onclick="if(event.target===this){if(totalReviewState?.preview)closeTotalReviewPreview();else closeTotalReview()}" onkeydown="handleTotalReviewKey(event)">
+    <form class="modal total-review-dialog" role="dialog" aria-modal="true" aria-labelledby="totalReviewTitle" onsubmit="event.preventDefault();if(!totalReviewState?.preview)startTotalReview()">
+      <div id="totalReviewSelector" class="total-review-selector">
+        <header class="total-review-head"><h3 id="totalReviewTitle" tabindex="-1">总复习 · 当前课程</h3><button type="button" class="total-review-close" onclick="closeTotalReview()" aria-label="关闭总复习">×</button></header>
+        <div id="totalReviewModules" class="total-review-tabs" role="tablist" aria-label="复习模块">
+          <button id="totalReviewTab-material" type="button" role="tab" aria-controls="totalReviewPanel" aria-selected="true" onclick="switchTotalReviewTab('material')">资料</button>
+          <button id="totalReviewTab-note" type="button" role="tab" aria-controls="totalReviewPanel" aria-selected="false" tabindex="-1" onclick="switchTotalReviewTab('note')">笔记</button>
+          <button id="totalReviewTab-mistake" type="button" role="tab" aria-controls="totalReviewPanel" aria-selected="false" tabindex="-1" onclick="switchTotalReviewTab('mistake')">错题</button>
+        </div>
+        <section id="totalReviewPanel" class="total-review-panel" role="tabpanel" aria-labelledby="totalReviewTab-material">
+          <div class="total-review-search"><input id="totalReviewSearch" type="search" maxlength="500" placeholder="搜索标题或正文" aria-label="搜索标题或正文" oninput="renderTotalReview()" /><label><input id="totalReviewFavorite" type="checkbox" onchange="renderTotalReview()" />只看收藏</label></div>
+          <div class="total-review-filters">
+            <select id="totalReviewStatus" aria-label="复习状态" onchange="renderTotalReview()"><option value="">全部复习状态</option><option value="unreviewed">未复习</option><option value="reviewed">已复习</option></select>
+            <select id="totalReviewMistakeType" aria-label="错题分类" hidden onchange="renderTotalReview()"><option value="">全部错题分类</option><option value="knowledge">知识类</option><option value="thinking">思维类</option><option value="execution">执行类</option><option value="unclassified">待分类</option></select>
+            <button id="totalReviewTagsToggle" type="button" aria-expanded="false" aria-controls="totalReviewTags" onclick="toggleTotalReviewTags()"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 3h8l10 10-8 8L3 11V3Z"/><circle cx="7.5" cy="7.5" r="1"/></svg><span>知识点标签</span></button>
+          </div>
+          <div id="totalReviewTags" class="reading-browse-tags total-review-tags" aria-label="知识点标签多选" hidden></div>
+          <section class="total-review-list-region" aria-labelledby="totalReviewListTitle">
+            <div class="total-review-list-head"><h4 id="totalReviewListTitle">资料列表</h4><button type="button" class="total-review-text" onclick="selectTotalReviewCourse()">全选本课程</button></div>
+            <label class="total-review-select-all"><input id="totalReviewSelectAll" type="checkbox" onchange="selectTotalReviewVisible(this.checked)" />全选当前筛选结果</label>
+            <div id="totalReviewCandidates" class="total-review-list" onscroll="rememberTotalReviewScroll()"></div>
+          </section>
+        </section>
+        <footer class="total-review-footer">
+          <div class="total-review-summary" role="status" aria-live="polite"><strong id="totalReviewCount">已选择 0 项</strong><small id="totalReviewCounts">资料 0 · 笔记 0 · 错题 0</small></div>
+          <button type="button" class="total-review-text total-review-clear" onclick="clearTotalReviewSelection()">清空已选</button>
+          <div class="modal-actions"><button type="button" class="btn-cancel" onclick="closeTotalReview()">取消</button><button id="totalReviewStart" type="submit" class="btn-confirm" disabled>开始复习</button></div>
+          <div id="totalReviewError" class="material-review-error" role="alert"></div>
+        </footer>
+      </div>
+      <section id="totalReviewPreview" class="total-review-preview" role="region" aria-labelledby="totalReviewPreviewTitle" hidden>
+        <header class="total-review-head"><h3 id="totalReviewPreviewTitle" tabindex="-1">内容预览</h3><button type="button" class="total-review-close" onclick="closeTotalReviewPreview()" aria-label="关闭预览，返回列表">×</button></header>
+        <div id="totalReviewPreviewBody" class="total-review-preview-body"></div>
+        <footer class="total-review-preview-foot"><button type="button" class="btn-cancel" onclick="closeTotalReviewPreview()">返回列表</button></footer>
+      </section>
+    </form>
+  </div>
+
   <!-- 基础设施 -->
   <!-- 第三方：canvas-confetti（已本地化，断网可用；MIT，见 vendor/canvas-confetti/LICENSE） -->
   <script src="vendor/canvas-confetti/confetti.browser.js"></script>
@@ -700,6 +747,7 @@
   <script src="js/mistakeQueue.js"></script>
   <script src="js/courseSearch.js"></script>
   <script src="js/reviewPlans.js"></script>
+  <script src="js/reviewCenter.js"></script>
 
   <!-- 知识框架 -->
   <script src="js/knowledgeTree.js"></script>

@@ -6,6 +6,7 @@ function createReadingReview(kind, label, resumeId, options = {}) {
   const store = value => {
     try { localStorage.setItem(options.storageKey || (kind === 'materials' ? 'material' : 'note') + '-review-queue:' + currentCourseId, JSON.stringify(value)); }
     catch { /* 当前浏览器禁用存储时仍可完成本轮；实际状态已保存到后端。 */ }
+    if(typeof updateLegacyReviewBackup==='function')updateLegacyReviewBackup(value || state.queue,value===null);
   };
   function read() {
     try {
@@ -109,7 +110,8 @@ function createReadingReview(kind, label, resumeId, options = {}) {
   // 调度层只提供固定对象和存储位置；阅读、提交、跳过及重试仍走同一控制器。
   state.startItems = async ids => {
     if (state.busy || !ids.length) return;
-    state.queue = {kind,courseId:currentCourseId,ids:[...ids],index:0,results:{},skipped:[],pending:null,active:true,finished:false};
+    state.queue = {kind,courseId:currentCourseId,ids:[...ids],index:0,results:{},skipped:[],pending:null,active:true,finished:false,
+      sessionId:options.sessionId || null,sessionItems:options.sessionItems || null};
     store(state.queue); await state.show();
   };
   const successes = () => state.queue.ids.filter(id=>state.queue.results[id] === 'reviewed').length;
@@ -122,7 +124,12 @@ function createReadingReview(kind, label, resumeId, options = {}) {
       const selected = rows.filter(row=>row.course_id === s.courseId && s.ids.has(row.id));
       if (selected.length !== s.ids.size) throw new Error(`部分已选${label}已删除，请重新选择`);
       if (state.selection !== s || currentCourseId !== s.courseId) return;
-      state.queue = {kind,courseId:s.courseId,ids:selected.map(row=>row.id),index:0,results:{},skipped:[],pending:null,active:true,finished:false};
+      s.sessionRequestId ||= reviewRequestId();
+      const session=await createReviewRecord(kind==='materials' ? 'material' : 'note',selected.map(row=>({type:kind==='materials' ? 'material' : 'note',id:row.id})),{requestId:s.sessionRequestId});
+      if (state.selection !== s || currentCourseId !== s.courseId) return;
+      preserveLegacyReviewQueue((kind==='materials' ? 'material' : 'note')+'-review-queue:'+s.courseId,kind==='materials' ? 'material' : 'note');
+      state.queue = {kind,courseId:s.courseId,ids:selected.map(row=>row.id),index:0,results:{},skipped:[],pending:null,active:true,finished:false,
+        sessionId:session.id,sessionItems:reviewSessionMap(session)};
       store(state.queue); state.busy = false; state.close(); await state.show();
     } catch (err) { if (activeReadingReview === state) el('SelectionError').textContent = err.message; }
     finally { state.busy = false; state.renderSelection(); }
@@ -130,16 +137,20 @@ function createReadingReview(kind, label, resumeId, options = {}) {
   state.resume = async () => {
     if (state.busy || activeReadingReview.busy) return;
     const saved = read(); if (!saved || saved.finished) return;
+    if(saved.sessionId)await resumeRecordedReview(saved.sessionId);
     activeReadingReview.close();
     activeReadingReview = state; state.queue = saved; saved.active = true; store(saved); await state.show();
   };
   state.restore = async courseId => {
     const saved = read();
-    if (courseId === currentCourseId && saved?.active) { activeReadingReview = state; state.queue = saved; await state.show(); }
+    if (courseId === currentCourseId && saved?.active) { if(saved.sessionId)await resumeRecordedReview(saved.sessionId);activeReadingReview = state; state.queue = saved; await state.show(); }
   };
   const api = async (id,status) => {
     const courseId = state.queue.courseId;
-    const context = status && options.planItems ? `?planItemId=${options.planItems[id]}` : '';
+    const params=new URLSearchParams();
+    if(status && options.planItems)params.set('planItemId',options.planItems[id]);
+    if(status && state.queue.sessionItems?.[id])params.set('sessionItemId',state.queue.sessionItems[id]);
+    const context=params.size ? '?'+params : '';
     const response = await requestApi(`${API}/courses/${courseId}/${kind}/${id}/review${context}`, status ? {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewStatus:status})} : undefined);
     const row = await response.json();
     if (row.id !== id || row.course_id !== courseId || !['reviewed','unreviewed'].includes(row.review_status) || status && row.review_status !== status) throw new Error(`${label}复习响应无效，请重新确认`);
@@ -147,9 +158,11 @@ function createReadingReview(kind, label, resumeId, options = {}) {
   };
   state.actions = () => {
     if (!current() || state.queue.finished) return;
+    if(options.readOnly){el('Actions').innerHTML='<p>本项已处理，可使用上方按钮查看其他项目。</p>';return;}
     const queue = state.queue, disabled = !state.row || state.busy || queue.pending ? 'disabled' : '';
     el('Progress').textContent = `第 ${queue.index+1} / ${queue.ids.length} 条 · 已处理 ${queue.index} 条 · 成功复习 ${successes()} 条`;
     el('Actions').innerHTML = `<button data-material-review="reviewed" onclick="saveMaterialReview('reviewed')" ${disabled}>已复习</button>${queue.pending ? `<button onclick="retryMaterialReview()" ${state.busy ? 'disabled' : ''}>重试上次保存</button>` : ''}<button id="materialReviewNext" onclick="nextMaterialReview()" ${disabled}>跳过此条</button><button onclick="pauseMaterialReview()" ${state.busy ? 'disabled' : ''}>退出，稍后继续</button><button onclick="endMaterialReview()" ${state.busy ? 'disabled' : ''}>结束本轮</button>`;
+    if(options.sessionId && typeof renderCenterReviewToolbar==='function')renderCenterReviewToolbar();
   };
   state.show = async () => {
     const queue = state.queue; if (!queue || queue.courseId !== currentCourseId) return;
@@ -186,10 +199,11 @@ function createReadingReview(kind, label, resumeId, options = {}) {
     }
   };
   const advance = async () => {
+    if(state.queue.sessionId && !options.onFinish && state.queue.index+1<state.queue.ids.length)await recordedReviewAction(state.queue.sessionId,'position',{position:state.queue.index+1});
     state.queue.index++; state.queue.finished = state.queue.index === state.queue.ids.length; store(state.queue); await state.show();
   };
   state.save = async status => {
-    if (!current() || !state.row || state.busy || state.queue.pending || status !== 'reviewed') return;
+    if (!current() || !state.row || state.busy || state.queue.pending || status !== 'reviewed' || options.readOnly) return;
     state.queue.pending = {id:state.row.id,status:'reviewed'}; store(state.queue); await state.retry();
   };
   state.retry = async () => {
@@ -205,18 +219,25 @@ function createReadingReview(kind, label, resumeId, options = {}) {
     finally { state.busy = false; state.actions(); }
   };
   state.skip = async () => {
-    if (!current() || !state.row || state.busy || state.queue.pending) return;
+    if (!current() || !state.row || state.busy || state.queue.pending || options.readOnly) return;
     state.busy = true;
-    if (!state.queue.skipped.includes(state.row.id)) state.queue.skipped.push(state.row.id);
-    try { await advance(); } finally { state.busy = false; state.actions(); }
+    try {
+      if(state.queue.sessionId)await recordedReviewAction(`${state.queue.sessionId}/items/${state.queue.sessionItems[state.row.id]}`,'skip');
+      if (!state.queue.skipped.includes(state.row.id)) state.queue.skipped.push(state.row.id);
+      await advance();
+    } catch(err){el('Error').textContent=err.message;}
+    finally { state.busy = false; state.actions(); }
   };
   state.pause = async () => {
     if (state.busy) return;
+    if(state.queue?.sessionId) {
+      try {await recordedReviewAction(state.queue.sessionId,'pause');}catch(err){el('Error').textContent=err.message;return;}
+    }
     if (state.queue?.courseId === currentCourseId) { state.queue.active = false; store(state.queue); }
     if (options.onExit) { ++state.request; state.row = null; await options.onExit(); return; }
     ++state.request; state.row = null; currentView = {type:'course',tab:kind}; showPageOnly('detailPage'); switchTab(kind);
   };
-  state.end = async () => { if (!state.busy) { store(null); state.queue = null; await state.pause(); } };
+  state.end = async () => { if (!state.busy) { if(state.queue?.sessionId){try{await recordedReviewAction(state.queue.sessionId,'pause');}catch(err){el('Error').textContent=err.message;return;}}store(null); state.queue = null; await state.pause(); } };
   return state;
 }
 

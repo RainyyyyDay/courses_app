@@ -5,6 +5,7 @@ let reviewPlanDetail = null;
 let reviewPlanRequest = 0;
 let planReviewSession = null;
 let planReviewStarting = false;
+let reviewPlanCarousel = {courseId:null,plans:[],index:0};
 
 function reviewPlanApi(id = '') { return `${API}/courses/${currentCourseId}/review-plans${id ? '/' + id : ''}`; }
 function planLocalDate() { return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
@@ -12,27 +13,41 @@ function planProgressHtml(plan) {
   return `<div class="plan-progress"><progress max="100" value="${plan.completionRate}" aria-label="完成率 ${plan.completionRate}%"></progress><span>${plan.completionRate}%</span></div><p class="detail-meta">总任务 ${plan.total} · 已完成 ${plan.completed} · 待完成 ${plan.pending} · 已跳过 ${plan.skipped}</p>`;
 }
 function rememberPlanPage(id = null) {
+  mistakeStorageSet('review-center-location:'+currentCourseId,null);
   localStorage.setItem('currentTab','reviewPlans');
   localStorage.setItem('courseTimeStamp',Date.now());
   mistakeStorageSet('review-plan-location:' + currentCourseId,id ? {id} : null);
 }
 async function loadReviewPlans() {
+  if (typeof loadRecentReviews==='function') loadRecentReviews();
   const request = ++reviewPlanRequest, courseId = currentCourseId;
   const box = document.getElementById('reviewPlanList'); box.innerHTML = '<p class="loading-tip">加载中…</p>';
   try {
     const plans = await requestList(reviewPlanApi());
     if (request!==reviewPlanRequest || courseId!==currentCourseId) return;
-    box.innerHTML = plans.length ? plans.map(plan=>`<article class="detail-card plan-card" data-plan-id="${plan.id}">
-      <h2><button class="plan-title" onclick="openReviewPlan(${plan.id})">${escapeHtml(plan.name)}</button></h2>
-      <p>考试：${escapeHtml(plan.exam_date)} · ${plan.remainingDays ? `剩余 ${plan.remainingDays} 天` : '已到考试日期'}${plan.status==='archived' ? ' · 已归档' : ''}</p>
-      ${planProgressHtml(plan)}<p>今日 ${plan.todayStats.pending} 项待复习</p>
-      <div class="mistake-toolbar"><button onclick="openReviewPlan(${plan.id})">查看计划</button><button onclick="startReviewPlanDay(${plan.id},'${plan.today}')" ${plan.status!=='active' || !plan.todayStats.pending ? 'disabled' : ''}>开始今日复习</button></div>
-    </article>`).join('') : '<p class="empty">还没有考前复习计划，点击上方按钮创建。</p>';
+    const selected=mistakeStorageGet('review-plan-carousel:'+courseId);
+    reviewPlanCarousel={courseId,plans,index:Math.max(0,plans.findIndex(plan=>plan.id===selected))};
+    renderReviewPlanCarousel();
   } catch(err) {
     if (request===reviewPlanRequest && courseId===currentCourseId) {
       showListError(box,err); box.insertAdjacentHTML('beforeend','<button onclick="loadReviewPlans()">重试</button>');
     }
   }
+}
+function switchReviewPlanCard(delta) {
+  const s=reviewPlanCarousel;if(s.courseId!==currentCourseId || !s.plans.length)return;
+  s.index=(s.index+delta+s.plans.length)%s.plans.length;
+  mistakeStorageSet('review-plan-carousel:'+currentCourseId,s.plans[s.index].id);renderReviewPlanCarousel();
+}
+function renderReviewPlanCarousel() {
+  const {plans,index}=reviewPlanCarousel,plan=plans[index],box=document.getElementById('reviewPlanList');
+  box.innerHTML = plan ? `<div class="review-plan-controls">${plans.length>1 ? '<button type="button" aria-label="上一个计划" onclick="switchReviewPlanCard(-1)">←</button>' : ''}<span>当前计划 ${index+1} / ${plans.length}</span>${plans.length>1 ? '<button type="button" aria-label="下一个计划" onclick="switchReviewPlanCard(1)">→</button>' : ''}</div><article class="detail-card plan-card" data-plan-id="${plan.id}">
+      <h2><button class="plan-title" onclick="openReviewPlan(${plan.id})">${escapeHtml(plan.name)}</button></h2>
+      <span class="material-review-badge">${{active:'进行中',completed:'已完成',expired:'已过期'}[plan.reviewState]}</span>
+      <p>考试：${escapeHtml(plan.exam_date)} · ${plan.remainingDays ? `剩余 ${plan.remainingDays} 天` : '已到考试日期'}${plan.status==='archived' ? ' · 已归档' : ''}</p>
+      ${planProgressHtml(plan)}<p>今日 ${plan.todayStats.pending} 项待复习</p>
+      <div class="mistake-toolbar"><button onclick="openReviewPlan(${plan.id})">查看计划</button><button onclick="startReviewPlanDay(${plan.id},'${plan.today}')" ${plan.status!=='active' || !plan.todayStats.pending ? 'disabled' : ''}>开始今日复习</button></div>
+    </article>` : '<p class="empty">还没有考前复习计划，点击上方按钮创建。</p>';
 }
 function openReviewPlanCreate() {
   if (reviewPlanCreate?.busy) return;
@@ -128,7 +143,7 @@ async function openReviewPlan(id) {
     }
   }
 }
-function backToReviewPlans() { ++reviewPlanRequest; rememberPlanPage(); currentView={type:'course',tab:'reviewPlans'}; showPageOnly('detailPage'); switchTab('reviewPlans'); }
+function backToReviewPlans() { ++reviewPlanRequest; if(typeof clearCenterReviewUi==='function')clearCenterReviewUi();rememberPlanPage(); currentView={type:'course',tab:'reviewPlans'}; showPageOnly('detailPage'); switchTab('reviewPlans'); }
 function renderReviewPlanDetail() {
   const state = reviewPlanDetail; if (!state || state.courseId!==currentCourseId) return;
   const {plan,items} = state;
@@ -189,15 +204,24 @@ async function startReviewPlanDay(planId,date,type = null, restoring = false) {
     const reusable = saved && !saved.finished && saved.courseId===courseId && Array.isArray(saved.ids) && saved.ids.length
       && Number.isInteger(saved.index) && saved.index>=0 && saved.index<saved.ids.length
       && saved.ids.slice(saved.index).every(id=>pendingIds.has(id));
+    const requestKey='review-plan-session-request:'+storageKey,selectionKey=rows.map(item=>item.id).join(',');
+    let creation=mistakeStorageGet(requestKey);
+    if(!creation || creation.selectionKey!==selectionKey){creation={requestId:reviewRequestId(),selectionKey};mistakeStorageSet(requestKey,creation);}
+    const session=reusable && saved.sessionId ? await recordedReviewAction(saved.sessionId,'resume')
+      : await createReviewRecord('plan',rows.map(item=>({type:item.item_type,id:item.item_id})),{planId,date,requestId:creation.requestId});
+    mistakeStorageSet(requestKey,null);
+    context.sessionId=session.id;
+    const sessionItems=reviewSessionMap(session);
     planReviewSession = context; mistakeStorageSet('review-plan-session:'+courseId,context); rememberPlanPage(planId);
     if (type==='mistake') {
       mistakeQueue = reusable ? readMistakeQueue(storageKey) : null;
       mistakeQueue ||= {courseId,type:'mixed',types:Object.fromEntries(rows.map(item=>[item.item_id,item.mistake_type])),ids:rows.map(item=>item.item_id),index:0,rounds:{},finished:false};
       mistakeQueue.storageKey=storageKey; mistakeQueue.planContext=context; saveMistakeQueue();
+      mistakeQueue.sessionId=session.id;mistakeQueue.sessionItems=sessionItems;saveMistakeQueue();
       await openMistakeDetail(mistakeQueue.ids[mistakeQueue.index],true);
     } else {
       const controller = createReadingReview(type==='material' ? 'materials' : 'notes',PLAN_TYPE_LABELS[type],null,
-        {storageKey,planItems:context.items,onExit:returnFromPlanReview,onFinish:returnFromPlanReview});
+        {storageKey,planItems:context.items,sessionId:session.id,sessionItems,onExit:returnFromPlanReview,onFinish:returnFromPlanReview});
       if (reusable && saved.active) await controller.restore(courseId);
       else if (reusable) await controller.resume();
       else await controller.startItems(rows.map(item=>item.item_id));
@@ -210,6 +234,7 @@ async function startReviewPlanDay(planId,date,type = null, restoring = false) {
 async function returnFromPlanReview() {
   const session = planReviewSession || mistakeQueue?.planContext;
   if (!session || session.courseId!==currentCourseId) return;
+  if(session.sessionId)await recordedReviewAction(session.sessionId,'pause');
   mistakeStorageSet('review-plan-session:'+currentCourseId,null);
   if (mistakeQueue?.planContext) mistakeQueue=null;
   planReviewSession=null; activeReadingReview=materialReadingReview; navStack=[];

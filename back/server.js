@@ -232,6 +232,34 @@ app.delete('/api/courses/:courseId/review-plans/:planId', mistakeApi((req,res) =
 function planReviewItemId(req) {
   return req.query.planItemId === undefined ? null : positiveId(req.query.planItemId);
 }
+function sessionReviewItemId(req) {
+  return req.query.sessionItemId === undefined ? null : positiveId(req.query.sessionItemId);
+}
+
+// 会话保存固定队列和活动记录，不代替原阅读控制器或错题步骤机。
+app.get('/api/courses/:courseId/review-sessions/candidates', mistakeApi((req,res)=>{
+  res.json(db.listSessionCandidates(mistakeCourse(req.params.courseId)));
+}));
+app.get('/api/courses/:courseId/review-sessions', mistakeApi((req,res)=>{
+  res.json(db.listReviewSessions(mistakeCourse(req.params.courseId),req.query));
+}));
+app.post('/api/courses/:courseId/review-sessions', mistakeApi((req,res)=>{
+  res.status(201).json(db.createReviewSession(mistakeCourse(req.params.courseId),req.body));
+}));
+app.get('/api/courses/:courseId/review-sessions/:sessionId', mistakeApi((req,res)=>{
+  res.json(db.getReviewSession(mistakeCourse(req.params.courseId),positiveId(req.params.sessionId)));
+}));
+for(const action of ['resume','pause','finish','position']) {
+  app.post(`/api/courses/:courseId/review-sessions/:sessionId/${action}`,mistakeApi((req,res)=>{
+    res.json(db.changeReviewSession(mistakeCourse(req.params.courseId),positiveId(req.params.sessionId),action,req.body || {}));
+  }));
+}
+app.post('/api/courses/:courseId/review-sessions/:sessionId/repeat',mistakeApi((req,res)=>{
+  res.status(201).json(db.repeatReviewSession(mistakeCourse(req.params.courseId),positiveId(req.params.sessionId),req.body));
+}));
+app.post('/api/courses/:courseId/review-sessions/:sessionId/items/:sessionItemId/skip',mistakeApi((req,res)=>{
+  res.json(db.skipReviewSessionItem(mistakeCourse(req.params.courseId),positiveId(req.params.sessionId),positiveId(req.params.sessionItemId)));
+}));
 
 // ==================== 资料接口 ====================
 
@@ -297,7 +325,9 @@ app.patch('/api/courses/:courseId/materials/:materialId/review', readingReviewAp
   if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'reviewStatus')
     || !['reviewed','unreviewed'].includes(body.reviewStatus)) return res.status(400).json({code:'INVALID_ARGUMENT', message:'reviewStatus 必须是 reviewed 或 unreviewed'});
   const planItemId = planReviewItemId(req);
-  const updated = planItemId === null ? db.setMaterialReviewStatus(row.id, row.course_id, body.reviewStatus)
+  const sessionItemId = sessionReviewItemId(req);
+  const updated = sessionItemId !== null ? db.saveSessionReadingReview(sessionItemId,row,'material',body.reviewStatus,db.setMaterialReviewStatus,planItemId)
+    : planItemId === null ? db.setMaterialReviewStatus(row.id, row.course_id, body.reviewStatus)
     : db.savePlanReadingReview(planItemId,row,'material',body.reviewStatus,db.setMaterialReviewStatus);
   res.json({...updated, nodes: db.listMaterialNodes(row.id)});
 }));
@@ -310,7 +340,9 @@ app.patch('/api/courses/:courseId/notes/:noteId/review', readingReviewApi((req, 
   if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'reviewStatus')
     || !['reviewed','unreviewed'].includes(body.reviewStatus)) return res.status(400).json({code:'INVALID_ARGUMENT', message:'reviewStatus 必须是 reviewed 或 unreviewed'});
   const planItemId = planReviewItemId(req);
-  const updated = planItemId === null ? db.setNoteReviewStatus(row.id, row.course_id, body.reviewStatus)
+  const sessionItemId = sessionReviewItemId(req);
+  const updated = sessionItemId !== null ? db.saveSessionReadingReview(sessionItemId,row,'note',body.reviewStatus,db.setNoteReviewStatus,planItemId)
+    : planItemId === null ? db.setNoteReviewStatus(row.id, row.course_id, body.reviewStatus)
     : db.savePlanReadingReview(planItemId,row,'note',body.reviewStatus,db.setNoteReviewStatus);
   res.json({...updated, nodes: db.listNoteNodes(row.id)});
 }, 'note'));
@@ -656,11 +688,11 @@ app.get('/api/courses/:courseId/mistakes/:mistakeId/review', mistakeApi((req, re
 }));
 
 app.post('/api/courses/:courseId/mistakes/:mistakeId/review', mistakeApi((req, res) => {
-  res.json(db.applyMistakeReview(scopedMistake(req).id, req.body, true, planReviewItemId(req)));
+  res.json(db.applyMistakeReview(scopedMistake(req).id, req.body, true, planReviewItemId(req),sessionReviewItemId(req)));
 }));
 
 app.post('/api/courses/:courseId/mistakes/:mistakeId/review/events', mistakeApi((req, res) => {
-  res.json(db.applyMistakeReview(scopedMistake(req).id, req.body, false, planReviewItemId(req)));
+  res.json(db.applyMistakeReview(scopedMistake(req).id, req.body, false, planReviewItemId(req),sessionReviewItemId(req)));
 }));
 
 app.get('/api/courses/:courseId/mistakes/:mistakeId/review/events', mistakeApi((req, res) => {

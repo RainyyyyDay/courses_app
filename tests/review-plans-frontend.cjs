@@ -57,7 +57,7 @@ function reviewPlanBrowserPrelude() {
       await startReviewPlanDay(late.id,yesterday,'material');await activeReadingReview.save('reviewed');
       check(reviewPlanDetail.plan.completed===1 && reviewPlanDetail.items[0].scheduled_date===yesterday,'overdue task can be completed without moving date');
       const oldConfirm=showConfirm;showConfirm=async()=>true;await deleteCurrentReviewPlan();showConfirm=oldConfirm;
-      await waitUntil(()=>currentView.type==='course' && document.getElementById('reviewPlanList').textContent.includes('已完成复习'),'delete returns to plan list');
+      await waitUntil(()=>currentView.type==='course' && reviewPlanCarousel.plans.some(plan=>plan.name==='已完成复习') && document.querySelectorAll('#reviewPlanList .plan-card').length===1,'delete returns to plan carousel');
       check(!document.getElementById('bootErrorBox'),'plan feature has no boot/runtime errors');
       sessionStorage.removeItem('plan-browser-refresh');sessionStorage.setItem('plan-browser-done','true');return false;
     }

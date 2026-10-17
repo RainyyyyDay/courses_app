@@ -8,7 +8,7 @@
 const { db } = require('./connection');
 
 // ===== 当前程序支持的数据库版本 =====
-const CURRENT_DB_VERSION = 12;
+const CURRENT_DB_VERSION = 13;
 
 // 判断某张表是否已经存在
 function tableExists(name) {
@@ -183,6 +183,76 @@ function migrate() {
   }
 }
 
+function migrateReviewSessions() {
+  if (getUserVersion() !== 12) return;
+  db.exec('BEGIN');
+  try { upgradeToV13(); setUserVersion(13); db.exec('COMMIT'); }
+  catch (err) { db.exec('ROLLBACK'); throw err; }
+}
+
+function upgradeToV13() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS review_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      source_type TEXT NOT NULL CHECK(source_type IN ('plan','total','material','note','mistake')),
+      source_id INTEGER REFERENCES review_plans(id) ON DELETE SET NULL,
+      source_date TEXT,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','paused','completed')),
+      current_position INTEGER NOT NULL DEFAULT 0 CHECK(current_position >= 0),
+      create_request_id TEXT NOT NULL,
+      request_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      completed_at TEXT,
+      UNIQUE(course_id,create_request_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_review_sessions_course ON review_sessions(course_id,status,updated_at,id);
+    CREATE TABLE IF NOT EXISTS review_session_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES review_sessions(id) ON DELETE CASCADE,
+      item_type TEXT NOT NULL CHECK(item_type IN ('material','note','mistake')),
+      item_id INTEGER NOT NULL CHECK(item_id > 0),
+      position INTEGER NOT NULL CHECK(position >= 0),
+      title_snapshot TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','completed','skipped')),
+      completed_at TEXT,
+      source_deleted INTEGER NOT NULL DEFAULT 0 CHECK(source_deleted IN (0,1)),
+      plan_item_id INTEGER REFERENCES review_plan_items(id) ON DELETE SET NULL,
+      review_round INTEGER,
+      review_revision INTEGER,
+      UNIQUE(session_id,position), UNIQUE(session_id,item_type,item_id),
+      CHECK((status='completed' AND completed_at IS NOT NULL) OR (status!='completed' AND completed_at IS NULL))
+    );
+    CREATE INDEX IF NOT EXISTS idx_review_session_source ON review_session_items(item_type,item_id);
+    CREATE TRIGGER IF NOT EXISTS review_session_settled AFTER UPDATE OF status ON review_session_items
+      WHEN OLD.status != NEW.status BEGIN
+      UPDATE review_sessions SET updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+        status=CASE WHEN NOT EXISTS(SELECT 1 FROM review_session_items WHERE session_id=NEW.session_id AND status='pending') THEN 'completed' ELSE status END,
+        completed_at=CASE WHEN NOT EXISTS(SELECT 1 FROM review_session_items WHERE session_id=NEW.session_id AND status='pending')
+          THEN COALESCE(completed_at,strftime('%Y-%m-%dT%H:%M:%fZ','now')) ELSE completed_at END
+        WHERE id=NEW.session_id AND status!='completed';
+    END;
+  `);
+  for (const [type,table] of [['material','materials'],['note','notes'],['mistake','mistakes']]) {
+    db.exec(`CREATE TRIGGER IF NOT EXISTS review_session_${type}_scope BEFORE INSERT ON review_session_items
+      WHEN NEW.item_type='${type}' BEGIN
+      SELECT RAISE(ABORT,'session item must belong to course') WHERE NOT EXISTS(
+        SELECT 1 FROM ${table} r JOIN review_sessions s ON s.id=NEW.session_id WHERE r.id=NEW.item_id AND r.course_id=s.course_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS review_session_${type}_deleted AFTER DELETE ON ${table} BEGIN
+      UPDATE review_session_items SET source_deleted=1,
+        status=CASE WHEN status='pending' THEN 'skipped' ELSE status END WHERE item_type='${type}' AND item_id=OLD.id;
+    END;`);
+  }
+  db.exec(`CREATE TRIGGER IF NOT EXISTS review_session_fixed_course BEFORE UPDATE OF course_id ON review_sessions
+    WHEN OLD.course_id!=NEW.course_id BEGIN SELECT RAISE(ABORT,'session course is immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS review_session_fixed_item BEFORE UPDATE OF session_id,item_type,item_id,position,title_snapshot ON review_session_items
+    BEGIN SELECT RAISE(ABORT,'session queue is immutable'); END;`);
+}
+
 function upgradeToV12() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS review_plans (
@@ -327,6 +397,7 @@ function upgradeToV5() {
 }
 
 migrate();
+migrateReviewSessions();
 
 // ===== 建表：Phase 0 的基础结构（version 1）=====
 // 每一张“子表”都用 course_id 指向 courses(id)，

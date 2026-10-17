@@ -23,7 +23,7 @@ function testReviewPlanMigrations(source,temp) {
     const fixture=path.join(temp,'plan-migration-'+version); fs.mkdirSync(fixture);
     fs.cpSync(path.join(source,'db'),path.join(fixture,'db'),{recursive:true});
     const schema=fs.readFileSync(path.join(source,'db/schema.js'),'utf8');
-    const oldSchema=schema.replace('CURRENT_DB_VERSION = 12','CURRENT_DB_VERSION = 11').replace('if (getUserVersion() === 11)','if (false)');
+    const oldSchema=schema.replace('CURRENT_DB_VERSION = 13','CURRENT_DB_VERSION = 11').replace('if (getUserVersion() === 11)','if (false)').replace('migrateReviewSessions();','');
     assert.notEqual(oldSchema,schema);
     fs.writeFileSync(path.join(fixture,'db/schema.js'),oldSchema);
     const script=`
@@ -47,7 +47,7 @@ function testReviewPlanMigrations(source,temp) {
         d.exec('DROP TABLE idx_review_plans_course');
       }
       require('./db/schema.js');
-      assert.equal(d.prepare('PRAGMA user_version').get().user_version,12,'single startup reaches v12');
+      assert.equal(d.prepare('PRAGMA user_version').get().user_version,13,'single startup reaches v13');
       for(const s of snapshots) assert.deepEqual(d.prepare('SELECT '+s.columns+' FROM '+s.name+' ORDER BY rowid').all(),s.rows);
       const p=store.createReviewPlan(c.id,{name:'plan',startDate:'2026-10-16',examDate:'2026-10-28',selectedItems:[{type:'material',id:m.id}]});
       const before=JSON.stringify(store.getReviewPlan(c.id,p.id));
@@ -60,7 +60,7 @@ function testReviewPlanMigrations(source,temp) {
     const result=spawnSync(process.execPath,['-e',script],{cwd:fixture,windowsHide:true,encoding:'utf8'});
     assert.equal(result.status,0,result.stderr);
   }
-  console.log('PASS review plan schedule/migration: balanced/stable/bounded dates, leap/year boundaries, v10/v11 to v12 once, rollback, repeat safety, source data unchanged, course constraint');
+  console.log('PASS review plan schedule/migration: balanced/stable/bounded dates, leap/year boundaries, v10/v11 through v12 to v13 once, rollback, repeat safety, source data unchanged, course constraint');
 }
 
 async function testReviewPlanApi({base,temp}) {
