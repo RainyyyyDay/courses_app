@@ -35,4 +35,5 @@ module.exports = {
   ...require('./courseSearch'),
   ...require('./reviewPlans'),
   ...require('./reviewSessions'),
+  ...require('./reviewItems'),
 };

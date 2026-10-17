@@ -222,6 +222,20 @@ app.get('/api/courses/:courseId/review-plans/:planId/items', mistakeApi((req,res
   if (Object.keys(req.query).some(key=>!['scheduledDate','status'].includes(key))) mistakeError(400,'INVALID_ARGUMENT','不支持的任务筛选参数');
   res.json(db.listPlanItems(mistakeCourse(req.params.courseId),positiveId(req.params.planId),req.query));
 }));
+// 排期预览：按记忆状态生成「今天到考前」的出现安排，只读不落库。
+app.get('/api/courses/:courseId/review-plans/:planId/schedule', mistakeApi((req,res) => {
+  res.json(db.getReviewPlanSchedule(mistakeCourse(req.params.courseId),positiveId(req.params.planId)));
+}));
+function reviewItemType(value) {
+  if (!['material','note','mistake'].includes(value)) mistakeError(400,'INVALID_ARGUMENT','内容类型必须是 material / note / mistake');
+  return value;
+}
+app.get('/api/courses/:courseId/review-items/:itemType/:itemId/state', mistakeApi((req,res) => {
+  res.json(db.getReviewItemState(mistakeCourse(req.params.courseId),reviewItemType(req.params.itemType),positiveId(req.params.itemId)));
+}));
+app.post('/api/courses/:courseId/review-items/:itemType/:itemId/grade', mistakeApi((req,res) => {
+  res.json(db.recordReviewItemGrade(mistakeCourse(req.params.courseId),reviewItemType(req.params.itemType),positiveId(req.params.itemId),req.body));
+}));
 app.patch('/api/courses/:courseId/review-plans/:planId', mistakeApi((req,res) => {
   res.json(db.updateReviewPlan(mistakeCourse(req.params.courseId),positiveId(req.params.planId),req.body));
 }));

@@ -7,7 +7,7 @@ const {DatabaseSync}=require('node:sqlite');
 function testReviewCenterMigration(source,temp) {
   const fixture=path.join(temp,'sessions-migration');fs.mkdirSync(fixture);fs.cpSync(path.join(source,'db'),path.join(fixture,'db'),{recursive:true});
   const schema=fs.readFileSync(path.join(source,'db/schema.js'),'utf8');
-  fs.writeFileSync(path.join(fixture,'db/schema.js'),schema.replace('CURRENT_DB_VERSION = 13','CURRENT_DB_VERSION = 12').replace('migrateReviewSessions();',''));
+  fs.writeFileSync(path.join(fixture,'db/schema.js'),schema.replace('CURRENT_DB_VERSION = 14','CURRENT_DB_VERSION = 12').replace('migrateReviewSessions();','').replace('migrateReviewScheduling();',''));
   const result=spawnSync(process.execPath,['-e',`
     const assert=require('node:assert/strict'),fs=require('node:fs'),store=require('./db/index.js'),d=store.db;
     assert.equal(d.prepare('PRAGMA user_version').get().user_version,12);
@@ -15,14 +15,14 @@ function testReviewCenterMigration(source,temp) {
     store.setMaterialFavorite(m.id,c.id,true);store.setMaterialReviewStatus(m.id,c.id,'reviewed');
     const p=store.createReviewPlan(c.id,{name:'old plan',startDate:'2026-10-16',examDate:'2026-10-28',selectedItems:[{type:'material',id:m.id}]});
     const tables=d.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
-    const before=tables.map(({name})=>({name,rows:d.prepare('SELECT * FROM '+name+' ORDER BY rowid').all()}));
+    const before=tables.map(({name})=>({name,columns:d.prepare('PRAGMA table_info('+name+')').all().map(c=>c.name).join(','),rows:d.prepare('SELECT * FROM '+name+' ORDER BY rowid').all()}));
     fs.copyFileSync(${JSON.stringify(path.join(source,'db/schema.js'))},'db/schema.js');delete require.cache[require.resolve('./db/schema.js')];
     d.exec('CREATE TABLE idx_review_sessions_course(id INTEGER)');assert.throws(()=>require('./db/schema.js'));
     assert.equal(d.prepare('PRAGMA user_version').get().user_version,12);
     assert.equal(d.prepare("SELECT count(*) n FROM sqlite_master WHERE name='review_sessions'").get().n,0);
     d.exec('DROP TABLE idx_review_sessions_course');require('./db/schema.js');
-    assert.equal(d.prepare('PRAGMA user_version').get().user_version,13);
-    for(const t of before)assert.deepEqual(d.prepare('SELECT * FROM '+t.name+' ORDER BY rowid').all(),t.rows);
+    assert.equal(d.prepare('PRAGMA user_version').get().user_version,14);
+    for(const t of before)assert.deepEqual(d.prepare('SELECT '+t.columns+' FROM '+t.name+' ORDER BY rowid').all(),t.rows);
     assert.equal(d.prepare('SELECT count(*) n FROM review_sessions').get().n,0,'no invented history');
     const session=store.createReviewSession(c.id,{requestId:'first',sourceType:'material',selectedItems:[{type:'material',id:m.id}]});
     const snapshot=JSON.stringify(store.getReviewSession(c.id,session.id));
@@ -30,7 +30,7 @@ function testReviewCenterMigration(source,temp) {
     assert.deepEqual(d.prepare('PRAGMA foreign_key_check').all(),[]);d.close();
   `],{cwd:fixture,windowsHide:true,encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
-  console.log('PASS review center migration: v12->v13, rollback, repeat execution, all legacy data preserved, no fabricated sessions');
+  console.log('PASS review center migration: v12->v14, rollback, repeat execution, all legacy data preserved, no fabricated sessions');
 }
 async function testReviewCenterApi({base,temp}) {
   async function api(method,url,body,status=200) {

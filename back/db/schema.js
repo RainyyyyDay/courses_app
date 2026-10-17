@@ -8,7 +8,7 @@
 const { db } = require('./connection');
 
 // ===== 当前程序支持的数据库版本 =====
-const CURRENT_DB_VERSION = 13;
+const CURRENT_DB_VERSION = 14;
 
 // 判断某张表是否已经存在
 function tableExists(name) {
@@ -253,6 +253,74 @@ function upgradeToV13() {
     BEGIN SELECT RAISE(ABORT,'session queue is immutable'); END;`);
 }
 
+// ===== v13 → v14：备考总复习的记忆状态与评分事件 =====
+function migrateReviewScheduling() {
+  if (getUserVersion() !== 13) return;
+  db.exec('BEGIN');
+  try { upgradeToV14(); setUserVersion(14); db.exec('COMMIT'); }
+  catch (err) { db.exec('ROLLBACK'); throw err; }
+}
+
+function upgradeToV14() {
+  const addColumn = (table, column, ddl) => {
+    const exists = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+    if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  };
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS review_item_states (
+      course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      item_type TEXT NOT NULL CHECK(item_type IN ('material','note','mistake')),
+      item_id INTEGER NOT NULL CHECK(item_id > 0),
+      stability REAL NOT NULL DEFAULT 0 CHECK(stability >= 0),
+      difficulty REAL NOT NULL DEFAULT 0 CHECK(difficulty BETWEEN 0 AND 10),
+      reps INTEGER NOT NULL DEFAULT 0 CHECK(reps >= 0),
+      lapses INTEGER NOT NULL DEFAULT 0 CHECK(lapses >= 0),
+      state TEXT NOT NULL DEFAULT 'new' CHECK(state IN ('new','learning','review','relearning')),
+      last_grade INTEGER CHECK(last_grade IS NULL OR last_grade BETWEEN 1 AND 4),
+      last_review_date TEXT,
+      due_date TEXT,
+      elapsed_days INTEGER NOT NULL DEFAULT 0 CHECK(elapsed_days >= 0),
+      scheduled_days INTEGER NOT NULL DEFAULT 0 CHECK(scheduled_days >= 0),
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (course_id,item_type,item_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_review_item_states_due ON review_item_states(course_id,due_date);
+    CREATE TABLE IF NOT EXISTS review_item_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      item_type TEXT NOT NULL CHECK(item_type IN ('material','note','mistake')),
+      item_id INTEGER NOT NULL CHECK(item_id > 0),
+      reviewed_at TEXT NOT NULL,
+      review_date TEXT NOT NULL,
+      grade INTEGER NOT NULL CHECK(grade BETWEEN 1 AND 4),
+      duration_ms INTEGER NOT NULL DEFAULT 0 CHECK(duration_ms >= 0),
+      session_id INTEGER,
+      session_item_id INTEGER,
+      stability_before REAL,
+      stability_after REAL,
+      difficulty_before REAL,
+      difficulty_after REAL,
+      due_before TEXT,
+      due_after TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_review_item_events_item ON review_item_events(course_id,item_type,item_id,id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_review_item_events_session ON review_item_events(session_item_id) WHERE session_item_id IS NOT NULL;
+  `);
+  for (const [type, table] of [['material', 'materials'], ['note', 'notes'], ['mistake', 'mistakes']]) {
+    db.exec(`CREATE TRIGGER IF NOT EXISTS review_item_state_${type}_deleted AFTER DELETE ON ${table} BEGIN
+      DELETE FROM review_item_states WHERE item_type='${type}' AND item_id=OLD.id;
+    END`);
+  }
+  addColumn('review_plans', 'target_retention', 'target_retention REAL NOT NULL DEFAULT 0.9');
+  addColumn('review_plans', 'daily_minutes', 'daily_minutes INTEGER NOT NULL DEFAULT 60');
+  addColumn('review_plans', 'daily_max_items', 'daily_max_items INTEGER NOT NULL DEFAULT 60');
+  addColumn('review_plans', 'strategy', "strategy TEXT NOT NULL DEFAULT 'balanced' CHECK(strategy IN ('memory','reasoning','balanced'))");
+  addColumn('review_plan_items', 'estimated_minutes', 'estimated_minutes INTEGER NOT NULL DEFAULT 5');
+  addColumn('review_plan_items', 'round_no', 'round_no INTEGER NOT NULL DEFAULT 1');
+  addColumn('review_plan_items', 'mode_hint', 'mode_hint TEXT');
+}
+
 function upgradeToV12() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS review_plans (
@@ -398,6 +466,7 @@ function upgradeToV5() {
 
 migrate();
 migrateReviewSessions();
+migrateReviewScheduling();
 
 // ===== 建表：Phase 0 的基础结构（version 1）=====
 // 每一张“子表”都用 course_id 指向 courses(id)，

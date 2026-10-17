@@ -23,6 +23,7 @@ const {reviewCenterBrowserPrelude,reviewCenterBrowserScenario}=require('./review
 const {runBrowser}=require('./browser-driver.cjs');
 const {reviewCenterLayoutScenario}=require('./review-center-layout.cjs');
 const {reviewPlanPickerScenario}=require('./review-plan-picker.cjs');
+const {testReviewSchedulingUnit,testReviewSchedulingApi}=require('./review-scheduling.cjs');
 
 // 也允许直接通过测试参数指定屏幕尺寸，避免依赖各平台的环境变量语法。
 const viewportArgument = process.argv.find(arg => /^--viewport=\d+,\d+$/.test(arg));
@@ -60,7 +61,7 @@ async function testBackend() {
   before.close();
   const store = require(path.join(temp, 'db/index.js'));
   db = store.db;
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 13);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 14);
   assert.deepEqual(db.prepare('SELECT id, name FROM courses ORDER BY id').all(), existing);
   for (const snapshot of snapshots) assert.deepEqual(db.prepare(snapshot.sql).all(), snapshot.rows);
   const course = store.createCourse('regression course');
@@ -377,12 +378,14 @@ async function testFrontend() {
     testCourseSearchData(source, temp);
     testReviewPlanMigrations(source,temp);
     testReviewCenterMigration(source,temp);
+    testReviewSchedulingUnit();
     const backend = await testBackend();
     await testMistakeApi(backend);
     await testMaterialReviewApi(backend);
     await testCourseSearchApi(backend);
     await testReviewPlanApi({...backend,temp});
     await testReviewCenterApi({...backend,temp});
+    await testReviewSchedulingApi(backend);
     if (!process.argv.includes('--backend-only')) {
       await testFrontend();
       await testBrowser(backend);
