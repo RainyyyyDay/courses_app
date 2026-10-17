@@ -1601,12 +1601,14 @@ body.mistake-edit-open { overflow: hidden; }
 }
 /* 计划表单增量：使用真实网格排列，不继承旧 tag-sheet/plan-fields 的输入样式。 */
 #reviewPlanModal .total-review-dialog { max-width: calc(100vw - 32px); height: min(900px, 90vh); height: min(900px, 90dvh); }
-#reviewPlanModal .review-plan-info { flex-shrink: 0; min-width: 0; border: 0; padding: 0 24px 12px; }
+/* 信息区压成一行（名称 + 两个日期），把纵向空间让给下面的内容列表 */
+#reviewPlanModal .review-plan-info { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(0, 1fr)); gap: 8px 12px; flex-shrink: 0; min-width: 0; border: 0; padding: 0 24px 10px; }
 #reviewPlanModal .review-plan-info legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 #reviewPlanModal .review-plan-info label { display: flex; flex-direction: column; align-items: stretch; gap: 5px; min-width: 0; font-size: 12px; }
 #reviewPlanModal .review-plan-info input { width: 100%; min-width: 0; max-width: 100%; height: 36px; margin: 0; padding: 7px 10px; border: 1px solid #dce1e9; border-radius: 6px; background: #fff; color: #34415a; font-size: 13px; }
-#reviewPlanModal .review-plan-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 10px; }
-#reviewPlanModal .review-plan-selection-title { flex-shrink: 0; margin: 0 24px; padding: 11px 0 10px; border-top: 1px solid #e8ebf1; font-size: 14px; color: #49566f; }
+#reviewPlanModal .review-plan-dates { display: contents; }
+#reviewPlanModal .review-plan-info .review-picker-hint { grid-column: 1 / -1; margin: 0; }
+#reviewPlanModal .review-plan-selection-title { flex-shrink: 0; margin: 0 24px; padding: 8px 0 7px; border-top: 1px solid #e8ebf1; font-size: 14px; color: #49566f; }
 #reviewPlanModal .review-plan-select-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-shrink: 0; padding-bottom: 10px; }
 #reviewPlanModal .review-plan-select-row .total-review-select-all { padding: 0; white-space: nowrap; }
 #reviewPlanModal .review-plan-select-row .total-review-text { padding: 0; }
@@ -1614,11 +1616,16 @@ body.mistake-edit-open { overflow: hidden; }
 #reviewPlanModal #reviewPlanValidation { margin-top: 5px; }
 #reviewPlanModal #reviewPlanValidation:empty { display: none; }
 #reviewPlanModal #reviewPlanPreview { flex-basis: 100%; }
-#reviewPlanModal .total-review-footer { gap: 6px 12px; }
+#reviewPlanModal .total-review-footer { gap: 6px 12px; padding: 10px 24px; }
 #reviewPlanModal .total-review-list-head { padding: 9px 0 7px; }
-#reviewPlanModal .total-review-tabs { margin-bottom: 12px; }
+#reviewPlanModal .total-review-tabs { margin-bottom: 8px; }
+/* 列表至少留出可浏览的高度；屏幕特别矮时整块选择区可以滚动 */
+#reviewPlanModal .total-review-list-region { min-height: 200px; }
+#reviewPlanModal .total-review-selector { overflow-y: auto; }
 @media(max-width:540px) {
   #reviewPlanModal .review-plan-info { padding: 0 14px 10px; }
+  /* 窄屏放不下三列，回到一行一个字段 */
+  #reviewPlanModal .review-plan-info { grid-template-columns: 1fr; }
   #reviewPlanModal .review-plan-selection-title { margin: 0 14px; padding: 9px 0; }
   #reviewPlanModal .review-plan-dates { gap: 8px; }
   #reviewPlanModal .total-review-summary { flex: 1 1 140px; min-width: 0; }
