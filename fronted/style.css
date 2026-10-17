@@ -952,6 +952,11 @@ body.mistake-review-open { overflow: hidden; }
 .mistake-selectable { cursor: pointer; }
 .mistake-select-check { flex: 0 0 auto; width: 20px; height: 20px; margin: 8px 12px 0 0; }
 
+/* 智能排期预览（复习计划详情页） */
+.plan-schedule-days, .plan-schedule-warnings { margin: 8px 0 0; padding-left: 20px; }
+.plan-schedule-days li, .plan-schedule-warnings li { margin: 2px 0; font-size: 13px; }
+.plan-schedule-warnings { color: #b45309; }
+
 /* 复习完成弹窗：正确率 100% 时整页飘一层彩带，彩带在弹窗卡片后面，不挡内容。 */
 .mistake-complete { position: relative; z-index: 1; text-align: center; }
 .mistake-complete h3 { font-size: 19px; line-height: 1.5; margin-bottom: 10px; }

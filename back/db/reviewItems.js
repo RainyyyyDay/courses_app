@@ -61,6 +61,37 @@ function getReviewItemState(courseId, type, id) {
   return stateView(courseId, type, id, stateRow(courseId, type, id));
 }
 
+// 在调用方已有的事务里记录一次评分（错题步骤机用），不做 BEGIN/COMMIT。
+// sessionItemId 已记录过时返回 null，由调用方保持幂等。
+function recordGradeInTransaction({
+  courseId, type, id, grade, reviewDate = planToday(), durationMs = 0,
+  sessionId = null, sessionItemId = null, mistakeType = null,
+}) {
+  if (sessionItemId !== null && db.prepare('SELECT 1 FROM review_item_events WHERE session_item_id=?').get(sessionItemId)) {
+    return null;
+  }
+  const before = fromRow(stateRow(courseId, type, id));
+  const after = applyGrade(before, grade, reviewDate, profileFor({ mistakeType }));
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO review_item_states
+    (course_id,item_type,item_id,stability,difficulty,reps,lapses,state,last_grade,last_review_date,due_date,elapsed_days,scheduled_days,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(course_id,item_type,item_id) DO UPDATE SET
+      stability=excluded.stability, difficulty=excluded.difficulty, reps=excluded.reps, lapses=excluded.lapses,
+      state=excluded.state, last_grade=excluded.last_grade, last_review_date=excluded.last_review_date,
+      due_date=excluded.due_date, elapsed_days=excluded.elapsed_days, scheduled_days=excluded.scheduled_days,
+      updated_at=excluded.updated_at`)
+    .run(courseId, type, id, after.stability, after.difficulty, after.reps, after.lapses, after.state,
+      after.lastGrade, after.lastReviewDate, after.dueDate, after.elapsedDays, after.scheduledDays, now);
+  const info = db.prepare(`INSERT INTO review_item_events
+    (course_id,item_type,item_id,reviewed_at,review_date,grade,duration_ms,session_id,session_item_id,
+     stability_before,stability_after,difficulty_before,difficulty_after,due_before,due_after)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(courseId, type, id, now, reviewDate, grade, durationMs, sessionId, sessionItemId,
+      before.stability, after.stability, before.difficulty, after.difficulty, before.dueDate, after.dueDate);
+  return { state: after, eventId: Number(info.lastInsertRowid) };
+}
+
 function recordReviewItemGrade(courseId, type, id, body) {
   const source = contentRow(courseId, type, id);
   if (!body || typeof body !== 'object' || Array.isArray(body)
@@ -91,30 +122,18 @@ function recordReviewItemGrade(courseId, type, id, body) {
     if (existing) return { ...stateView(courseId, type, id, stateRow(courseId, type, id)), eventId: existing.id, duplicate: true };
   }
 
-  const profile = profileFor({ mistakeType: type === 'mistake' ? source.mistake_type : undefined });
   db.exec('BEGIN');
   try {
-    const before = fromRow(stateRow(courseId, type, id));
-    const after = applyGrade(before, grade, reviewDate, profile);
-    const now = new Date().toISOString();
-    db.prepare(`INSERT INTO review_item_states
-      (course_id,item_type,item_id,stability,difficulty,reps,lapses,state,last_grade,last_review_date,due_date,elapsed_days,scheduled_days,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-      ON CONFLICT(course_id,item_type,item_id) DO UPDATE SET
-        stability=excluded.stability, difficulty=excluded.difficulty, reps=excluded.reps, lapses=excluded.lapses,
-        state=excluded.state, last_grade=excluded.last_grade, last_review_date=excluded.last_review_date,
-        due_date=excluded.due_date, elapsed_days=excluded.elapsed_days, scheduled_days=excluded.scheduled_days,
-        updated_at=excluded.updated_at`)
-      .run(courseId, type, id, after.stability, after.difficulty, after.reps, after.lapses, after.state,
-        after.lastGrade, after.lastReviewDate, after.dueDate, after.elapsedDays, after.scheduledDays, now);
-    const info = db.prepare(`INSERT INTO review_item_events
-      (course_id,item_type,item_id,reviewed_at,review_date,grade,duration_ms,session_id,session_item_id,
-       stability_before,stability_after,difficulty_before,difficulty_after,due_before,due_after)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(courseId, type, id, now, reviewDate, grade, durationMs, sessionId, sessionItemId,
-        before.stability, after.stability, before.difficulty, after.difficulty, before.dueDate, after.dueDate);
+    const written = recordGradeInTransaction({
+      courseId, type, id, grade, reviewDate, durationMs, sessionId, sessionItemId,
+      mistakeType: type === 'mistake' ? source.mistake_type : null,
+    });
     db.exec('COMMIT');
-    return { ...stateView(courseId, type, id, stateRow(courseId, type, id)), eventId: Number(info.lastInsertRowid) };
+    if (!written) {
+      const existing = sessionItemId === null ? null : db.prepare('SELECT * FROM review_item_events WHERE session_item_id=?').get(sessionItemId);
+      return { ...stateView(courseId, type, id, stateRow(courseId, type, id)), eventId: existing ? existing.id : null, duplicate: true };
+    }
+    return { ...stateView(courseId, type, id, stateRow(courseId, type, id)), eventId: written.eventId };
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;
@@ -158,4 +177,4 @@ function getReviewPlanSchedule(courseId, planId) {
   return { ...base, ...result };
 }
 
-module.exports = { getReviewItemState, recordReviewItemGrade, getReviewPlanSchedule };
+module.exports = { getReviewItemState, recordReviewItemGrade, recordGradeInTransaction, getReviewPlanSchedule };

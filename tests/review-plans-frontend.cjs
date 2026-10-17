@@ -37,6 +37,7 @@ function reviewPlanBrowserPrelude() {
       await waitUntil(()=>currentView.type==='reviewPlan' && reviewPlanDetail?.plan.id===saved.planId,'plan final mistake returns automatically');
       check(reviewPlanDetail.plan.completed===4 && reviewPlanDetail.plan.completionRate===100,'negative judgment completes execution task');
       check(document.getElementById('reviewPlanDetailBody').textContent.includes('今日复习已完成'),'today complete state');
+      check(document.getElementById('reviewPlanDetailBody').textContent.includes('智能排期预览'),'plan detail shows scheduling preview');
       check(ordinaryUnchanged(),'all three ordinary queues survive complete plan review');
       const w=await(await requestApi(API+'/courses/'+saved.courseId+'/mistakes/'+saved.mistakeId+'/review')).json();
       check(w.reviewStatus==='unreviewed','negative judgment preserves original status semantics');

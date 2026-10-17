@@ -12,6 +12,19 @@ function planLocalDate() { return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asi
 function planProgressHtml(plan) {
   return `<div class="plan-progress"><progress max="100" value="${plan.completionRate}" aria-label="完成率 ${plan.completionRate}%"></progress><span>${plan.completionRate}%</span></div><p class="detail-meta">总任务 ${plan.total} · 已完成 ${plan.completed} · 待完成 ${plan.pending} · 已跳过 ${plan.skipped}</p>`;
 }
+// 智能排期预览：后端按记忆状态算好的未来安排（只读），请求失败时整块不显示。
+function planScheduleHtml(schedule) {
+  if (!schedule || !Array.isArray(schedule.days)) return '';
+  const feasibility = schedule.feasibility || {};
+  const total = Array.isArray(schedule.occurrences) ? schedule.occurrences.length : 0;
+  const rows = schedule.days.slice(0, 7).map(day =>
+    `<li><strong>${escapeHtml(day.date)}</strong> · ${day.items.length} 项 · 约 ${day.minutes} 分钟</li>`).join('');
+  const warnings = (feasibility.warnings || []).map(text => `<li>${escapeHtml(text)}</li>`).join('');
+  return `<section class="detail-card plan-schedule"><h2>智能排期预览</h2>
+    <p class="detail-meta">按当前记忆状态估算：到考试前共 ${total} 次复习${feasibility.feasible ? '' : '，有内容排不下'}。到期优先，首轮分块、后续交错。</p>
+    ${rows ? `<ul class="plan-schedule-days">${rows}</ul>` : '<p class="detail-meta">未来没有可排的内容。</p>'}
+    ${warnings ? `<ul class="plan-schedule-warnings">${warnings}</ul>` : ''}</section>`;
+}
 function rememberPlanPage(id = null) {
   mistakeStorageSet('review-center-location:'+currentCourseId,null);
   localStorage.setItem('currentTab','reviewPlans');
@@ -185,10 +198,12 @@ async function openReviewPlan(id) {
   currentView = {type:'reviewPlan',id}; showPageOnly('reviewPlanDetailPage'); rememberPlanPage(id);
   const box = document.getElementById('reviewPlanDetailBody'); box.innerHTML = '<p class="loading-tip">加载中…</p>';
   try {
-    const [response,items] = await Promise.all([requestApi(reviewPlanApi(id)),requestList(reviewPlanApi(id+'/items'))]);
+    const [response,items,scheduleResponse] = await Promise.all([requestApi(reviewPlanApi(id)),requestList(reviewPlanApi(id+'/items')),
+      requestApi(reviewPlanApi(id+'/schedule')).catch(()=>null)]);
     const plan = await response.json();
+    const schedule = scheduleResponse ? await scheduleResponse.json().catch(()=>null) : null;
     if (request!==reviewPlanRequest || courseId!==currentCourseId || currentView.type!=='reviewPlan') return;
-    reviewPlanDetail = {plan,items,courseId}; renderReviewPlanDetail();
+    reviewPlanDetail = {plan,items,schedule,courseId}; renderReviewPlanDetail();
   } catch(err) {
     if (request===reviewPlanRequest && courseId===currentCourseId) {
       showListError(box,err); box.insertAdjacentHTML('beforeend',`<button onclick="openReviewPlan(${id})">重试</button><button onclick="backToReviewPlans()">返回计划列表</button>`);
@@ -206,6 +221,7 @@ function renderReviewPlanDetail() {
     ${planProgressHtml(plan)}<p>${todayText}</p><button id="reviewPlanTodayStart" onclick="startReviewPlanDay(${plan.id},'${plan.today}')" ${!today.pending || plan.status!=='active' ? 'disabled' : ''}>开始今日复习</button>
     <p class="detail-meta">错题 → 资料 → 笔记，按类型使用原有复习页面；也可在日期下分别进入。跳过阅读仍保留待完成任务。</p>
     <details class="plan-settings"><summary>管理计划</summary><label>计划名称<input id="reviewPlanRename" maxlength="100" value="${escapeHtml(plan.name)}" /></label><div class="mistake-toolbar"><button onclick="saveReviewPlanName()">保存名称</button><button onclick="changeReviewPlanStatus()">${plan.status==='active' ? '归档计划' : '恢复计划'}</button><button onclick="deleteCurrentReviewPlan()">删除计划</button></div><p class="detail-meta">日期和复习范围创建后固定；需要调整时请重新生成计划。</p></details></section>
+    ${planScheduleHtml(state.schedule)}
     <div id="reviewPlanDays">${plan.days.map(day=>{
       const rows = items.filter(item=>item.scheduled_date===day.date);
       const label = day.date===plan.today ? '今天' : day.date===new Date(Date.parse(plan.today+'T00:00:00Z')+86400000).toISOString().slice(0,10) ? '明天' : '';

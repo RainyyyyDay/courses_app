@@ -144,6 +144,26 @@ async function testReviewSchedulingApi({ base, course }) {
   const eventCount = (await request('GET', `/courses/${course.id}/review-items/mistake/${mistake.id}/state`)).reps;
   assert.equal(eventCount, 2);
 
+  // 真实复习流程 → 自动记分（知识类：清楚 + 正确映射为 Good）
+  const flow = await request('POST', `/courses/${course.id}/mistakes`, {
+    title: '流程记分题', content: '流程题面', answerContent: '流程答案', mistakeType: 'knowledge',
+  }, 201);
+  const flowSession = await request('POST', `/courses/${course.id}/review-sessions`, {
+    requestId: 'scheduling-flow-' + (++sequence), sourceType: 'mistake', selectedItems: [{ type: 'mistake', id: flow.id }],
+  }, 201);
+  const flowItem = flowSession.items[0].id;
+  const flowPath = `/courses/${course.id}/mistakes/${flow.id}/review`;
+  let progress = await request('POST', `${flowPath}?sessionItemId=${flowItem}`, { action: 'start', requestId: 'flow-start', expectedVersion: 0 });
+  progress = await request('POST', `${flowPath}/events?sessionItemId=${flowItem}`,
+    { action: 'recall', recall: 'clear', requestId: 'flow-recall', expectedVersion: progress.version });
+  progress = await request('POST', `${flowPath}/events?sessionItemId=${flowItem}`,
+    { action: 'judge', correct: true, requestId: 'flow-judge', expectedVersion: progress.version });
+  assert.equal(progress.stage, 'completed');
+  const flowState = await request('GET', `/courses/${course.id}/review-items/mistake/${flow.id}/state`);
+  assert.equal(flowState.reps, 1, '真实复习流程应自动记一次分');
+  assert.equal(flowState.lastGrade, 3, '清楚 + 正确 = Good');
+  assert.ok(flowState.dueDate > today);
+
   // 计划排期预览：所有出现日都在考试日之前
   const plan = await request('POST', `/courses/${course.id}/review-plans`, {
     name: '排期预览计划', startDate: today, examDate: addDays(today, 14),

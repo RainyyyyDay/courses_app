@@ -3,6 +3,7 @@ const { db } = require('./connection');
 const { getMistakeDetail } = require('./mistakes');
 const { reviewPlanContext, completePlanItem } = require('./reviewPlans');
 const {reviewSessionContext,assertSessionItemWritable,completeSessionItem,touchReviewSession} = require('./reviewSessions');
+const {recordGradeInTransaction} = require('./reviewItems');
 
 function fail(status, code, message) {
   throw Object.assign(new Error(message), { status, code });
@@ -133,6 +134,19 @@ function applyMistakeReview(id, body, startOnly = false, planItemId = null, sess
         round=excluded.round, version=excluded.version, review_revision=excluded.review_revision, updated_at=excluded.updated_at`)
       .run(id, stage, recall, round, progress.version + 1, mistake.review_revision, now);
     db.prepare('UPDATE mistakes SET review_status = ? WHERE id = ?').run(status, id);
+    // 把这次判断折算成 4 档评分，交给备考总复习的排期引擎。
+    // 知识类的「清楚/模糊」区分 Good / Hard；答错或不记得记 Again。
+    if (stage === 'completed') {
+      recordGradeInTransaction({
+        courseId: mistake.course_id,
+        type: 'mistake',
+        id,
+        grade: status === 'reviewed' ? (recall === 'vague' ? 2 : 3) : 1,
+        sessionId: sessionItem ? sessionItem.session_id : null,
+        sessionItemId,
+        mistakeType: mistake.mistake_type,
+      });
+    }
     const response = getMistakeReview(id);
     db.prepare(`INSERT INTO mistake_review_events
       (mistake_id, request_id, request_json, action, round, mistake_type, recall, result, from_status, to_status, response_json, created_at)
