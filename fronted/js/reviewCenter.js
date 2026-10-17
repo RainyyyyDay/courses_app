@@ -23,14 +23,24 @@ async function resumeRecordedReview(id) {
   if(row.status==='paused')await recordedReviewAction(id,'resume');
 }
 function reviewTime(value) {return value ? new Date(value).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}) : '尚未完成';}
+// 会话状态 completed 表示「全部处理完」（完成或跳过），所以全部跳过时不能显示成「已完成」。
+function reviewSessionBadge(row) {
+  if (row.status==='completed' && row.completed===0 && row.skipped>0) return '全部跳过';
+  return {active:'进行中',paused:'已暂停，可继续',completed:'已完成'}[row.status] || row.status;
+}
+// 进度条拆两段：蓝色=真正完成，灰色=跳过，避免「完成 0 个但进度条满格」的矛盾。
+function reviewProgressHtml(row) {
+  const total = Math.max(1, Number(row.total) || 0);
+  const done = Math.min(100, Math.round((Number(row.completed) || 0) / total * 100));
+  const skipped = Math.min(100 - done, Math.round((Number(row.skipped) || 0) / total * 100));
+  return `<div class="review-progress-split" role="img" aria-label="已完成 ${row.completed} / ${row.total}，已跳过 ${row.skipped}，待处理 ${row.pending}"><span class="is-done" style="width:${done}%"></span><span class="is-skipped" style="width:${skipped}%"></span></div>`;
+}
 function reviewRecordCard(row) {
-  const state={active:'进行中',paused:'已暂停，可继续',completed:'已完成'}[row.status];
-  return `<article class="detail-card review-record" data-review-session="${row.id}"><h3>${escapeHtml(row.name)} <span class="material-review-badge">${state}</span></h3><p>${REVIEW_SOURCE_LABELS[row.source_type]} · ${row.types.map(type=>PLAN_TYPE_LABELS[type]).join(' + ')}</p><p class="detail-meta">开始：${escapeHtml(reviewTime(row.started_at))}<br>最近活动：${escapeHtml(reviewTime(row.updated_at))}</p><p>已完成 ${row.completed} / ${row.total} · 已跳过 ${row.skipped} · 待处理 ${row.pending}</p><progress max="100" value="${row.progress}" aria-label="处理进度 ${row.progress}%"></progress><div class="mistake-toolbar">${row.status==='completed' ? `<button onclick="repeatReviewRecord(${row.id})">再次复习</button>` : `<button onclick="resumeReviewRecord(${row.id})">继续复习</button>`}<button onclick="openReviewSessionDetail(${row.id})">查看详情</button></div></article>`;
+  return `<article class="detail-card review-record" data-review-session="${row.id}"><h3>${escapeHtml(row.name)} <span class="material-review-badge">${reviewSessionBadge(row)}</span></h3><p>${REVIEW_SOURCE_LABELS[row.source_type]} · ${row.types.map(type=>PLAN_TYPE_LABELS[type]).join(' + ')}</p><p class="detail-meta">开始：${escapeHtml(reviewTime(row.started_at))}<br>最近活动：${escapeHtml(reviewTime(row.updated_at))}</p><p>已完成 ${row.completed} / ${row.total} · 已跳过 ${row.skipped} · 待处理 ${row.pending}</p>${reviewProgressHtml(row)}<div class="mistake-toolbar">${row.status==='completed' ? `<button onclick="repeatReviewRecord(${row.id})">再次复习</button>` : `<button onclick="resumeReviewRecord(${row.id})">继续复习</button>`}<button onclick="openReviewSessionDetail(${row.id})">查看详情</button></div></article>`;
 }
 // 首页使用紧凑列表，历史页和记录详情继续保留原有卡片。
 function reviewRecentRecord(row) {
-  const state={active:'进行中',paused:'已暂停，可继续',completed:'已完成'}[row.status];
-  return `<article class="review-recent-record" data-review-session="${row.id}"><div class="review-recent-main"><div class="review-recent-title"><h3>${escapeHtml(row.name)}</h3><span class="review-recent-state">${state}</span></div><div class="review-recent-meta"><span>${REVIEW_SOURCE_LABELS[row.source_type]} · ${row.types.map(type=>PLAN_TYPE_LABELS[type]).join(' + ')}</span><span>最近活动：${escapeHtml(reviewTime(row.updated_at || row.started_at))}</span></div><div class="review-recent-progress"><progress max="100" value="${row.progress}" aria-label="处理进度 ${row.progress}%"></progress><span>已完成 ${row.completed} / ${row.total} · 已跳过 ${row.skipped} · 进度 ${row.progress}%</span></div></div><div class="review-recent-actions">${row.status==='completed' ? `<button type="button" onclick="repeatReviewRecord(${row.id})">再次复习</button>` : `<button type="button" onclick="resumeReviewRecord(${row.id})">继续复习</button>`}<button type="button" onclick="openReviewSessionDetail(${row.id})">查看详情</button></div></article>`;
+  return `<article class="review-recent-record" data-review-session="${row.id}"><div class="review-recent-main"><div class="review-recent-title"><h3>${escapeHtml(row.name)}</h3><span class="review-recent-state">${reviewSessionBadge(row)}</span></div><div class="review-recent-meta"><span>${REVIEW_SOURCE_LABELS[row.source_type]} · ${row.types.map(type=>PLAN_TYPE_LABELS[type]).join(' + ')}</span><span>最近活动：${escapeHtml(reviewTime(row.updated_at || row.started_at))}</span></div><div class="review-recent-progress">${reviewProgressHtml(row)}<span>已完成 ${row.completed} / ${row.total} · 已跳过 ${row.skipped} · 处理 ${row.progress}%</span></div></div><div class="review-recent-actions">${row.status==='completed' ? `<button type="button" onclick="repeatReviewRecord(${row.id})">再次复习</button>` : `<button type="button" onclick="resumeReviewRecord(${row.id})">继续复习</button>`}<button type="button" onclick="openReviewSessionDetail(${row.id})">查看详情</button></div></article>`;
 }
 async function loadRecentReviews() {
   const courseId=currentCourseId,box=document.getElementById('reviewRecentList');if(!box)return;
@@ -71,7 +81,7 @@ async function openReviewSessionDetail(id) {
     const response=await requestApi(reviewSessionApi(id)),row=await response.json();
     if(courseId!==currentCourseId || request!==reviewCenterRequest)return;
     reviewSessionDetail=row;
-    box.innerHTML=reviewRecordCard(row)+`<p class="detail-meta">完成时间：${escapeHtml(row.completed_at || '尚未完成')}。进度包含已完成和已跳过，跳过不计入完成数量。</p><section class="detail-card">${row.items.map(item=>`<div class="plan-task"><span>${item.status==='completed' ? '✓' : item.status==='skipped' ? '—' : '○'} ${PLAN_TYPE_LABELS[item.item_type]} · ${escapeHtml(item.title_snapshot)}</span><small>${item.source_deleted ? '内容已删除' : {pending:'待处理',completed:'已完成',skipped:'已跳过'}[item.status]}</small></div>`).join('')}</section>`;
+    box.innerHTML=reviewRecordCard(row)+`<p class="detail-meta">完成时间：${escapeHtml(row.completed_at || '尚未完成')}。进度条蓝色为已完成、灰色为已跳过，跳过不计入完成数量。</p><section class="detail-card">${row.items.map(item=>`<div class="plan-task"><span>${item.status==='completed' ? '✓' : item.status==='skipped' ? '—' : '○'} ${PLAN_TYPE_LABELS[item.item_type]} · ${escapeHtml(item.title_snapshot)}</span><small>${item.source_deleted ? '内容已删除' : {pending:'待处理',completed:'已完成',skipped:'已跳过'}[item.status]}</small></div>`).join('')}</section>`;
   } catch(err) {if(courseId===currentCourseId)box.innerHTML=`<p class="material-review-error">${escapeHtml(err.message)}</p><button onclick="openReviewHistory()">返回记录列表</button>`;}
 }
 function rememberReviewCenterLocation(location) {

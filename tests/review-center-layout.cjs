@@ -41,7 +41,7 @@ function reviewCenterLayoutScenario({layoutOnly=false}={}) {
       await api('POST',prefix,{sourceType:'total',requestId:reviewRequestId(),selectedItems:[{type:'material',id:material.id},{type:'note',id:note.id}]});await loadRecentReviews();
       const row=id=>pane.querySelector('[data-review-session="'+id+'"]');
       check(row(completed.id).textContent.includes('再次复习') && row(paused.id).textContent.includes('继续复习'),'completed repeat and pending resume actions');
-      for(const record of pane.querySelectorAll('.review-recent-record'))check(record.querySelector('h3') && record.querySelector('.review-recent-state') && record.querySelector('progress') && record.textContent.includes('最近活动') && record.textContent.includes('已完成'),'compact record includes name/source/time/progress/status');
+      for(const record of pane.querySelectorAll('.review-recent-record'))check(record.querySelector('h3') && record.querySelector('.review-recent-state') && record.querySelector('.review-progress-split') && record.textContent.includes('最近活动') && record.textContent.includes('已完成'),'compact record includes name/source/time/progress/status');
       check(getComputedStyle(pane.querySelector('.review-recent-record')).borderBottomWidth==='1px','fine separators between records');checkLayout();
       row(paused.id).querySelector('button').click();await waitUntil(()=>centerReview?.session.id===paused.id && activeReadingReview.row?.id===note.id && !reviewRecordBusy,'recent continue opens exact original queue');await pauseCenterReview();await returnHome();
       row(completed.id).querySelectorAll('button')[1].click();await waitUntil(()=>currentView.type==='reviewSessionDetail' && reviewSessionDetail?.id===completed.id,'recent details button retained');
