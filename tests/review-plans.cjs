@@ -110,8 +110,11 @@ async function testReviewPlanApi({base,temp}) {
     const review=c+'/mistakes/'+w.id+'/review',context='?planItemId='+task('mistake').id;
     let p=await api('POST',review+context,{action:'start',requestId:'plan-start',expectedVersion:0});
     const operation={action:'recall',recall:'forgotten',requestId:'plan-forgotten',expectedVersion:p.version};
+    // 未通过也会写步骤和计划轮次；用事件触发器验证整笔回滚，而不再依赖“失败即完成任务”。
+    d.exec("CREATE TRIGGER reject_mistake_event BEFORE INSERT ON mistake_review_events WHEN NEW.request_id='plan-forgotten' BEGIN SELECT RAISE(ABORT,'mistake rollback'); END");
     await api('POST',review+'/events'+context,operation,500);
     assert.equal((await api('GET',review)).version,p.version);assert.equal((await api('GET',url)).completed,0);
+    d.exec('DROP TRIGGER reject_mistake_event');
     d.exec('DROP TRIGGER reject_plan_completion');
     const completed=await api('POST',review+'/events'+context,operation);
     assert.equal(completed.stage,'completed');assert.equal(completed.reviewStatus,'unreviewed');
@@ -123,12 +126,13 @@ async function testReviewPlanApi({base,temp}) {
     const firstTime=(await api('GET',url+'/items')).find(row=>row.item_type==='material').completed_at;
     await api('PATCH',readUrl,{reviewStatus:'reviewed'});
     assert.equal((await api('GET',url+'/items')).find(row=>row.item_type==='material').completed_at,firstTime);
-    assert.equal((await api('GET',url)).completed,2);assert.equal((await api('GET',prefix+'/'+second.id)).completed,0);
+    // 未通过的错题不算完成：completed 只有阅读类的那一条，错题任务保持待完成。
+    assert.equal((await api('GET',url)).completed,1);assert.equal((await api('GET',url)).pending,2);assert.equal((await api('GET',prefix+'/'+second.id)).completed,0);
     await api('PATCH',url,{status:'archived',name:'renamed'});
     await api('PATCH',c+'/notes/'+n.id+'/review?planItemId='+task('note').id,{reviewStatus:'reviewed'},409);
     await api('PATCH',url,{status:'active'});
     await api('DELETE','/notes/'+n.id);
-    const changed=await api('GET',url);assert.equal(changed.skipped,1);assert.equal(changed.completed,2);assert.equal(changed.completionRate,100);
+    const changed=await api('GET',url);assert.equal(changed.skipped,1);assert.equal(changed.completed,1);assert.equal(changed.pending,1);assert.equal(changed.completionRate,50);
     items=await api('GET',url+'/items?status=skipped');assert.equal(items[0].title_snapshot,'note');assert.equal(items[0].source_deleted,1);
     const empty=await api('POST',prefix,{...body,selectedItems:[{type:'material',id:m.id}]},201);
     await api('DELETE','/materials/'+m.id);

@@ -120,7 +120,8 @@ function applyMistakeReview(id, body, startOnly = false, planItemId = null, sess
       // 旧完成步骤不能抵扣任务；实际动作仍须经过原步骤机及 expectedVersion 校验。
       // 若其他入口推进过同题，仍由原 expectedVersion / allowedActions 校验；记录本次实际动作的轮次。
       db.prepare('UPDATE review_plan_items SET review_round=?,review_revision=? WHERE id=?').run(round,mistake.review_revision,planItem.id);
-      if (stage === 'completed') completePlanItem(planItem);
+      // 只有通过（判断为已复习）才算完成当天任务；答错 / 不记得保留待完成，等重试或重新排期。
+      if (stage === 'completed' && status === 'reviewed') completePlanItem(planItem);
     }
     if(sessionItem) {
       touchReviewSession(sessionItem.session_id);

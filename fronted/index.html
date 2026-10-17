@@ -704,6 +704,15 @@
     </form>
   </div>
 
+  <!-- 排期日历：点某一天弹出的当天任务 -->
+  <div id="reviewPlanDayModal" class="modal-mask" onclick="if(event.target===this)closePlanScheduleDay()" onkeydown="if(event.key==='Escape'){event.preventDefault();closePlanScheduleDay()}">
+    <div class="modal review-day-dialog" role="dialog" aria-modal="true" aria-labelledby="reviewPlanDayTitle">
+      <header class="review-day-head"><h3 id="reviewPlanDayTitle" tabindex="-1"></h3><button type="button" class="review-day-close" onclick="closePlanScheduleDay()" aria-label="关闭">×</button></header>
+      <div id="reviewPlanDayBody" class="review-day-body"></div>
+      <footer class="modal-actions"><button type="button" class="btn-cancel" onclick="closePlanScheduleDay()">关闭</button></footer>
+    </div>
+  </div>
+
   <div id="reviewHistoryPage" style="display:none"><div class="header"><div class="header-left"><button class="back-btn" onclick="backToReviewPlans()">←</button><h1>全部复习记录</h1></div></div><div class="tab-content">
     <div class="reading-browse-controls"><select id="reviewHistoryStatus" aria-label="记录状态" onchange="loadReviewHistory()"><option value="all">全部状态</option><option value="ongoing">进行中</option><option value="completed">已完成</option></select><select id="reviewHistorySource" aria-label="复习来源" onchange="loadReviewHistory()"><option value="all">全部来源</option><option value="plan">考前计划</option><option value="total">总复习</option><option value="material">资料</option><option value="note">笔记</option><option value="mistake">错题</option></select></div>
     <div id="reviewHistoryList"></div><button id="reviewHistoryMore" type="button" onclick="loadReviewHistory(true)" hidden>加载更多</button>

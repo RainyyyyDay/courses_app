@@ -35,9 +35,14 @@ function reviewPlanBrowserPrelude() {
       check(mistakeDetailState.progress.round===saved.round && mistakeDetailState.progress.version===saved.version,'plan restores original backend round/version');
       await submitMistakeReview('judge','correct',false);
       await waitUntil(()=>currentView.type==='reviewPlan' && reviewPlanDetail?.plan.id===saved.planId,'plan final mistake returns automatically');
-      check(reviewPlanDetail.plan.completed===4 && reviewPlanDetail.plan.completionRate===100,'negative judgment completes execution task');
-      check(document.getElementById('reviewPlanDetailBody').textContent.includes('今日复习已完成'),'today complete state');
+      check(reviewPlanDetail.plan.completed===3 && reviewPlanDetail.plan.pending===1,'negative judgment keeps the plan task pending');
+      check(document.getElementById('reviewPlanDetailBody').textContent.includes('今日 1 项待复习'),'today keeps the failed item pending');
       check(document.getElementById('reviewPlanDetailBody').textContent.includes('智能排期预览'),'plan detail shows scheduling preview');
+      check(document.querySelectorAll('#reviewPlanCalendar .plan-calendar-cell.has-items').length>0,'schedule calendar marks review days');
+      const scheduleCell=document.querySelector('#reviewPlanCalendar .plan-calendar-cell.has-items');
+      openPlanScheduleDay(scheduleCell.getAttribute('onclick').match(/'([0-9-]+)'/)[1]);
+      check(document.getElementById('reviewPlanDayModal').classList.contains('show') && document.querySelectorAll('#reviewPlanDayBody .review-day-card').length>0,'clicking a day opens only populated type cards');
+      closePlanScheduleDay();
       check(ordinaryUnchanged(),'all three ordinary queues survive complete plan review');
       const w=await(await requestApi(API+'/courses/'+saved.courseId+'/mistakes/'+saved.mistakeId+'/review')).json();
       check(w.reviewStatus==='unreviewed','negative judgment preserves original status semantics');

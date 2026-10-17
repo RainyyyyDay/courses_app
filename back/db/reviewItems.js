@@ -174,7 +174,38 @@ function getReviewPlanSchedule(courseId, planId) {
     items, states, today, examDate: plan.exam_date, profile,
     capacity: { dailyMinutes: plan.daily_minutes, dailyMaxItems: plan.daily_max_items },
   });
-  return { ...base, ...result };
+  // 日历要用标题；同一天的完成状态取该计划该日期最近一次计划复习会话。
+  const titleCache = new Map();
+  const titleFor = (type, id) => {
+    const key = type + ':' + id;
+    if (!titleCache.has(key)) {
+      const table = TYPES[type];
+      const row = table ? db.prepare(`SELECT title FROM ${table} WHERE id=?`).get(id) : null;
+      titleCache.set(key, row ? row.title : '');
+    }
+    return titleCache.get(key);
+  };
+  const days = result.days.map(day => {
+    const session = db.prepare(`SELECT id,status FROM review_sessions
+      WHERE course_id=? AND source_type='plan' AND source_id=? AND source_date=?
+      ORDER BY (status='completed') DESC, updated_at DESC, id DESC LIMIT 1`).get(courseId, planId, day.date);
+    let state = 'none';
+    if (session) {
+      const counts = db.prepare(`SELECT COUNT(*) total,
+        SUM(CASE WHEN status='completed' AND result='failed' THEN 1 ELSE 0 END) failed,
+        SUM(CASE WHEN status!='completed' THEN 1 ELSE 0 END) open
+        FROM review_session_items WHERE session_id=?`).get(session.id);
+      state = session.status === 'completed' && counts.total > 0
+        && (counts.failed || 0) === 0 && (counts.open || 0) === 0 ? 'done' : 'partial';
+    }
+    return {
+      ...day,
+      state,
+      sessionId: session ? session.id : null,
+      items: day.items.map(item => ({ ...item, title: titleFor(item.type, item.id) })),
+    };
+  });
+  return { ...base, ...result, days };
 }
 
 module.exports = { getReviewItemState, recordReviewItemGrade, recordGradeInTransaction, getReviewPlanSchedule };

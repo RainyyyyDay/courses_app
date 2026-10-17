@@ -12,18 +12,99 @@ function planLocalDate() { return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asi
 function planProgressHtml(plan) {
   return `<div class="plan-progress"><progress max="100" value="${plan.completionRate}" aria-label="完成率 ${plan.completionRate}%"></progress><span>${plan.completionRate}%</span></div><p class="detail-meta">总任务 ${plan.total} · 已完成 ${plan.completed} · 待完成 ${plan.pending} · 已跳过 ${plan.skipped}</p>`;
 }
-// 智能排期预览：后端按记忆状态算好的未来安排（只读），请求失败时整块不显示。
+// 智能排期预览：后台按记忆状态算好的日程，渲染成月历；请求失败时整块不显示。
+let planCalendar = null;
+function planCalendarDate(year, month, day) {
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+function planCalendarHtml() {
+  const c = planCalendar;
+  if (!c) return '';
+  const first = new Date(Date.UTC(c.year, c.month, 1));
+  const offset = (first.getUTCDay() + 6) % 7; // 周一为第一列
+  const daysInMonth = new Date(Date.UTC(c.year, c.month + 1, 0)).getUTCDate();
+  const today = planLocalDate();
+  const cells = [];
+  for (let i = 0; i < offset; i += 1) cells.push('<div class="plan-calendar-cell is-blank" aria-hidden="true"></div>');
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const date = planCalendarDate(c.year, c.month, day);
+    const info = c.dayMap.get(date);
+    const count = info ? info.items.length : 0;
+    const classes = ['plan-calendar-cell'];
+    if (!info) classes.push('is-empty');
+    else classes.push('has-items');
+    if (date === today) classes.push('is-today');
+    if (info && info.state === 'done') classes.push('is-done');
+    if (date === c.examDate) classes.push('is-exam');
+    const mark = date === c.examDate ? '<span class="plan-calendar-mark is-exam-mark">试</span>'
+      : info && info.state === 'done' ? '<span class="plan-calendar-mark is-check">✓</span>'
+        : info && date === today ? '<span class="plan-calendar-mark is-today-mark">▶</span>' : '';
+    const title = info ? `${date} · ${count} 项 · 约 ${info.minutes} 分钟` : (date === c.examDate ? `${date} · 考试日` : '');
+    cells.push(`<div class="${classes.join(' ')}" ${info ? `onclick="openPlanScheduleDay('${date}')"` : ''} ${title ? `title="${escapeHtml(title)}"` : ''}><span class="plan-calendar-day">${day}</span>${mark}${info ? `<span class="plan-calendar-count">${count} 项</span>` : ''}</div>`);
+  }
+  return `<div class="plan-calendar-head"><button type="button" onclick="shiftPlanCalendar(-1)" aria-label="上个月">‹</button><strong>${c.year} 年 ${c.month + 1} 月</strong><button type="button" onclick="shiftPlanCalendar(1)" aria-label="下个月">›</button></div>
+    <div class="plan-calendar-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+    <div class="plan-calendar-grid">${cells.join('')}</div>`;
+}
 function planScheduleHtml(schedule) {
   if (!schedule || !Array.isArray(schedule.days)) return '';
   const feasibility = schedule.feasibility || {};
   const total = Array.isArray(schedule.occurrences) ? schedule.occurrences.length : 0;
-  const rows = schedule.days.slice(0, 7).map(day =>
-    `<li><strong>${escapeHtml(day.date)}</strong> · ${day.items.length} 项 · 约 ${day.minutes} 分钟</li>`).join('');
+  const [year, month] = String(schedule.today || '').split('-').map(Number);
+  planCalendar = {
+    year: year || new Date().getFullYear(),
+    month: (month || 1) - 1,
+    dayMap: new Map(schedule.days.map(day => [day.date, day])),
+    examDate: schedule.examDate,
+  };
   const warnings = (feasibility.warnings || []).map(text => `<li>${escapeHtml(text)}</li>`).join('');
   return `<section class="detail-card plan-schedule"><h2>智能排期预览</h2>
-    <p class="detail-meta">按当前记忆状态估算：到考试前共 ${total} 次复习${feasibility.feasible ? '' : '，有内容排不下'}。到期优先，首轮分块、后续交错。</p>
-    ${rows ? `<ul class="plan-schedule-days">${rows}</ul>` : '<p class="detail-meta">未来没有可排的内容。</p>'}
+    <p class="detail-meta">按当前记忆状态估算：到考试前共 ${total} 次复习${feasibility.feasible ? '' : '，有内容排不下'}。点击有安排的日期可以查看当天内容；▶ 为今天，✓ 为当天已全部通过。</p>
+    <div id="reviewPlanCalendar">${planCalendarHtml()}</div>
     ${warnings ? `<ul class="plan-schedule-warnings">${warnings}</ul>` : ''}</section>`;
+}
+function shiftPlanCalendar(delta) {
+  const c = planCalendar;
+  if (!c) return;
+  const date = new Date(Date.UTC(c.year, c.month + delta, 1));
+  c.year = date.getUTCFullYear();
+  c.month = date.getUTCMonth();
+  const box = document.getElementById('reviewPlanCalendar');
+  if (box) box.innerHTML = planCalendarHtml();
+}
+function openPlanScheduleDay(date) {
+  const day = planCalendar?.dayMap.get(date);
+  if (!day) return;
+  const rows = ['mistake', 'material', 'note'].map(type => {
+    const items = day.items.filter(item => item.type === type);
+    if (!items.length) return ''; // 没有内容的类型不显示
+    const minutes = items.reduce((sum, item) => sum + (Number(item.minutes) || 0), 0);
+    return `<article class="review-day-card" data-plan-day-type="${type}"><div><strong>${PLAN_TYPE_LABELS[type]}</strong><p class="detail-meta">${items.length} 项 · 约 ${minutes} 分钟</p></div><button type="button" onclick="startPlanScheduleDay('${date}','${type}')">${day.state === 'done' ? '再复习一次' : '复习'}</button></article>`;
+  }).join('');
+  document.getElementById('reviewPlanDayTitle').textContent = `${date} · ${day.items.length} 项 · 约 ${day.minutes} 分钟`;
+  document.getElementById('reviewPlanDayBody').innerHTML = `${day.state === 'done' ? '<p class="plan-day-done">当天已全部通过 ✓</p>'
+    : day.state === 'partial' ? '<p class="plan-day-partial">当天还有未通过或跳过，可以继续。</p>' : ''}${rows}`;
+  document.getElementById('reviewPlanDayModal').classList.add('show');
+  document.body.classList.add('plan-day-open');
+}
+function closePlanScheduleDay() {
+  document.getElementById('reviewPlanDayModal').classList.remove('show');
+  document.body.classList.remove('plan-day-open');
+}
+async function startPlanScheduleDay(date, type) {
+  const state = reviewPlanDetail, day = planCalendar?.dayMap.get(date);
+  if (!state || !day || planReviewStarting) return;
+  closePlanScheduleDay();
+  const pending = state.items.filter(item => item.scheduled_date === date && item.item_type === type && item.status === 'pending');
+  if (pending.length) return startReviewPlanDay(state.plan.id, date, type);
+  const items = day.items.filter(item => item.type === type).map(item => ({ type: item.type, id: item.id }));
+  if (!items.length) return;
+  planReviewStarting = true;
+  try {
+    const session = await createReviewRecord('total', items, { requestId: reviewRequestId() });
+    await enterCenterReview(session);
+  } catch (err) { showToast(err.message); }
+  finally { planReviewStarting = false; }
 }
 function rememberPlanPage(id = null) {
   mistakeStorageSet('review-center-location:'+currentCourseId,null);
