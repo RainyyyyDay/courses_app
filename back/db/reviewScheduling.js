@@ -279,8 +279,12 @@ function planOccurrences(options = {}) {
   const warnings = [];
   if (unscheduled.length) warnings.push(`有 ${unscheduled.length} 项无法在考前排下，请减少题量或提高每日容量`);
   for (const [key, value] of Object.entries(coverage)) {
-    if (PROFILES[key] && value.averageRounds < PROFILES[key].repsTarget) {
-      warnings.push(`${key} 类平均只能复习 ${value.averageRounds} 轮（目标 ${PROFILES[key].repsTarget} 轮）`);
+    // 比较基准是「这场考试的可达目标」：短周期本来就不该硬塞满 5 轮。
+    const horizonTarget = PROFILES[key]
+      ? clamp(Math.ceil(horizon / 14), 1, PROFILES[key].repsTarget)
+      : 1;
+    if (value.averageRounds < horizonTarget) {
+      warnings.push(`${key} 类平均只能复习 ${value.averageRounds} 轮（这场考试的目标 ${horizonTarget} 轮）`);
     }
   }
   return {
