@@ -7,7 +7,7 @@ const {DatabaseSync}=require('node:sqlite');
 function testReviewCenterMigration(source,temp) {
   const fixture=path.join(temp,'sessions-migration');fs.mkdirSync(fixture);fs.cpSync(path.join(source,'db'),path.join(fixture,'db'),{recursive:true});
   const schema=fs.readFileSync(path.join(source,'db/schema.js'),'utf8');
-  fs.writeFileSync(path.join(fixture,'db/schema.js'),schema.replace('CURRENT_DB_VERSION = 14','CURRENT_DB_VERSION = 12').replace('migrateReviewSessions();','').replace('migrateReviewScheduling();',''));
+  fs.writeFileSync(path.join(fixture,'db/schema.js'),schema.replace('CURRENT_DB_VERSION = 15','CURRENT_DB_VERSION = 12').replace('migrateReviewSessions();','').replace('migrateReviewScheduling();','').replace('migrateReviewResults();',''));
   const result=spawnSync(process.execPath,['-e',`
     const assert=require('node:assert/strict'),fs=require('node:fs'),store=require('./db/index.js'),d=store.db;
     assert.equal(d.prepare('PRAGMA user_version').get().user_version,12);
@@ -21,7 +21,7 @@ function testReviewCenterMigration(source,temp) {
     assert.equal(d.prepare('PRAGMA user_version').get().user_version,12);
     assert.equal(d.prepare("SELECT count(*) n FROM sqlite_master WHERE name='review_sessions'").get().n,0);
     d.exec('DROP TABLE idx_review_sessions_course');require('./db/schema.js');
-    assert.equal(d.prepare('PRAGMA user_version').get().user_version,14);
+    assert.equal(d.prepare('PRAGMA user_version').get().user_version,15);
     for(const t of before)assert.deepEqual(d.prepare('SELECT '+t.columns+' FROM '+t.name+' ORDER BY rowid').all(),t.rows);
     assert.equal(d.prepare('SELECT count(*) n FROM review_sessions').get().n,0,'no invented history');
     const session=store.createReviewSession(c.id,{requestId:'first',sourceType:'material',selectedItems:[{type:'material',id:m.id}]});
@@ -80,7 +80,7 @@ async function testReviewCenterApi({base,temp}) {
     const result=await api('POST',w+'/events'+ctx,operation);assert.equal(result.reviewStatus,'unreviewed');
     assert.deepEqual(await api('POST',w+'/events'+ctx,operation),result,'existing requestId idempotency retained');
     await api('POST',w+'/events'+ctx,{...operation,requestId:'stale-new'},409);
-    after=await api('GET',url);assert.equal(after.status,'completed');assert.equal(after.completed,2);assert.equal(after.skipped,1);assert.equal(after.progress,100);
+    after=await api('GET',url);assert.equal(after.status,'completed');assert.equal(after.completed,2);assert.equal(after.passed,1,'only the reviewed reading counts as completed');assert.equal(after.failed,1,'forgotten mistake is processed but not completed');assert.equal(after.skipped,1);assert.equal(after.progress,100);assert.equal(after.passRate,33);
     const endedAt=after.completed_at;await api('POST',url+'/resume',{},409);await api('POST',url+'/position',{position:0},409);
     await api('POST',url+'/repeat',{requestId:'repeat-original'},201).then(row=>assert.notEqual(row.id,session.id));
     const two=await api('POST',prefix,{...body,requestId:'another-pending'},201);

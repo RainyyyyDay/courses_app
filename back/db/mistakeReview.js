@@ -125,7 +125,7 @@ function applyMistakeReview(id, body, startOnly = false, planItemId = null, sess
     if(sessionItem) {
       touchReviewSession(sessionItem.session_id);
       db.prepare('UPDATE review_session_items SET review_round=?,review_revision=? WHERE id=?').run(round,mistake.review_revision,sessionItem.id);
-      if(stage==='completed') completeSessionItem(sessionItem,round,mistake.review_revision);
+      if(stage==='completed') completeSessionItem(sessionItem,round,mistake.review_revision,status==='reviewed' ? 'passed' : 'failed');
     }
     const now = new Date().toISOString();
     db.prepare(`INSERT INTO mistake_review_progress (mistake_id, stage, recall, round, version, review_revision, updated_at)

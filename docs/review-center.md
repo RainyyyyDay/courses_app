@@ -12,7 +12,24 @@
 
 ## 与旧功能的关系
 
-原内容 review_status、计划任务 status、会话项目 status 是三套独立状态。资料／笔记成功提交 reviewed 后完成对应会话项目；跳过只处理本次会话，不改变内容状态，也不完成计划任务。错题真实完成当前步骤流程后完成项目，答错或不记得依旧算执行完成，原内容可保持 unreviewed。
+原内容 review_status、计划任务 status、会话项目 status 是三套独立状态。资料／笔记成功提交 reviewed 后完成对应会话项目；跳过只处理本次会话，不改变内容状态，也不完成计划任务。错题走完当前步骤流程后记录本次结果：判断为正确／已掌握记 `passed`，答错／不记得记 `failed`，原内容状态照旧（可保持 unreviewed）。
+
+## 状态与统计口径（v15）
+
+「完成一项」只指**顺利通过该项目对应的复习模式**；答错、不记得、跳过都只是「过了一遍」，不算完成。
+
+| 字段 | 含义 |
+| --- | --- |
+| `total` | 本次会话的项目总数 |
+| `passed` | 通过复习模式的项目数（**算完成**） |
+| `failed` | 完成流程但未通过（答错／不记得）的项目数 |
+| `skipped` | 被跳过的项目数 |
+| `pending` | 还没有处理的项目数 |
+| `completed` | 已处理完的项目数 = passed + failed（保留原字段名，语义为「处理完成」） |
+| `progress` | 处理进度 = (completed + skipped) / total，仅表示「过了一遍」 |
+| `passRate` | 通过率 = passed / total |
+
+徽标规则：全部项目都通过才显示「已完成」；全部被跳过显示「全部跳过」；其余处理完毕但存在未通过／跳过时显示「未全部通过」；进行中／暂停照旧。进度条用蓝色表示通过、橙色表示未通过、灰色表示跳过，空白表示待处理。
 
 计划按类型启动原队列，每次具体执行记录为一个会话，同一计划可有多次会话。计划来源的会话项目关联 plan_item_id，完成时同事务更新计划。再次复习计划历史只使用历史范围，不重新打开旧计划任务。归档计划的未完成关联任务需先恢复计划再继续写入，保持原归档约束。
 
@@ -31,7 +48,9 @@ review_sessions 保存 id、course_id、source_type、source_id、source_date、
 - source_id：可空，计划外键；删除计划时置空，名称快照保留。
 - (course_id,create_request_id) 唯一，防止创建响应丢失重试造成重复。
 
-review_session_items 保存 id、session_id、item_type、item_id、position、title_snapshot、status、completed_at、source_deleted、plan_item_id、review_round、review_revision。
+review_session_items 保存 id、session_id、item_type、item_id、position、title_snapshot、status、completed_at、source_deleted、plan_item_id、review_round、review_revision，以及 v15 新增的 `result`（`passed` / `failed`，未处理或跳过为空）。
+
+v15 迁移只新增 `result` 列并回填旧记录：阅读类完成的项目补为 `passed`；错题按当前 `review_status` 近似回填（历史上没有单独保存每次判断结果）。
 
 - 项目状态：pending / completed / skipped。
 - (session_id,position) 与 (session_id,item_type,item_id) 唯一，固定顺序和身份。

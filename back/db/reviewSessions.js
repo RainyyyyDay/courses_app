@@ -23,10 +23,15 @@ function sessionItems(id) {
   });
 }
 function sessionView(row,withItems=false) {
-  const items=sessionItems(row.id),counts={total:items.length,completed:0,pending:0,skipped:0};
-  for (const item of items) counts[item.status]++;
+  const items=sessionItems(row.id),counts={total:items.length,completed:0,pending:0,skipped:0,passed:0,failed:0};
+  for (const item of items) {
+    counts[item.status]++;
+    // 只有通过复习模式的项目才算「已完成」；未通过（答错/不记得）与跳过都只算看过一遍。
+    if(item.status==='completed') { if(item.result==='failed') counts.failed++; else counts.passed++; }
+  }
   const {request_json,create_request_id,...publicRow}=row;
   return {...publicRow,...counts,progress:counts.total ? Math.round((counts.completed+counts.skipped)/counts.total*100) : 0,
+    passRate:counts.total ? Math.round(counts.passed/counts.total*100) : 0,
     types:[...new Set(items.map(item=>item.item_type))],...(withItems ? {items} : {})};
 }
 function getReviewSession(courseId,id) { return sessionView(sessionRow(courseId,id),true); }
@@ -127,10 +132,10 @@ function reviewSessionContext(itemId,courseId,type,sourceId,planItemId=null) {
 function assertSessionItemWritable(item) {
   if(item.session_status==='completed' || item.status!=='pending' || item.source_deleted) planError(409,'SESSION_CLOSED','该复习项目已处理，请查看记录或开始新一轮');
 }
-function completeSessionItem(item,round=null,revision=null) {
+function completeSessionItem(item,round=null,revision=null,result='passed') {
   touchReviewSession(item.session_id);
-  db.prepare("UPDATE review_session_items SET status='completed',completed_at=?,review_round=?,review_revision=? WHERE id=? AND status='pending'")
-    .run(new Date().toISOString(),round,revision,item.id);
+  db.prepare("UPDATE review_session_items SET status='completed',completed_at=?,review_round=?,review_revision=?,result=? WHERE id=? AND status='pending'")
+    .run(new Date().toISOString(),round,revision,result,item.id);
   advanceSessionPosition(item.session_id);
 }
 function touchReviewSession(id) {
@@ -149,7 +154,7 @@ function saveSessionReadingReview(sessionItemId,row,type,status,setStatus,planIt
     const task=item.plan_item_id ? reviewPlanContext(item.plan_item_id,row.course_id,type,row.id) : null;
     const result=setStatus(row.id,row.course_id,status);
     if(task) completePlanItem(task);
-    completeSessionItem(item);
+    completeSessionItem(item,null,null,'passed');
     db.exec('COMMIT');return result;
   } catch(err) {db.exec('ROLLBACK');throw err;}
 }

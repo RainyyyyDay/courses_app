@@ -8,7 +8,7 @@
 const { db } = require('./connection');
 
 // ===== 当前程序支持的数据库版本 =====
-const CURRENT_DB_VERSION = 14;
+const CURRENT_DB_VERSION = 15;
 
 // 判断某张表是否已经存在
 function tableExists(name) {
@@ -261,6 +261,32 @@ function migrateReviewScheduling() {
   catch (err) { db.exec('ROLLBACK'); throw err; }
 }
 
+// ===== v14 → v15：复习记录的单项结果（通过 / 未通过） =====
+// 只有通过复习模式才算「完成一项」；答错、不记得、跳过都只是「过了一遍」。
+function migrateReviewResults() {
+  if (getUserVersion() !== 14) return;
+  db.exec('BEGIN');
+  try { upgradeToV15(); setUserVersion(15); db.exec('COMMIT'); }
+  catch (err) { db.exec('ROLLBACK'); throw err; }
+}
+
+function upgradeToV15() {
+  const exists = db.prepare('PRAGMA table_info(review_session_items)').all().some((c) => c.name === 'result');
+  if (!exists) {
+    db.exec("ALTER TABLE review_session_items ADD COLUMN result TEXT CHECK(result IS NULL OR result IN ('passed','failed'))");
+  }
+  // 旧记录没有单项结果：阅读类只有 reviewed 才会完成，可安全补成 passed；
+  // 错题按当前 review_status 近似回填（历史判断结果没有单独保存）。
+  db.exec(`
+    UPDATE review_session_items SET result='passed'
+      WHERE status='completed' AND result IS NULL AND item_type IN ('material','note');
+    UPDATE review_session_items SET result=CASE WHEN EXISTS(
+        SELECT 1 FROM mistakes m WHERE m.id=review_session_items.item_id AND m.review_status='reviewed')
+      THEN 'passed' ELSE 'failed' END
+      WHERE status='completed' AND result IS NULL AND item_type='mistake';
+  `);
+}
+
 function upgradeToV14() {
   const addColumn = (table, column, ddl) => {
     const exists = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
@@ -467,6 +493,7 @@ function upgradeToV5() {
 migrate();
 migrateReviewSessions();
 migrateReviewScheduling();
+migrateReviewResults();
 
 // ===== 建表：Phase 0 的基础结构（version 1）=====
 // 每一张“子表”都用 course_id 指向 courses(id)，
