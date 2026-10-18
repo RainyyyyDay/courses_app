@@ -1,0 +1,14 @@
+{
+  "name": "courses-ai-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "dev": "node --env-file-if-exists=.env --watch src/server.js",
+    "test": "node --test test/service.test.js",
+    "test:integration": "node --env-file-if-exists=.env --test integration/deepseek.test.js"
+  },
+  "dependencies": { "express": "^5.3.0" }
+}

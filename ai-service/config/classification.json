@@ -1,0 +1,10 @@
+{
+  "version": "example-1",
+  "instructions": "仅为待团队确认的演示规则。根据明确提供的 error_type 匹配，不得从答案臆测错误原因。无法匹配或证据不足时使用 unclassified。所有结果需要人工复核。",
+  "categories": [
+    { "id": "recall", "description": "演示：回忆知识", "error_types": ["knowledge_gap"] },
+    { "id": "guided", "description": "演示：引导练习", "error_types": ["reasoning_gap"] },
+    { "id": "retry", "description": "演示：重新作答", "error_types": ["careless"] },
+    { "id": "unclassified", "description": "信息不足或尚无合适规则，等待人工分类", "error_types": [] }
+  ]
+}
