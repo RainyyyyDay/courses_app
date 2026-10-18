@@ -42,7 +42,7 @@ function reviewPlanBrowserPrelude() {
       check(document.querySelector('#reviewPlanCalendar .plan-calendar-cell.is-today .is-today-mark'),'today with unfinished items shows the moving pointer');
       check(document.querySelector('#reviewPlanCalendar .plan-calendar-legend').textContent.includes('已过期未完成'),'calendar legend explains overdue');
       const scheduleCell=document.querySelector('#reviewPlanCalendar .plan-calendar-cell.has-items');
-      openPlanScheduleDay(scheduleCell.getAttribute('onclick').match(/'([0-9-]+)'/)[1]);
+      scheduleCell.click();
       check(document.getElementById('reviewPlanDayModal').classList.contains('show') && document.querySelectorAll('#reviewPlanDayBody .review-day-card').length>0,'clicking a day opens only populated type cards');
       closePlanScheduleDay();
       check(ordinaryUnchanged(),'all three ordinary queues survive complete plan review');

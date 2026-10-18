@@ -705,7 +705,7 @@
   </div>
 
   <!-- 排期日历：点某一天弹出的当天任务 -->
-  <div id="reviewPlanDayModal" class="modal-mask" onclick="if(event.target===this)closePlanScheduleDay()" onkeydown="if(event.key==='Escape'){event.preventDefault();closePlanScheduleDay()}">
+  <div id="reviewPlanDayModal" class="modal-mask" onclick="if(event.target===this)closePlanScheduleDayFromMask()" onkeydown="if(event.key==='Escape'){event.preventDefault();closePlanScheduleDay()}">
     <div class="modal review-day-dialog" role="dialog" aria-modal="true" aria-labelledby="reviewPlanDayTitle">
       <header class="review-day-head"><h3 id="reviewPlanDayTitle" tabindex="-1"></h3><button type="button" class="review-day-close" onclick="closePlanScheduleDay()" aria-label="关闭">×</button></header>
       <div id="reviewPlanDayBody" class="review-day-body"></div>

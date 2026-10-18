@@ -14,6 +14,7 @@ function planProgressHtml(plan) {
 }
 // 智能排期预览：后台按记忆状态算好的日程，渲染成月历；请求失败时整块不显示。
 let planCalendar = null;
+let planDayOpenedAt = 0;
 // 当天有真实会话时以会话项目为准（包含已跳过/未通过），否则用排期预估。
 function planDayItems(day) {
   if (!day) return [];
@@ -50,7 +51,11 @@ function planCalendarHtml() {
         : overdue ? '<span class="plan-calendar-mark is-overdue-mark">!</span>'
           : info && date === today ? '<span class="plan-calendar-mark is-today-mark">▼</span>' : '';
     const title = info ? `${date} · ${count} 项 · 约 ${minutes} 分钟` : (date === c.examDate ? `${date} · 考试日` : '');
-    cells.push(`<div class="${classes.join(' ')}" ${info ? `onclick="openPlanScheduleDay('${date}')"` : ''} ${title ? `title="${escapeHtml(title)}"` : ''}><span class="plan-calendar-day">${day}</span>${mark}${info ? `<span class="plan-calendar-count">${count} 项</span>` : ''}</div>`);
+    if (info) {
+      cells.push(`<button type="button" class="${classes.join(' ')}" data-plan-date="${date}" ${title ? `title="${escapeHtml(title)}"` : ''}><span class="plan-calendar-day">${day}</span>${mark}<span class="plan-calendar-count">${count} 项</span></button>`);
+    } else {
+      cells.push(`<div class="${classes.join(' ')}" ${title ? `title="${escapeHtml(title)}"` : ''}><span class="plan-calendar-day">${day}</span>${mark}</div>`);
+    }
   }
   return `<div class="plan-calendar-head"><button type="button" onclick="shiftPlanCalendar(-1)" aria-label="上个月">‹</button><strong>${c.year} 年 ${c.month + 1} 月</strong><button type="button" onclick="shiftPlanCalendar(1)" aria-label="下个月">›</button></div>
     <div class="plan-calendar-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
@@ -83,9 +88,20 @@ function shiftPlanCalendar(delta) {
   const box = document.getElementById('reviewPlanCalendar');
   if (box) box.innerHTML = planCalendarHtml();
 }
+// 事件委托：整格（含内部文字、标记）都算点击，不依赖具体子元素。
+function bindPlanCalendarClicks() {
+  const box = document.getElementById('reviewPlanCalendar');
+  if (!box || box.dataset.bound) return;
+  box.addEventListener('click', event => {
+    const cell = event.target.closest('[data-plan-date]');
+    if (cell) openPlanScheduleDay(cell.dataset.planDate);
+  });
+  box.dataset.bound = '1';
+}
 function openPlanScheduleDay(date) {
   const day = planCalendar?.dayMap.get(date);
   if (!day) return;
+  planDayOpenedAt = Date.now();
   const today = planLocalDate();
   const overdue = date < today && day.state !== 'done';
   const future = date > today;
@@ -94,11 +110,13 @@ function openPlanScheduleDay(date) {
   const skippedTasks = tasks.filter(item => item.status === 'skipped').length;
   const pendingTasks = tasks.filter(item => item.status === 'pending').length;
   // 没有物化任务的日期（纯排期预估）也要给出统计：有会话用会话结果，否则整天的内容都算待完成。
-  const statsSource = tasks.length
-    ? { total: tasks.length, completed: doneTasks, skipped: skippedTasks, pending: pendingTasks }
-    : day.sessionCounts || { total: day.items.length, completed: 0, skipped: 0, pending: day.items.length };
-  const stats = statsSource.total
-    ? `<p class="plan-day-stats">已完成 ${statsSource.completed} / ${statsSource.total - statsSource.skipped} · 待完成 ${statsSource.pending} · 已跳过 ${statsSource.skipped}</p>` : '';
+  // 总任务就是当天全部项目，不做减法；待完成 = 还没成功复习的（待处理 + 未通过 + 跳过）。
+  const statsSession = day.sessionCounts || null;
+  const statsTotal = tasks.length ? tasks.length : statsSession ? statsSession.total : day.items.length;
+  const statsPassed = tasks.length ? doneTasks : statsSession ? statsSession.passed : 0;
+  const statsSkipped = tasks.length ? skippedTasks : statsSession ? statsSession.skipped : 0;
+  const stats = statsTotal
+    ? `<p class="plan-day-stats">已完成 ${statsPassed} / ${statsTotal} · 待完成 ${statsTotal - statsPassed} · 已跳过 ${statsSkipped}</p>` : '';
   // 当天有会话时以会话的真实项目为准（包含已跳过/未通过），否则用排期预估。
   const source = planDayItems(day);
   const rows = ['mistake', 'material', 'note'].map(type => {
@@ -133,6 +151,11 @@ function openPlanScheduleDay(date) {
 function closePlanScheduleDay() {
   document.getElementById('reviewPlanDayModal').classList.remove('show');
   document.body.classList.remove('plan-day-open');
+}
+// 遮罩点击关闭：刚打开 350ms 内的点击视为同一次手势/双击，不关闭。
+function closePlanScheduleDayFromMask() {
+  if (Date.now() - planDayOpenedAt < 350) return;
+  closePlanScheduleDay();
 }
 async function startPlanScheduleDay(date, type, action = '复习') {
   const state = reviewPlanDetail, day = planCalendar?.dayMap.get(date);
@@ -359,6 +382,7 @@ function renderReviewPlanDetail() {
     <p class="detail-meta">错题 → 资料 → 笔记，按类型使用原有复习页面；点日历上的日期可以查看当天安排并开始复习。跳过阅读仍保留待完成任务。</p>
     <details class="plan-settings"><summary>管理计划</summary><label>计划名称<input id="reviewPlanRename" maxlength="100" value="${escapeHtml(plan.name)}" /></label><div class="mistake-toolbar"><button onclick="saveReviewPlanName()">保存名称</button><button onclick="changeReviewPlanStatus()">${plan.status==='active' ? '归档计划' : '恢复计划'}</button><button onclick="deleteCurrentReviewPlan()">删除计划</button></div><p class="detail-meta">日期和复习范围创建后固定；需要调整时请重新生成计划。</p></details></section>
     ${planScheduleHtml(state.schedule)}`;
+  bindPlanCalendarClicks();
 }
 async function patchCurrentReviewPlan(body) {
   const state = reviewPlanDetail;
