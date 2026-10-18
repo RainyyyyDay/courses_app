@@ -1002,6 +1002,7 @@ body.mistake-review-open { overflow: hidden; }
 .plan-day-done { color: #1f9d5b; font-size: 13px; margin: 4px 0 8px; }
 .plan-day-partial { color: #b45309; font-size: 13px; margin: 4px 0 8px; }
 .plan-day-overdue { color: #c0392b; font-size: 13px; margin: 4px 0 8px; }
+.plan-day-stats { color: #55607a; font-size: 13px; margin: 4px 0 8px; }
 @media(max-width:540px) {
   .plan-calendar-cell { min-height: 46px; padding: 4px; }
   .plan-calendar-count { margin-top: 6px; font-size: 11px; }

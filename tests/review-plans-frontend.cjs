@@ -57,7 +57,9 @@ function reviewPlanBrowserPrelude() {
       const p=await request('POST',c+'/review-plans',{name:'删除来源',startDate:saved.today,examDate:saved.tomorrow,selectedItems:[{type:'note',id:deleted.id}]});
       await request('DELETE','/notes/'+deleted.id);await openReviewPlan(p.id);
       check(reviewPlanDetail.plan.skipped===1 && reviewPlanDetail.plan.completed===0 && reviewPlanDetail.plan.completionRate===0,'all skipped has explicit zero rate');
-      check(document.getElementById('reviewPlanDetailBody').textContent.includes('内容已删除') && document.getElementById('reviewPlanDetailBody').textContent.includes('删除后保留的标题'),'deleted source snapshot UI');
+      openPlanScheduleDay(saved.today);
+      check(document.getElementById('reviewPlanDayBody').textContent.includes('内容已删除') && document.getElementById('reviewPlanDayBody').textContent.includes('删除后保留的标题'),'deleted source snapshot UI in day popup');
+      closePlanScheduleDay();
       const yesterday=new Date(Date.parse(saved.today+'T00:00:00Z')-86400000).toISOString().slice(0,10);
       const late=await request('POST',c+'/review-plans',{name:'过期任务',startDate:yesterday,examDate:saved.today,selectedItems:[{type:'material',id:saved.remainingMaterial}]});
       await openReviewPlan(late.id);
@@ -117,7 +119,9 @@ function reviewPlanBrowserScenario() {
       const planId=reviewPlanDetail.plan.id;
       await request('PATCH',c+'/materials/'+first.id,{favorite:false});
       await openReviewPlan(planId);check(reviewPlanDetail.plan.total===4,'favorite change does not change selected snapshot');
-      document.querySelector('[data-plan-start="material"]').click();
+      openPlanScheduleDay(today);
+      check(document.querySelector('#reviewPlanDayBody .plan-day-stats').textContent.includes('已完成 0 / 4'),'day popup carries task stats');
+      document.querySelector('[data-plan-day-type="material"] button').click();
       await waitUntil(()=>currentView.type==='readingReview' && activeReadingReview.row && !planReviewStarting,'plan material starts');
       check(activeReadingReview.row.id===first.id && activeReadingReview.row.review_status==='reviewed','already reviewed content still requires plan action');
       await activeReadingReview.save('reviewed');await activeReadingReview.skip();

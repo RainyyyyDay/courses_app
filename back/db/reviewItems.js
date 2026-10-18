@@ -190,6 +190,7 @@ function getReviewPlanSchedule(courseId, planId) {
       WHERE course_id=? AND source_type='plan' AND source_id=? AND source_date=?
       ORDER BY (status='completed') DESC, updated_at DESC, id DESC LIMIT 1`).get(courseId, planId, day.date);
     let state = 'none';
+    let sessionTypes = [];
     if (session) {
       const counts = db.prepare(`SELECT COUNT(*) total,
         SUM(CASE WHEN status='completed' AND result='failed' THEN 1 ELSE 0 END) failed,
@@ -197,17 +198,21 @@ function getReviewPlanSchedule(courseId, planId) {
         FROM review_session_items WHERE session_id=?`).get(session.id);
       state = session.status === 'completed' && counts.total > 0
         && (counts.failed || 0) === 0 && (counts.open || 0) === 0 ? 'done' : 'partial';
+      sessionTypes = db.prepare('SELECT DISTINCT item_type FROM review_session_items WHERE session_id=?')
+        .all(session.id).map(row => row.item_type);
     }
     return {
       ...day,
       state,
       sessionId: session ? session.id : null,
+      sessionStatus: session ? session.status : null,
+      sessionTypes,
       items: day.items.map(item => ({ ...item, title: titleFor(item.type, item.id) })),
     };
   });
   // 物化任务（review_plan_items）才是“实际排了、实际做了什么”的权威记录：
   // 把它合并进日历，避免“17 号任务已完成但日历没勾”的矛盾。
-  const planRows = db.prepare(`SELECT item_type,item_id,scheduled_date,status,title_snapshot,estimated_minutes
+  const planRows = db.prepare(`SELECT item_type,item_id,scheduled_date,status,title_snapshot,estimated_minutes,source_deleted
     FROM review_plan_items WHERE plan_id=? ORDER BY scheduled_date,sort_order`).all(planId);
   const planByDate = new Map();
   for (const row of planRows) {
@@ -229,11 +234,14 @@ function getReviewPlanSchedule(courseId, planId) {
         type: row.item_type,
         id: row.item_id,
         title: row.title_snapshot,
+        sourceDeleted: row.source_deleted ? 1 : 0,
         minutes: Number(row.estimated_minutes) || 5,
         roundNo: 1,
       })),
       state: active.length && completed === active.length ? 'done' : completed ? 'partial' : 'none',
       sessionId: preview ? preview.sessionId : null,
+      sessionStatus: preview ? preview.sessionStatus : null,
+      sessionTypes: preview ? preview.sessionTypes : [],
       source: 'plan',
     };
   });

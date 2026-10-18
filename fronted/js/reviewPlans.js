@@ -80,14 +80,23 @@ function openPlanScheduleDay(date) {
   const day = planCalendar?.dayMap.get(date);
   if (!day) return;
   const overdue = date < planLocalDate() && day.state !== 'done';
+  const tasks = (reviewPlanDetail?.items || []).filter(item => item.scheduled_date === date);
+  const doneTasks = tasks.filter(item => item.status === 'completed').length;
+  const skippedTasks = tasks.filter(item => item.status === 'skipped').length;
+  const pendingTasks = tasks.filter(item => item.status === 'pending').length;
+  const stats = tasks.length
+    ? `<p class="plan-day-stats">已完成 ${doneTasks} / ${tasks.length - skippedTasks} · 待完成 ${pendingTasks} · 已跳过 ${skippedTasks}</p>` : '';
   const rows = ['mistake', 'material', 'note'].map(type => {
     const items = day.items.filter(item => item.type === type);
     if (!items.length) return ''; // 没有内容的类型不显示
     const minutes = items.reduce((sum, item) => sum + (Number(item.minutes) || 0), 0);
-    return `<article class="review-day-card" data-plan-day-type="${type}"><div><strong>${PLAN_TYPE_LABELS[type]}</strong><p class="detail-meta">${items.length} 项 · 约 ${minutes} 分钟</p></div><button type="button" onclick="startPlanScheduleDay('${date}','${type}')">${day.state === 'done' ? '再复习一次' : '复习'}</button></article>`;
+    const canResume = !!day.sessionId && ['active', 'paused'].includes(day.sessionStatus) && (day.sessionTypes || []).includes(type);
+    const label = canResume ? '继续' : day.state === 'done' ? '再来一遍' : '复习';
+    const deleted = items.filter(item => item.sourceDeleted).map(item => item.title);
+    return `<article class="review-day-card" data-plan-day-type="${type}"><div><strong>${PLAN_TYPE_LABELS[type]}</strong><p class="detail-meta">${items.length} 项 · 约 ${minutes} 分钟</p>${deleted.length ? `<p class="detail-meta plan-deleted">内容已删除：${deleted.map(escapeHtml).join('、')}</p>` : ''}</div><button type="button" onclick="startPlanScheduleDay('${date}','${type}','${label}')">${label}</button></article>`;
   }).join('');
   document.getElementById('reviewPlanDayTitle').textContent = `${date} · ${day.items.length} 项 · 约 ${day.minutes} 分钟`;
-  document.getElementById('reviewPlanDayBody').innerHTML = `${day.state === 'done' ? '<p class="plan-day-done">当天已全部通过 ✓</p>'
+  document.getElementById('reviewPlanDayBody').innerHTML = `${stats}${day.state === 'done' ? '<p class="plan-day-done">当天已全部通过 ✓</p>'
     : day.state === 'partial' ? '<p class="plan-day-partial">当天还有未通过或跳过，可以继续。</p>' : ''}${rows}`;
   if (overdue) {
     const movedTo = Array.isArray(day.movedTo) ? day.movedTo.slice(0, 2) : [];
@@ -101,10 +110,22 @@ function closePlanScheduleDay() {
   document.getElementById('reviewPlanDayModal').classList.remove('show');
   document.body.classList.remove('plan-day-open');
 }
-async function startPlanScheduleDay(date, type) {
+async function startPlanScheduleDay(date, type, action = '复习') {
   const state = reviewPlanDetail, day = planCalendar?.dayMap.get(date);
   if (!state || !day || planReviewStarting) return;
   closePlanScheduleDay();
+  if (action === '继续' && day.sessionId) return resumeReviewRecord(day.sessionId);
+  if (action === '再来一遍') {
+    const items = day.items.filter(item => item.type === type).map(item => ({ type: item.type, id: item.id }));
+    if (!items.length) return;
+    planReviewStarting = true;
+    try {
+      const session = await createReviewRecord('total', items, { requestId: reviewRequestId() });
+      await enterCenterReview(session);
+    } catch (err) { showToast(err.message); }
+    finally { planReviewStarting = false; }
+    return;
+  }
   const pending = state.items.filter(item => item.scheduled_date === date && item.item_type === type && item.status === 'pending');
   if (pending.length) return startReviewPlanDay(state.plan.id, date, type);
   const items = day.items.filter(item => item.type === type).map(item => ({ type: item.type, id: item.id }));
@@ -310,17 +331,9 @@ function renderReviewPlanDetail() {
   const todayText = !today.total ? '今日没有安排复习任务' : today.pending ? `今日 ${today.pending} 项待复习` : today.completed ? '今日复习已完成' : '今日任务均已跳过';
   document.getElementById('reviewPlanDetailBody').innerHTML = `<section class="detail-card"><h2>${escapeHtml(plan.name)}</h2><p>考试日期：${plan.exam_date} · 剩余 ${plan.remainingDays} 天${plan.status==='archived' ? ' · 已归档' : ''}</p>
     ${planProgressHtml(plan)}<p>${todayText}</p><button id="reviewPlanTodayStart" onclick="startReviewPlanDay(${plan.id},'${plan.today}')" ${!today.pending || plan.status!=='active' ? 'disabled' : ''}>开始今日复习</button>
-    <p class="detail-meta">错题 → 资料 → 笔记，按类型使用原有复习页面；也可在日期下分别进入。跳过阅读仍保留待完成任务。</p>
+    <p class="detail-meta">错题 → 资料 → 笔记，按类型使用原有复习页面；点日历上的日期可以查看当天安排并开始复习。跳过阅读仍保留待完成任务。</p>
     <details class="plan-settings"><summary>管理计划</summary><label>计划名称<input id="reviewPlanRename" maxlength="100" value="${escapeHtml(plan.name)}" /></label><div class="mistake-toolbar"><button onclick="saveReviewPlanName()">保存名称</button><button onclick="changeReviewPlanStatus()">${plan.status==='active' ? '归档计划' : '恢复计划'}</button><button onclick="deleteCurrentReviewPlan()">删除计划</button></div><p class="detail-meta">日期和复习范围创建后固定；需要调整时请重新生成计划。</p></details></section>
-    ${planScheduleHtml(state.schedule)}
-    <div id="reviewPlanDays">${plan.days.map(day=>{
-      const rows = items.filter(item=>item.scheduled_date===day.date);
-      const label = day.date===plan.today ? '今天' : day.date===new Date(Date.parse(plan.today+'T00:00:00Z')+86400000).toISOString().slice(0,10) ? '明天' : '';
-      return `<details class="detail-card plan-day" data-plan-date="${day.date}" ${day.date===plan.today ? 'open' : ''}><summary>${label ? label+' · ' : ''}${day.date} <span>已完成 ${day.completed} / ${day.total-day.skipped} · 待完成 ${day.pending} · 已跳过 ${day.skipped}</span></summary>
-        <div class="plan-day-types">${Object.entries(PLAN_TYPE_LABELS).map(([type,name])=>`<div><span>${name} ${day.types[type].total} 项 · 完成 ${day.types[type].completed}</span><button data-plan-start="${type}" onclick="startReviewPlanDay(${plan.id},'${day.date}','${type}')" ${!day.types[type].pending || plan.status!=='active' ? 'disabled' : ''}>复习${name}</button></div>`).join('')}</div>
-        ${rows.length ? rows.map(item=>`<div class="plan-task" data-plan-item="${item.id}"><span>${item.status==='completed' ? '✓' : item.status==='skipped' ? '—' : '○'} ${PLAN_TYPE_LABELS[item.item_type]} · ${escapeHtml(item.title_snapshot)}</span><small>${item.source_deleted ? '内容已删除' : item.status==='completed' ? '已完成' : item.status==='skipped' ? '已跳过' : !item.reviewable ? '请先补齐题目或答案' : '待复习'}</small>${!item.source_deleted && item.item_type==='mistake' && !item.reviewable ? `<button onclick="openMistakeDetail(${item.item_id},false)">补齐内容</button>` : ''}</div>`).join('') : '<p class="empty">这一天没有安排任务。</p>'}
-      </details>`;
-    }).join('')}</div>`;
+    ${planScheduleHtml(state.schedule)}`;
 }
 async function patchCurrentReviewPlan(body) {
   const state = reviewPlanDetail;
