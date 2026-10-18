@@ -191,13 +191,26 @@ function getReviewPlanSchedule(courseId, planId) {
       ORDER BY (status='completed') DESC, updated_at DESC, id DESC LIMIT 1`).get(courseId, planId, day.date);
     let state = 'none';
     let sessionTypes = [];
+    let sessionCounts = null;
     if (session) {
       const counts = db.prepare(`SELECT COUNT(*) total,
         SUM(CASE WHEN status='completed' AND result='failed' THEN 1 ELSE 0 END) failed,
-        SUM(CASE WHEN status!='completed' THEN 1 ELSE 0 END) open
+        SUM(CASE WHEN status!='completed' THEN 1 ELSE 0 END) open,
+        SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) completed,
+        SUM(CASE WHEN status='completed' AND result!='failed' THEN 1 ELSE 0 END) passed,
+        SUM(CASE WHEN status='skipped' THEN 1 ELSE 0 END) skipped,
+        SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) pending
         FROM review_session_items WHERE session_id=?`).get(session.id);
       state = session.status === 'completed' && counts.total > 0
         && (counts.failed || 0) === 0 && (counts.open || 0) === 0 ? 'done' : 'partial';
+      sessionCounts = {
+        total: counts.total,
+        completed: counts.completed || 0,
+        passed: counts.passed || 0,
+        failed: counts.failed || 0,
+        skipped: counts.skipped || 0,
+        pending: counts.pending || 0,
+      };
       sessionTypes = db.prepare('SELECT DISTINCT item_type FROM review_session_items WHERE session_id=?')
         .all(session.id).map(row => row.item_type);
     }
@@ -207,6 +220,7 @@ function getReviewPlanSchedule(courseId, planId) {
       sessionId: session ? session.id : null,
       sessionStatus: session ? session.status : null,
       sessionTypes,
+      sessionCounts,
       items: day.items.map(item => ({ ...item, title: titleFor(item.type, item.id) })),
     };
   });
@@ -242,6 +256,7 @@ function getReviewPlanSchedule(courseId, planId) {
       sessionId: preview ? preview.sessionId : null,
       sessionStatus: preview ? preview.sessionStatus : null,
       sessionTypes: preview ? preview.sessionTypes : [],
+      sessionCounts: preview ? preview.sessionCounts : null,
       source: 'plan',
     };
   });

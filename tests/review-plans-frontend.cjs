@@ -60,6 +60,7 @@ function reviewPlanBrowserPrelude() {
       check(futureDate,'future plan has a later schedule day');
       openPlanScheduleDay(futureDate);
       check(document.getElementById('reviewPlanDayBody').textContent.includes('提前复习会缩短'),'future day explains the early-review tradeoff');
+      check(document.querySelector('#reviewPlanDayBody .plan-day-stats').textContent.includes('待完成'),'every populated day popup shows task stats');
       closePlanScheduleDay();
       const deleted=await request('POST',c+'/notes',{title:'删除后保留的标题',content:'body'});
       const p=await request('POST',c+'/review-plans',{name:'删除来源',startDate:saved.today,examDate:saved.tomorrow,selectedItems:[{type:'note',id:deleted.id}]});

@@ -86,8 +86,12 @@ function openPlanScheduleDay(date) {
   const doneTasks = tasks.filter(item => item.status === 'completed').length;
   const skippedTasks = tasks.filter(item => item.status === 'skipped').length;
   const pendingTasks = tasks.filter(item => item.status === 'pending').length;
-  const stats = tasks.length
-    ? `<p class="plan-day-stats">已完成 ${doneTasks} / ${tasks.length - skippedTasks} · 待完成 ${pendingTasks} · 已跳过 ${skippedTasks}</p>` : '';
+  // 没有物化任务的日期（纯排期预估）也要给出统计：有会话用会话结果，否则整天的内容都算待完成。
+  const statsSource = tasks.length
+    ? { total: tasks.length, completed: doneTasks, skipped: skippedTasks, pending: pendingTasks }
+    : day.sessionCounts || { total: day.items.length, completed: 0, skipped: 0, pending: day.items.length };
+  const stats = statsSource.total
+    ? `<p class="plan-day-stats">已完成 ${statsSource.completed} / ${statsSource.total - statsSource.skipped} · 待完成 ${statsSource.pending} · 已跳过 ${statsSource.skipped}</p>` : '';
   const rows = ['mistake', 'material', 'note'].map(type => {
     const items = day.items.filter(item => item.type === type);
     if (!items.length) return ''; // 没有内容的类型不显示
