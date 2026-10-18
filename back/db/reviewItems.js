@@ -185,7 +185,7 @@ function getReviewPlanSchedule(courseId, planId) {
     }
     return titleCache.get(key);
   };
-  const days = result.days.map(day => {
+  const scheduledDays = result.days.map(day => {
     const session = db.prepare(`SELECT id,status FROM review_sessions
       WHERE course_id=? AND source_type='plan' AND source_id=? AND source_date=?
       ORDER BY (status='completed') DESC, updated_at DESC, id DESC LIMIT 1`).get(courseId, planId, day.date);
@@ -205,6 +205,56 @@ function getReviewPlanSchedule(courseId, planId) {
       items: day.items.map(item => ({ ...item, title: titleFor(item.type, item.id) })),
     };
   });
+  // 物化任务（review_plan_items）才是“实际排了、实际做了什么”的权威记录：
+  // 把它合并进日历，避免“17 号任务已完成但日历没勾”的矛盾。
+  const planRows = db.prepare(`SELECT item_type,item_id,scheduled_date,status,title_snapshot,estimated_minutes
+    FROM review_plan_items WHERE plan_id=? ORDER BY scheduled_date,sort_order`).all(planId);
+  const planByDate = new Map();
+  for (const row of planRows) {
+    if (!planByDate.has(row.scheduled_date)) planByDate.set(row.scheduled_date, []);
+    planByDate.get(row.scheduled_date).push(row);
+  }
+  const scheduledByDate = new Map(scheduledDays.map(day => [day.date, day]));
+  const dates = [...new Set([...scheduledByDate.keys(), ...planByDate.keys()])].sort();
+  const days = dates.map(date => {
+    const materialized = planByDate.get(date);
+    const preview = scheduledByDate.get(date) || null;
+    if (!materialized) return preview;
+    const active = materialized.filter(row => row.status !== 'skipped');
+    const completed = active.filter(row => row.status === 'completed').length;
+    return {
+      date,
+      minutes: materialized.reduce((sum, row) => sum + (Number(row.estimated_minutes) || 5), 0),
+      items: materialized.map(row => ({
+        type: row.item_type,
+        id: row.item_id,
+        title: row.title_snapshot,
+        minutes: Number(row.estimated_minutes) || 5,
+        roundNo: 1,
+      })),
+      state: active.length && completed === active.length ? 'done' : completed ? 'partial' : 'none',
+      sessionId: preview ? preview.sessionId : null,
+      source: 'plan',
+    };
+  });
+  // 过期未完成的项目，按当前排期算出它们下一次出现在哪一天，供界面提示「已往后排」。
+  const futureByItem = new Map();
+  for (const day of days) {
+    if (day.date < today) continue;
+    for (const item of day.items) {
+      const key = item.type + ':' + item.id;
+      if (!futureByItem.has(key)) futureByItem.set(key, new Set());
+      futureByItem.get(key).add(day.date);
+    }
+  }
+  for (const day of days) {
+    if (day.date >= today || day.state === 'done') continue;
+    const dates = new Set();
+    for (const item of day.items) {
+      for (const date of futureByItem.get(item.type + ':' + item.id) || []) dates.add(date);
+    }
+    day.movedTo = [...dates].sort();
+  }
   return { ...base, ...result, days };
 }
 

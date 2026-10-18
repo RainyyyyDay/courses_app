@@ -123,6 +123,9 @@ async function testReviewPlanApi({base,temp}) {
     await api('POST',review+'/events?planItemId='+otherTask.id,operation,409);
     await api('POST',review+'/events'+context,{...operation,requestId:'new-stale'},409);
     await api('PATCH',readUrl,{reviewStatus:'reviewed'});
+    // 日历必须包含已物化的任务（标题来自任务快照），否则会出现“任务已完成但日历没勾”。
+    const scheduleAfter=await api('GET',url+'/schedule');
+    assert.ok(scheduleAfter.days.some(day=>day.date===today && day.items.some(item=>item.type==='material' && item.title==='material')),'schedule calendar includes materialized tasks');
     const firstTime=(await api('GET',url+'/items')).find(row=>row.item_type==='material').completed_at;
     await api('PATCH',readUrl,{reviewStatus:'reviewed'});
     assert.equal((await api('GET',url+'/items')).find(row=>row.item_type==='material').completed_at,firstTime);

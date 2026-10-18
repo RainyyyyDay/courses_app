@@ -90,8 +90,9 @@ function openPlanScheduleDay(date) {
   document.getElementById('reviewPlanDayBody').innerHTML = `${day.state === 'done' ? '<p class="plan-day-done">当天已全部通过 ✓</p>'
     : day.state === 'partial' ? '<p class="plan-day-partial">当天还有未通过或跳过，可以继续。</p>' : ''}${rows}`;
   if (overdue) {
+    const movedTo = Array.isArray(day.movedTo) ? day.movedTo.slice(0, 2) : [];
     document.getElementById('reviewPlanDayBody').insertAdjacentHTML('afterbegin',
-      '<p class="plan-day-overdue">这一天的复习期限已过，未完成的项目可以继续复习或等待重新排期。</p>');
+      `<p class="plan-day-overdue">这一天的复习期限已过${movedTo.length ? `，未完成的项目已往后排到 ${movedTo.map(escapeHtml).join('、')}` : ''}。现在也可以继续补做。</p>`);
   }
   document.getElementById('reviewPlanDayModal').classList.add('show');
   document.body.classList.add('plan-day-open');
