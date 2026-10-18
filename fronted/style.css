@@ -1556,8 +1556,9 @@ body.mistake-edit-open { overflow: hidden; }
 #pane-reviewPlans .plan-card > p { margin: 9px 0 0; font-size: 13px; color: #69768d; line-height: 1.7; }
 #pane-reviewPlans .plan-card .material-review-badge { margin: 0; font-size: 12px; }
 #pane-reviewPlans .plan-progress { margin-top: 12px; }
-#pane-reviewPlans .plan-progress progress { height: 8px; accent-color: #7c91bd; }
-#pane-reviewPlans .plan-progress span { color: #73819b; font-size: 13px; }
+#pane-reviewPlans .plan-progress progress { height: 10px; accent-color: #4a6cf7; }
+#pane-reviewPlans .plan-progress .plan-progress-label { color: #6b7690; font-size: 12px; }
+#pane-reviewPlans .plan-progress .plan-progress-value { color: #2f3b52; font-size: 15px; font-weight: 700; }
 #pane-reviewPlans .plan-card .mistake-toolbar { margin: 12px 0 0; gap: 8px; }
 #pane-reviewPlans .plan-card .mistake-toolbar button, #pane-reviewPlans .review-recent-actions button { padding: 6px 10px; border: 1px solid #dce2ed; border-radius: 6px; background: #fff; color: #526785; font-size: 12px; line-height: 1.5; white-space: nowrap; }
 #pane-reviewPlans .review-recent-record { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 0; border-bottom: 1px solid #edf0f5; }
@@ -1710,7 +1711,8 @@ body.mistake-edit-open { overflow: hidden; }
 .plan-title { border: 0; background: none; color: inherit; font: inherit; padding: 0; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
 .plan-progress { display: flex; gap: 12px; align-items: center; margin-top: 16px; }
 .plan-progress progress { flex: 1; min-width: 0; height: 12px; accent-color: #4a6cf7; }
-.plan-progress span { min-width: 40px; font-size: 14px; }
+.plan-progress .plan-progress-label { flex: 0 0 auto; color: #6b7690; font-size: 12px; white-space: nowrap; }
+.plan-progress .plan-progress-value { min-width: 52px; text-align: right; font-size: 15px; font-weight: 700; color: #2f3b52; }
 .plan-create { width: min(760px, 94vw); }
 body.plan-modal-open { overflow: hidden; }
 .plan-fields { border: 0; padding: 0; margin: 0 0 20px; min-width: 0; }

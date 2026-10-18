@@ -10,7 +10,8 @@ let reviewPlanCarousel = {courseId:null,plans:[],index:0};
 function reviewPlanApi(id = '') { return `${API}/courses/${currentCourseId}/review-plans${id ? '/' + id : ''}`; }
 function planLocalDate() { return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
 function planProgressHtml(plan) {
-  return `<div class="plan-progress"><progress max="100" value="${plan.completionRate}" aria-label="完成率 ${plan.completionRate}%"></progress><span>${plan.completionRate}%</span></div><p class="detail-meta">总任务 ${plan.total} · 已完成 ${plan.completed} · 待完成 ${plan.pending} · 已跳过 ${plan.skipped}</p>`;
+  // 百分比按全部任务计算（完成 / (总任务 - 源已删除)），不是当天完成量。
+  return `<div class="plan-progress"><span class="plan-progress-label">总进度</span><progress max="100" value="${plan.completionRate}" aria-label="全部任务完成进度 ${plan.completionRate}%"></progress><span class="plan-progress-value">${plan.completionRate}%</span></div><p class="detail-meta">总任务 ${plan.total} · 已完成 ${plan.completed} · 待完成 ${plan.pending} · 已跳过 ${plan.skipped}</p>`;
 }
 // 智能排期预览：后台按记忆状态算好的日程，渲染成月历；请求失败时整块不显示。
 let planCalendar = null;
