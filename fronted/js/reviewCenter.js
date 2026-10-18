@@ -310,8 +310,12 @@ async function centerReviewItemFinished() {
   try {
     const response=await requestApi(reviewSessionApi(s.session.id));s.session=await response.json();
     if(s.session.status==='completed') {
+      const planId=s.session.source_type==='plan' ? s.session.source_id : null;
       centerReview=null;if(mistakeQueue?.centerContext)mistakeQueue=null;activeReadingReview=materialReadingReview;
-      clearCenterReviewUi();await openReviewSessionDetail(s.session.id);return;
+      clearCenterReviewUi();
+      // 计划来源的复习完成后直接回计划，让日历按新记忆状态重新排布并立即呈现。
+      if(planId && typeof openReviewPlan==='function'){await openReviewPlan(planId);return;}
+      await openReviewSessionDetail(s.session.id);return;
     }
     s.position=s.session.current_position;await renderCenterReviewItem();
   } catch(err){showToast(err.message);}
@@ -328,7 +332,10 @@ async function pauseCenterReview() {
   try {
     await recordedReviewAction(s.session.id,'pause');centerReview=null;
     if(mistakeQueue?.centerContext)mistakeQueue=null;activeReadingReview=materialReadingReview;
-    clearCenterReviewUi();await openReviewSessionDetail(s.session.id);
+    const planId=s.session.source_type==='plan' ? s.session.source_id : null;
+    clearCenterReviewUi();
+    if(planId && typeof openReviewPlan==='function'){await openReviewPlan(planId);return;}
+    await openReviewSessionDetail(s.session.id);
   } catch(err){showToast(err.message);}finally{s.busy=false;}
 }
 async function restoreReviewCenterLocation(courseId) {
