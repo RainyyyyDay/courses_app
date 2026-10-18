@@ -126,8 +126,12 @@ function openPlanScheduleDay(date) {
     const pending = items.filter(item => !item.status || item.status === 'pending').length;
     const skipped = items.filter(item => item.status === 'skipped').length;
     const failed = items.filter(item => item.status === 'completed' && item.result === 'failed').length;
+    const passed = items.filter(item => item.status === 'completed' && item.result !== 'failed').length;
+    const allPassed = items.length > 0 && passed === items.length;
+    const hasProgress = !!day.sessionId || passed + failed + skipped > 0;
     const canResume = !!day.sessionId && ['active', 'paused'].includes(day.sessionStatus) && (day.sessionTypes || []).includes(type);
-    const label = canResume ? '继续' : pending > 0 ? '复习' : '再来一遍';
+    // 有未通过/跳过 → 继续（只带没成功的题）；全部通过 → 再来一次；完全没开始 → 复习。
+    const label = canResume ? '继续' : allPassed ? '再来一次' : hasProgress ? '继续' : '复习';
     const detail = `${items.length} 项 · 约 ${minutes} 分钟${failed ? ` · 未通过 ${failed}` : ''}${skipped ? ` · 跳过 ${skipped}` : ''}`;
     const deleted = items.filter(item => item.sourceDeleted).map(item => item.title);
     return `<article class="review-day-card" data-plan-day-type="${type}"><div><strong>${PLAN_TYPE_LABELS[type]}</strong><p class="detail-meta">${detail}</p>${deleted.length ? `<p class="detail-meta plan-deleted">内容已删除：${deleted.map(escapeHtml).join('、')}</p>` : ''}</div><button type="button" onclick="startPlanScheduleDay('${date}','${type}','${label}')">${label}</button></article>`;
@@ -162,9 +166,23 @@ async function startPlanScheduleDay(date, type, action = '复习') {
   if (!state || !day || planReviewStarting) return;
   closePlanScheduleDay();
   if (state.plan.status !== 'active') { showToast('计划已归档，请先恢复计划'); return; }
-  if (action === '继续' && day.sessionId) return resumeReviewRecord(day.sessionId);
-  if (action === '再来一遍') {
-    const items = day.items.filter(item => item.type === type).map(item => ({ type: item.type, id: item.id }));
+  if (action === '继续' && day.sessionId && ['active', 'paused'].includes(day.sessionStatus)) return resumeReviewRecord(day.sessionId);
+  if (action === '继续') {
+    // 只把这一天里还没成功复习的题带进新一轮（跳过/未通过/没做）。
+    const items = planDayItems(day)
+      .filter(item => item.type === type && !item.sourceDeleted && !(item.status === 'completed' && item.result !== 'failed'))
+      .map(item => ({ type: item.type, id: item.id }));
+    if (!items.length) { showToast('这一天没有需要继续的内容'); return; }
+    planReviewStarting = true;
+    try {
+      const session = await createReviewRecord('plan', items, { planId: state.plan.id, date, requestId: reviewRequestId() });
+      await enterCenterReview(session);
+    } catch (err) { showToast(err.message); }
+    finally { planReviewStarting = false; }
+    return;
+  }
+  if (action === '再来一次') {
+    const items = planDayItems(day).filter(item => item.type === type && !item.sourceDeleted).map(item => ({ type: item.type, id: item.id }));
     if (!items.length) return;
     planReviewStarting = true;
     try {
