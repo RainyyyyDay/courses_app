@@ -35,8 +35,16 @@ function reviewPlanBrowserPrelude() {
       check(mistakeDetailState.progress.round===saved.round && mistakeDetailState.progress.version===saved.version,'plan restores original backend round/version');
       await submitMistakeReview('judge','correct',false);
       await waitUntil(()=>currentView.type==='reviewPlan' && reviewPlanDetail?.plan.id===saved.planId,'plan final mistake returns automatically');
-      check(reviewPlanDetail.plan.completed===4 && reviewPlanDetail.plan.completionRate===100,'negative judgment completes execution task');
-      check(document.getElementById('reviewPlanDetailBody').textContent.includes('今日复习已完成'),'today complete state');
+      check(reviewPlanDetail.plan.completed===3 && reviewPlanDetail.plan.pending===1,'negative judgment keeps the plan task pending');
+      check(document.getElementById('reviewPlanDetailBody').textContent.includes('今日 1 项待复习'),'today keeps the failed item pending');
+      check(document.getElementById('reviewPlanDetailBody').textContent.includes('智能排期预览'),'plan detail shows scheduling preview');
+      check(document.querySelectorAll('#reviewPlanCalendar .plan-calendar-cell.has-items').length>0,'schedule calendar marks review days');
+      check(document.querySelector('#reviewPlanCalendar .plan-calendar-cell.is-today .is-today-mark'),'today with unfinished items shows the moving pointer');
+      check(document.querySelector('#reviewPlanCalendar .plan-calendar-legend').textContent.includes('已过期未完成'),'calendar legend explains overdue');
+      const scheduleCell=document.querySelector('#reviewPlanCalendar .plan-calendar-cell.has-items');
+      scheduleCell.click();
+      check(document.getElementById('reviewPlanDayModal').classList.contains('show') && document.querySelectorAll('#reviewPlanDayBody .review-day-card').length>0,'clicking a day opens only populated type cards');
+      closePlanScheduleDay();
       check(ordinaryUnchanged(),'all three ordinary queues survive complete plan review');
       const w=await(await requestApi(API+'/courses/'+saved.courseId+'/mistakes/'+saved.mistakeId+'/review')).json();
       check(w.reviewStatus==='unreviewed','negative judgment preserves original status semantics');
@@ -45,11 +53,22 @@ function reviewPlanBrowserPrelude() {
       await patchCurrentReviewPlan({status:'active'});
       const request=async(method,url,body)=>{const response=await requestApi(API+url,{method,...(body?{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});return response.json();};
       const c='/courses/'+saved.courseId;
+      const futureExam=new Date(Date.parse(saved.today+'T00:00:00Z')+86400000*10).toISOString().slice(0,10);
+      const futurePlan=await request('POST',c+'/review-plans',{name:'提前复习计划',startDate:saved.today,examDate:futureExam,selectedItems:[{type:'material',id:saved.remainingMaterial}]});
+      await openReviewPlan(futurePlan.id);
+      const futureDate=[...planCalendar.dayMap.keys()].find(date=>date>planLocalDate());
+      check(futureDate,'future plan has a later schedule day');
+      openPlanScheduleDay(futureDate);
+      check(document.getElementById('reviewPlanDayBody').textContent.includes('提前复习会缩短'),'future day explains the early-review tradeoff');
+      check(document.querySelector('#reviewPlanDayBody .plan-day-stats').textContent.includes('待完成'),'every populated day popup shows task stats');
+      closePlanScheduleDay();
       const deleted=await request('POST',c+'/notes',{title:'删除后保留的标题',content:'body'});
       const p=await request('POST',c+'/review-plans',{name:'删除来源',startDate:saved.today,examDate:saved.tomorrow,selectedItems:[{type:'note',id:deleted.id}]});
       await request('DELETE','/notes/'+deleted.id);await openReviewPlan(p.id);
       check(reviewPlanDetail.plan.skipped===1 && reviewPlanDetail.plan.completed===0 && reviewPlanDetail.plan.completionRate===0,'all skipped has explicit zero rate');
-      check(document.getElementById('reviewPlanDetailBody').textContent.includes('内容已删除') && document.getElementById('reviewPlanDetailBody').textContent.includes('删除后保留的标题'),'deleted source snapshot UI');
+      openPlanScheduleDay(saved.today);
+      check(document.getElementById('reviewPlanDayBody').textContent.includes('内容已删除') && document.getElementById('reviewPlanDayBody').textContent.includes('删除后保留的标题'),'deleted source snapshot UI in day popup');
+      closePlanScheduleDay();
       const yesterday=new Date(Date.parse(saved.today+'T00:00:00Z')-86400000).toISOString().slice(0,10);
       const late=await request('POST',c+'/review-plans',{name:'过期任务',startDate:yesterday,examDate:saved.today,selectedItems:[{type:'material',id:saved.remainingMaterial}]});
       await openReviewPlan(late.id);
@@ -57,7 +76,7 @@ function reviewPlanBrowserPrelude() {
       await startReviewPlanDay(late.id,yesterday,'material');await activeReadingReview.save('reviewed');
       check(reviewPlanDetail.plan.completed===1 && reviewPlanDetail.items[0].scheduled_date===yesterday,'overdue task can be completed without moving date');
       const oldConfirm=showConfirm;showConfirm=async()=>true;await deleteCurrentReviewPlan();showConfirm=oldConfirm;
-      await waitUntil(()=>currentView.type==='course' && document.getElementById('reviewPlanList').textContent.includes('已完成复习'),'delete returns to plan list');
+      await waitUntil(()=>currentView.type==='course' && reviewPlanCarousel.plans.some(plan=>plan.name==='已完成复习') && document.querySelectorAll('#reviewPlanList .plan-card').length===1,'delete returns to plan carousel');
       check(!document.getElementById('bootErrorBox'),'plan feature has no boot/runtime errors');
       sessionStorage.removeItem('plan-browser-refresh');sessionStorage.setItem('plan-browser-done','true');return false;
     }
@@ -88,7 +107,7 @@ function reviewPlanBrowserScenario() {
       ]) {ordinary[key]=JSON.stringify(value);localStorage.setItem(key,ordinary[key]);}
       const originalFetch=window.fetch,knowledgeCalls=[];
       window.fetch=(url,options)=>{if(String(url).includes('knowledge-tree'))knowledgeCalls.push(url);return originalFetch(url,options);};
-      document.querySelector('#pane-reviewPlans .upload-btn').click();
+      document.querySelector('#pane-reviewPlans .review-panel-heading [onclick="openReviewPlanCreate()"]').click();
       await waitUntil(()=>reviewPlanCreate && !reviewPlanCreate.loading,'plan candidates loaded');
       document.getElementById('reviewPlanName').value='<期末复习> & 计划';document.getElementById('reviewPlanExam').value=tomorrow;
       document.getElementById('reviewPlanFavorite').checked=true;renderReviewPlanSelection();
@@ -97,7 +116,7 @@ function reviewPlanBrowserScenario() {
       document.getElementById('reviewPlanStatus').value='unreviewed';renderReviewPlanSelection();
       check(filteredReviewPlanCandidates().length===0 && reviewPlanCreate.ids.size===1,'AND filter preserves hidden selection');
       document.getElementById('reviewPlanFavorite').checked=false;document.getElementById('reviewPlanStatus').value='';renderReviewPlanSelection();
-      selectAllReviewPlanItems(true);check(reviewPlanCreate.ids.size===4,'mixed fixed selection');
+      for(const type of ['material','note','mistake']){switchReviewPlanTab(type);selectAllReviewPlanItems(true);}check(reviewPlanCreate.ids.size===4,'mixed fixed selection');
       check(document.getElementById('reviewPlanPreview').textContent.includes('共选择 4 项'),'creation preview');
       window.fetch=async()=>{throw new TypeError('offline');};await createReviewPlan();
       check(reviewPlanCreate.ids.size===4 && document.getElementById('reviewPlanCreateError').textContent,'failed create preserves form/selection');
@@ -109,7 +128,9 @@ function reviewPlanBrowserScenario() {
       const planId=reviewPlanDetail.plan.id;
       await request('PATCH',c+'/materials/'+first.id,{favorite:false});
       await openReviewPlan(planId);check(reviewPlanDetail.plan.total===4,'favorite change does not change selected snapshot');
-      document.querySelector('[data-plan-start="material"]').click();
+      openPlanScheduleDay(today);
+      check(document.querySelector('#reviewPlanDayBody .plan-day-stats').textContent.includes('已完成 0 / 4'),'day popup carries task stats');
+      document.querySelector('[data-plan-day-type="material"] button').click();
       await waitUntil(()=>currentView.type==='readingReview' && activeReadingReview.row && !planReviewStarting,'plan material starts');
       check(activeReadingReview.row.id===first.id && activeReadingReview.row.review_status==='reviewed','already reviewed content still requires plan action');
       await activeReadingReview.save('reviewed');await activeReadingReview.skip();

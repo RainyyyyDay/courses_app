@@ -86,7 +86,9 @@ loadCourses();
       if (savedTab === 'mistakes') await restoreMistakeLocation(Number(savedCourseId));
       if (savedTab === 'materials') await restoreMaterialReviewLocation(Number(savedCourseId));
       if (savedTab === 'notes') await restoreNoteReviewLocation(Number(savedCourseId));
-      if (savedTab === 'reviewPlans') await restoreReviewPlanLocation(Number(savedCourseId));
+      if (savedTab === 'reviewPlans') {
+        if(!await restoreReviewCenterLocation(Number(savedCourseId)))await restoreReviewPlanLocation(Number(savedCourseId));
+      }
     } else {
       console.warn('上次打开的那门课已经不存在了，留在课程列表');
       forgetLastPage();

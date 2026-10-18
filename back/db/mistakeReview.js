@@ -2,6 +2,8 @@
 const { db } = require('./connection');
 const { getMistakeDetail } = require('./mistakes');
 const { reviewPlanContext, completePlanItem } = require('./reviewPlans');
+const {reviewSessionContext,assertSessionItemWritable,completeSessionItem,touchReviewSession} = require('./reviewSessions');
+const {recordGradeInTransaction} = require('./reviewItems');
 
 function fail(status, code, message) {
   throw Object.assign(new Error(message), { status, code });
@@ -67,9 +69,9 @@ function validateOperation(body, startOnly = false) {
   return Object.fromEntries(Object.keys(body).sort().map(key => [key, body[key]]));
 }
 
-function applyMistakeReview(id, body, startOnly = false, planItemId = null) {
+function applyMistakeReview(id, body, startOnly = false, planItemId = null, sessionItemId = null) {
   const operation = validateOperation(body, startOnly);
-  const requestJson = JSON.stringify(planItemId === null ? operation : {operation,planItemId});
+  const requestJson = JSON.stringify(sessionItemId !== null ? {operation,planItemId,sessionItemId} : planItemId === null ? operation : {operation,planItemId});
   db.exec('BEGIN');
   try {
     const prior = db.prepare('SELECT request_json, response_json FROM mistake_review_events WHERE mistake_id = ? AND request_id = ?')
@@ -80,8 +82,11 @@ function applyMistakeReview(id, body, startOnly = false, planItemId = null) {
       return JSON.parse(prior.response_json);
     }
     const mistake = getMistakeDetail(id);
-    const planItem = planItemId === null ? null : reviewPlanContext(planItemId,mistake.course_id,'mistake',id);
-    if (planItem?.status === 'completed') fail(409,'PLAN_ITEM_COMPLETED','本次计划任务已完成，请返回计划');
+    const sessionItem=sessionItemId===null ? null : reviewSessionContext(sessionItemId,mistake.course_id,'mistake',id,planItemId);
+    if(sessionItem) assertSessionItemWritable(sessionItem);
+    const taskId=sessionItem ? sessionItem.plan_item_id : planItemId;
+    const planItem = taskId === null ? null : reviewPlanContext(taskId,mistake.course_id,'mistake',id);
+    if (!sessionItem && planItem?.status === 'completed') fail(409,'PLAN_ITEM_COMPLETED','本次计划任务已完成，请返回计划');
     const progress = progressFor(mistake);
     if (progress.version !== operation.expectedVersion) fail(409, 'VERSION_CONFLICT', '复习步骤已改变，请重新查询');
     const view = getMistakeReview(id);
@@ -115,7 +120,13 @@ function applyMistakeReview(id, body, startOnly = false, planItemId = null) {
       // 旧完成步骤不能抵扣任务；实际动作仍须经过原步骤机及 expectedVersion 校验。
       // 若其他入口推进过同题，仍由原 expectedVersion / allowedActions 校验；记录本次实际动作的轮次。
       db.prepare('UPDATE review_plan_items SET review_round=?,review_revision=? WHERE id=?').run(round,mistake.review_revision,planItem.id);
-      if (stage === 'completed') completePlanItem(planItem);
+      // 只有通过（判断为已复习）才算完成当天任务；答错 / 不记得保留待完成，等重试或重新排期。
+      if (stage === 'completed' && status === 'reviewed') completePlanItem(planItem);
+    }
+    if(sessionItem) {
+      touchReviewSession(sessionItem.session_id);
+      db.prepare('UPDATE review_session_items SET review_round=?,review_revision=? WHERE id=?').run(round,mistake.review_revision,sessionItem.id);
+      if(stage==='completed') completeSessionItem(sessionItem,round,mistake.review_revision,status==='reviewed' ? 'passed' : 'failed');
     }
     const now = new Date().toISOString();
     db.prepare(`INSERT INTO mistake_review_progress (mistake_id, stage, recall, round, version, review_revision, updated_at)
@@ -124,6 +135,19 @@ function applyMistakeReview(id, body, startOnly = false, planItemId = null) {
         round=excluded.round, version=excluded.version, review_revision=excluded.review_revision, updated_at=excluded.updated_at`)
       .run(id, stage, recall, round, progress.version + 1, mistake.review_revision, now);
     db.prepare('UPDATE mistakes SET review_status = ? WHERE id = ?').run(status, id);
+    // 把这次判断折算成 4 档评分，交给备考总复习的排期引擎。
+    // 知识类的「清楚/模糊」区分 Good / Hard；答错或不记得记 Again。
+    if (stage === 'completed') {
+      recordGradeInTransaction({
+        courseId: mistake.course_id,
+        type: 'mistake',
+        id,
+        grade: status === 'reviewed' ? (recall === 'vague' ? 2 : 3) : 1,
+        sessionId: sessionItem ? sessionItem.session_id : null,
+        sessionItemId,
+        mistakeType: mistake.mistake_type,
+      });
+    }
     const response = getMistakeReview(id);
     db.prepare(`INSERT INTO mistake_review_events
       (mistake_id, request_id, request_json, action, round, mistake_type, recall, result, from_status, to_status, response_json, created_at)

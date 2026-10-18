@@ -10,7 +10,7 @@
 
 // 只显示其中一个页面容器，其余隐藏。沿用原有 SPA 的 display 切换方式，不引入路由。
 function showPageOnly(pageId) {
-  ['listPage', 'detailPage', 'courseSearchPage', 'nodeDetailPage', 'mistakeDetailPage', 'resourceDetailPage', 'materialReviewPage', 'reviewPlanDetailPage'].forEach(id => {
+  ['listPage', 'detailPage', 'courseSearchPage', 'nodeDetailPage', 'mistakeDetailPage', 'resourceDetailPage', 'materialReviewPage', 'reviewPlanDetailPage','reviewHistoryPage','reviewSessionDetailPage'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = (id === pageId) ? 'block' : 'none';
   });
@@ -18,6 +18,7 @@ function showPageOnly(pageId) {
 
 // 详情页的返回：回到进入这一页之前的页面
 async function backFromDetail() {
+  if(typeof centerReview!=='undefined' && centerReview)return pauseCenterReview();
   if (typeof mistakeQueueCurrent === 'function' && (mistakeQueueCurrent() || currentView.type === 'mistakeQueueComplete')) {
     await pauseMistakeQueue();
     return;

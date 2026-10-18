@@ -39,6 +39,7 @@ function backToList() {
 }
 
 function switchTab(tab, el = null) {
+  if(typeof clearCenterReviewUi==='function')clearCenterReviewUi();
   if (!el) {
     el = document.querySelector(`.dtab[onclick*="${tab}"]`);
   }

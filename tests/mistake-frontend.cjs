@@ -314,7 +314,7 @@ function mistakeBrowserScenario(data) {
       check(currentView.type === 'mistakeQueueComplete', 'last judgment auto-completes the queue ' + type);
       check(document.getElementById('mistakeCompleteModal').classList.contains('show')
         && document.getElementById('mistakeCompleteTitle').textContent.includes('恭喜')
-        && document.getElementById('mistakeCompleteConfetti').children.length > 0, 'perfect round celebrates ' + type);
+        && mistakeConfettiLayerState() !== 'none', 'perfect round celebrates ' + type);
       await backFromDetail(); await loadMistakes();
       await startReviewFromHome(type, row.id);
       check(mistakeDetailState.progress.stage === 'question' && mistakeDetailState.progress.reviewStatus === 'reviewed', 'reviewed allowed new round ' + type);
@@ -323,7 +323,7 @@ function mistakeBrowserScenario(data) {
       check(currentView.type === 'mistakeQueueComplete', 'wrong last judgment still auto-completes ' + type);
       check(document.getElementById('mistakeCompleteModal').classList.contains('show')
         && !document.getElementById('mistakeCompleteTitle').textContent.includes('恭喜')
-        && !document.getElementById('mistakeCompleteConfetti').children.length, 'imperfect round shows plain completion ' + type);
+        && mistakeConfettiLayerState() === 'none', 'imperfect round shows plain completion ' + type);
       await backFromDetail();
     }
     // 弹窗快速全选与各分类手动选择共用集合和一个混合队列。
@@ -385,10 +385,11 @@ function mistakeBrowserScenario(data) {
     await finishSingleRound();
     check(completeButtons().map(b => b.textContent.trim()).join('|') === '取消|再来一遍|开始新复习', 'three completion choices');
     completeButtons()[1].click();
-    await waitUntil(() => currentView.type === 'mistake' && currentView.id === thinking.id && !document.getElementById('mistakeCompleteModal').classList.contains('show'), 'replay restarts the same queue');
+    await waitUntil(() => currentView.type === 'mistake' && currentView.id === thinking.id && mistakeDetailState?.progress?.stage === 'question' && !mistakeReviewBusy && !mistakeQueueLoading && !document.getElementById('mistakeCompleteModal').classList.contains('show'), 'replay restarts the same queue');
     check(mistakeQueue.index === 0 && !mistakeQueue.finished, 'replay resets queue progress');
     await submitMistakeReview('reveal_answer');
     await submitMistakeReview('judge', 'mastered', true);
+    await waitUntil(() => document.getElementById('mistakeCompleteModal').classList.contains('show') && !mistakeReviewBusy && !mistakeQueueLoading, 'replayed round completion ready');
     completeButtons()[2].click();
     await waitUntil(() => mistakeReviewPicker && document.getElementById('mistakeReviewPicker').classList.contains('show'), 'start new review opens the picker');
     check(!document.getElementById('mistakeCompleteModal').classList.contains('show') && !mistakeQueue, 'new review drops the finished queue');

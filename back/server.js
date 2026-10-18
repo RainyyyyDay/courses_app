@@ -222,6 +222,23 @@ app.get('/api/courses/:courseId/review-plans/:planId/items', mistakeApi((req,res
   if (Object.keys(req.query).some(key=>!['scheduledDate','status'].includes(key))) mistakeError(400,'INVALID_ARGUMENT','不支持的任务筛选参数');
   res.json(db.listPlanItems(mistakeCourse(req.params.courseId),positiveId(req.params.planId),req.query));
 }));
+// 排期预览：按记忆状态生成「今天到考前」的出现安排，只读不落库。
+app.get('/api/courses/:courseId/review-plans/:planId/schedule', mistakeApi((req,res) => {
+  res.json(db.getReviewPlanSchedule(mistakeCourse(req.params.courseId),positiveId(req.params.planId)));
+}));
+app.post('/api/courses/:courseId/review-plans/:planId/schedule/apply', mistakeApi((req,res) => {
+  res.json(db.applyReviewPlanSchedule(mistakeCourse(req.params.courseId),positiveId(req.params.planId)));
+}));
+function reviewItemType(value) {
+  if (!['material','note','mistake'].includes(value)) mistakeError(400,'INVALID_ARGUMENT','内容类型必须是 material / note / mistake');
+  return value;
+}
+app.get('/api/courses/:courseId/review-items/:itemType/:itemId/state', mistakeApi((req,res) => {
+  res.json(db.getReviewItemState(mistakeCourse(req.params.courseId),reviewItemType(req.params.itemType),positiveId(req.params.itemId)));
+}));
+app.post('/api/courses/:courseId/review-items/:itemType/:itemId/grade', mistakeApi((req,res) => {
+  res.json(db.recordReviewItemGrade(mistakeCourse(req.params.courseId),reviewItemType(req.params.itemType),positiveId(req.params.itemId),req.body));
+}));
 app.patch('/api/courses/:courseId/review-plans/:planId', mistakeApi((req,res) => {
   res.json(db.updateReviewPlan(mistakeCourse(req.params.courseId),positiveId(req.params.planId),req.body));
 }));
@@ -232,6 +249,34 @@ app.delete('/api/courses/:courseId/review-plans/:planId', mistakeApi((req,res) =
 function planReviewItemId(req) {
   return req.query.planItemId === undefined ? null : positiveId(req.query.planItemId);
 }
+function sessionReviewItemId(req) {
+  return req.query.sessionItemId === undefined ? null : positiveId(req.query.sessionItemId);
+}
+
+// 会话保存固定队列和活动记录，不代替原阅读控制器或错题步骤机。
+app.get('/api/courses/:courseId/review-sessions/candidates', mistakeApi((req,res)=>{
+  res.json(db.listSessionCandidates(mistakeCourse(req.params.courseId)));
+}));
+app.get('/api/courses/:courseId/review-sessions', mistakeApi((req,res)=>{
+  res.json(db.listReviewSessions(mistakeCourse(req.params.courseId),req.query));
+}));
+app.post('/api/courses/:courseId/review-sessions', mistakeApi((req,res)=>{
+  res.status(201).json(db.createReviewSession(mistakeCourse(req.params.courseId),req.body));
+}));
+app.get('/api/courses/:courseId/review-sessions/:sessionId', mistakeApi((req,res)=>{
+  res.json(db.getReviewSession(mistakeCourse(req.params.courseId),positiveId(req.params.sessionId)));
+}));
+for(const action of ['resume','pause','finish','position']) {
+  app.post(`/api/courses/:courseId/review-sessions/:sessionId/${action}`,mistakeApi((req,res)=>{
+    res.json(db.changeReviewSession(mistakeCourse(req.params.courseId),positiveId(req.params.sessionId),action,req.body || {}));
+  }));
+}
+app.post('/api/courses/:courseId/review-sessions/:sessionId/repeat',mistakeApi((req,res)=>{
+  res.status(201).json(db.repeatReviewSession(mistakeCourse(req.params.courseId),positiveId(req.params.sessionId),req.body));
+}));
+app.post('/api/courses/:courseId/review-sessions/:sessionId/items/:sessionItemId/skip',mistakeApi((req,res)=>{
+  res.json(db.skipReviewSessionItem(mistakeCourse(req.params.courseId),positiveId(req.params.sessionId),positiveId(req.params.sessionItemId)));
+}));
 
 // ==================== 资料接口 ====================
 
@@ -297,7 +342,9 @@ app.patch('/api/courses/:courseId/materials/:materialId/review', readingReviewAp
   if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'reviewStatus')
     || !['reviewed','unreviewed'].includes(body.reviewStatus)) return res.status(400).json({code:'INVALID_ARGUMENT', message:'reviewStatus 必须是 reviewed 或 unreviewed'});
   const planItemId = planReviewItemId(req);
-  const updated = planItemId === null ? db.setMaterialReviewStatus(row.id, row.course_id, body.reviewStatus)
+  const sessionItemId = sessionReviewItemId(req);
+  const updated = sessionItemId !== null ? db.saveSessionReadingReview(sessionItemId,row,'material',body.reviewStatus,db.setMaterialReviewStatus,planItemId)
+    : planItemId === null ? db.setMaterialReviewStatus(row.id, row.course_id, body.reviewStatus)
     : db.savePlanReadingReview(planItemId,row,'material',body.reviewStatus,db.setMaterialReviewStatus);
   res.json({...updated, nodes: db.listMaterialNodes(row.id)});
 }));
@@ -310,7 +357,9 @@ app.patch('/api/courses/:courseId/notes/:noteId/review', readingReviewApi((req, 
   if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'reviewStatus')
     || !['reviewed','unreviewed'].includes(body.reviewStatus)) return res.status(400).json({code:'INVALID_ARGUMENT', message:'reviewStatus 必须是 reviewed 或 unreviewed'});
   const planItemId = planReviewItemId(req);
-  const updated = planItemId === null ? db.setNoteReviewStatus(row.id, row.course_id, body.reviewStatus)
+  const sessionItemId = sessionReviewItemId(req);
+  const updated = sessionItemId !== null ? db.saveSessionReadingReview(sessionItemId,row,'note',body.reviewStatus,db.setNoteReviewStatus,planItemId)
+    : planItemId === null ? db.setNoteReviewStatus(row.id, row.course_id, body.reviewStatus)
     : db.savePlanReadingReview(planItemId,row,'note',body.reviewStatus,db.setNoteReviewStatus);
   res.json({...updated, nodes: db.listNoteNodes(row.id)});
 }, 'note'));
@@ -526,9 +575,9 @@ function mistakeApi(handler) {
     catch (err) {
       // 失败的创建请求只清理本次新上传的文件。
       if (req.file) fs.rm(path.join(uploadDir, req.file.filename), { force: true }, () => {});
-      if (!err.status) console.error('错题接口失败', err);
+      if (!err.status) console.error('接口失败', req.method, req.originalUrl, err);
       res.status(err.status || 500).json({ code: err.code || 'INTERNAL_ERROR',
-        message: err.status ? err.message : '错题操作失败', details: {} });
+        message: err.status ? err.message : '操作失败，请重试', details: {} });
     }
   };
 }
@@ -656,11 +705,11 @@ app.get('/api/courses/:courseId/mistakes/:mistakeId/review', mistakeApi((req, re
 }));
 
 app.post('/api/courses/:courseId/mistakes/:mistakeId/review', mistakeApi((req, res) => {
-  res.json(db.applyMistakeReview(scopedMistake(req).id, req.body, true, planReviewItemId(req)));
+  res.json(db.applyMistakeReview(scopedMistake(req).id, req.body, true, planReviewItemId(req),sessionReviewItemId(req)));
 }));
 
 app.post('/api/courses/:courseId/mistakes/:mistakeId/review/events', mistakeApi((req, res) => {
-  res.json(db.applyMistakeReview(scopedMistake(req).id, req.body, false, planReviewItemId(req)));
+  res.json(db.applyMistakeReview(scopedMistake(req).id, req.body, false, planReviewItemId(req),sessionReviewItemId(req)));
 }));
 
 app.get('/api/courses/:courseId/mistakes/:mistakeId/review/events', mistakeApi((req, res) => {

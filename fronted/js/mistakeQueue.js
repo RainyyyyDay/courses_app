@@ -129,7 +129,7 @@ function mistakeCannotReview(row) {
   if (!String(row.content || '').trim() && !row.image_url && !String(row.ocr_text || '').trim()) return '缺少题目内容';
   return '';
 }
-function saveMistakeQueue() { mistakeStorageSet(mistakeQueue?.storageKey || 'mistake-queue:' + currentCourseId, mistakeQueue); }
+function saveMistakeQueue() { mistakeStorageSet(mistakeQueue?.storageKey || 'mistake-queue:' + currentCourseId, mistakeQueue);if(typeof updateLegacyReviewBackup==='function')updateLegacyReviewBackup(mistakeQueue); }
 function readMistakeQueue(storageKey = 'mistake-queue:' + currentCourseId) {
   const saved = mistakeStorageGet(storageKey);
   if (!saved || saved.courseId !== currentCourseId || !(Object.hasOwn(MISTAKE_TYPES, saved.type) || saved.type === 'mixed')
@@ -214,8 +214,13 @@ async function startMistakeQueue() {
       if (!p.reviewable || p.courseId !== selection.courseId || p.mistakeType !== expectedType || !Object.hasOwn(MISTAKE_TYPES, p.mistakeType)) throw new Error(`${row.title}：当前无法复习，请先检查分类和答案`);
     }
     if (mistakeSelection !== selection || currentCourseId !== selection.courseId) return;
+    selection.sessionRequestId ||= reviewRequestId();
+    const session=await createReviewRecord('mistake',selected.map(row=>({type:'mistake',id:row.id})),{requestId:selection.sessionRequestId});
+    if (mistakeSelection !== selection || currentCourseId !== selection.courseId) return;
+    preserveLegacyReviewQueue('mistake-queue:'+selection.courseId,'mistake');
     mistakeQueue = { courseId: selection.courseId, type: 'mixed',
-      types: Object.fromEntries(selected.map(row => [row.id, row.mistake_type])), ids: selected.map(row => row.id), index: 0, rounds: {}, finished: false };
+      types: Object.fromEntries(selected.map(row => [row.id, row.mistake_type])), ids: selected.map(row => row.id), index: 0, rounds: {}, finished: false,
+      sessionId:session.id,sessionItems:reviewSessionMap(session) };
     dismissMistakeReviewPicker();
     saveMistakeQueue(); mistakeSelection = null;
     await openMistakeDetail(mistakeQueue.ids[0], true);
@@ -226,6 +231,7 @@ async function startMistakeQueue() {
 async function resumeMistakeQueue() {
   const saved = readMistakeQueue();
   if (!saved || saved.finished) return;
+  if(saved.sessionId)await resumeRecordedReview(saved.sessionId);
   mistakeQueue = saved; mistakeSelection = null;
   if (saved.index === saved.ids.length) { await showMistakeQueueComplete(); return; }
   await openMistakeDetail(saved.ids[saved.index], true);
@@ -238,7 +244,7 @@ async function prepareMistakeQueueItem(state) {
     return;
   }
   // 计划仍 pending 而题目已完成，说明完成来自其他入口；需实际再复习，不能抵扣计划。
-  if (mistakeQueue.planContext && p.stage === 'completed') delete mistakeQueue.rounds[state.id];
+  if ((mistakeQueue.planContext || mistakeQueue.centerContext) && p.stage === 'completed') delete mistakeQueue.rounds[state.id];
   if (mistakeQueue.rounds[state.id] === undefined) {
     // completed 可能是以前的复习，必须新开一轮；未完成步骤则继续。
     mistakeQueue.rounds[state.id] = p.stage === 'idle' || p.stage === 'completed' ? p.round + 1 : p.round;
@@ -264,12 +270,13 @@ async function tryFinishMistakeQueue(state, progress) {
   // 布尔锁：收尾过程中触发的重渲染不会再进来一次，失败也不会反复重试。
   if (mistakeQueueAutoFinishing || !mistakeQueueShouldAutoFinish(state, progress)) return;
   mistakeQueueAutoFinishing = true;
-  try { await nextMistakeQueueItem(); } finally { mistakeQueueAutoFinishing = false; }
+  try { if(mistakeQueue.centerContext)await centerReviewItemFinished();else await nextMistakeQueueItem(); } finally { mistakeQueueAutoFinishing = false; }
 }
 function renderMistakeQueueBanner() {
   const box = document.getElementById('mistakeQueueBanner');
   if (!box) return;
   const state = mistakeDetailState;
+  if(mistakeQueue?.centerContext){box.style.display='none';renderCenterReviewToolbar();return;}
   box.style.display = mistakeQueueCurrent(state) ? 'block' : 'none';
   if (!mistakeQueueCurrent(state)) return;
   const p = state.progress;
@@ -291,6 +298,7 @@ async function nextMistakeQueueItem() {
     state.progress = p;
     if (!p.reviewable || p.courseId !== mistakeQueue.courseId || p.stage !== 'completed' || p.round !== mistakeQueue.rounds[state.id] || p.mistakeType !== mistakeQueueTypeFor(state.id)
       || mistakeStorageGet(mistakePendingKey(state)) || state.pending) throw new Error('请先完成并确认本题复习');
+    if(mistakeQueue.sessionId && mistakeQueue.index+1<mistakeQueue.ids.length)await recordedReviewAction(mistakeQueue.sessionId,'position',{position:mistakeQueue.index+1});
     mistakeQueue.index += 1; saveMistakeQueue();
     if (mistakeQueue.index === mistakeQueue.ids.length) {
       mistakeQueue.finished = true; saveMistakeQueue(); await showMistakeQueueComplete();
@@ -408,6 +416,83 @@ async function mistakeQueueRoundScore() {
     return { correct: ids.filter(id => reviewed.has(id)).length, total: ids.length };
   } catch { return null; }
 }
+
+// ===== 完成弹窗的彩带 =====
+// 用 canvas-confetti（本地第三方包，见 vendor/canvas-confetti）的官方 Realistic Look 配方：
+// 200 片按 5 组分不同的扩散角 / 初速度 / 衰减一起打出去，铺满整屏再自然落下消失。
+// 画布挂在弹窗遮罩里、卡片下面，所以不会盖住文字和按钮；库没加载成功时退回自绘的 CSS 彩带。
+let mistakeConfettiLayer = 'none';
+const MISTAKE_CONFETTI_COUNT = 200;
+function mistakeConfettiLayerState() { return mistakeConfettiLayer; }
+function bindMistakeCssConfetti(host) {
+  if (host.dataset.bound) return;
+  // 飘出屏幕的碎片自己移除，别在页面上留一堆动画节点。
+  host.addEventListener('animationend', event => { if (event.target.parentNode === host) event.target.remove(); });
+  host.dataset.bound = '1';
+}
+function stopMistakeCompleteConfetti() {
+  mistakeConfettiLayer = 'none';
+  const lib = document.getElementById('mistakeLibConfetti');
+  if (lib) lib.style.display = 'none';
+  const css = document.getElementById('mistakeCompleteConfetti');
+  if (css) css.innerHTML = '';
+}
+// 官方 Realistic Look 配方（https://www.kirilv.com/canvas-confetti/ 首页那段），一行没改。
+function mistakeConfettiBurst(fireOne) {
+  const count = MISTAKE_CONFETTI_COUNT;
+  const defaults = { origin: { y: 0.7 } };
+  const fire = (particleRatio, opts) => fireOne({
+    ...defaults,
+    ...opts,
+    particleCount: Math.floor(count * particleRatio),
+  });
+  fire(0.25, {
+    spread: 26,
+    startVelocity: 55,
+  });
+  fire(0.2, {
+    spread: 60,
+  });
+  fire(0.35, {
+    spread: 100,
+    decay: 0.91,
+    scalar: 0.8,
+  });
+  fire(0.1, {
+    spread: 120,
+    startVelocity: 25,
+    decay: 0.92,
+    scalar: 1.2,
+  });
+  fire(0.1, {
+    spread: 120,
+    startVelocity: 45,
+  });
+}
+async function startMistakeCompleteConfetti(perfect) {
+  stopMistakeCompleteConfetti();
+  const css = document.getElementById('mistakeCompleteConfetti');
+  if (!perfect || !css) return;
+  // 系统开了「减少动态效果」就什么都不放。
+  if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const lib = document.getElementById('mistakeLibConfetti');
+  if (typeof confetti === 'function' && lib) {
+    try {
+      const canvas = document.getElementById('mistakeConfettiCanvas');
+      lib.style.display = 'block';
+      // 画布只 create 一次，以后复用；resize: true 让库自己把画布对齐到视口。
+      canvas.__fire = canvas.__fire || confetti.create(canvas, { resize: true, useWorker: false });
+      mistakeConfettiBurst(canvas.__fire);
+      mistakeConfettiLayer = 'lib';
+      return;
+    } catch {
+      lib.style.display = 'none';
+    }
+  }
+  css.innerHTML = mistakeConfettiHtml();
+  bindMistakeCssConfetti(css);
+  mistakeConfettiLayer = 'css';
+}
 async function openMistakeCompleteModal() {
   const box = document.getElementById('mistakeCompleteModal');
   if (!box) return;
@@ -417,23 +502,17 @@ async function openMistakeCompleteModal() {
   document.getElementById('mistakeCompleteText').textContent = score
     ? `本轮 ${score.total} 道题，答对 ${score.correct} 道，正确率 ${Math.round(score.correct / score.total * 100)}%。${perfect ? '' : '答错或不记得的题目仍为未复习，可以再来一遍。'}`
     : '判断结果已保存。答错或不记得的题目仍为未复习。';
-  const confetti = document.getElementById('mistakeCompleteConfetti');
-  if (!confetti.dataset.bound) {
-    // 飘出屏幕的碎片自己移除，别在页面上留一堆动画节点。
-    confetti.addEventListener('animationend', event => { if (event.target.parentNode === confetti) event.target.remove(); });
-    confetti.dataset.bound = '1';
-  }
-  confetti.innerHTML = perfect ? mistakeConfettiHtml() : '';
   box.classList.add('show');
   document.body.classList.add('mistake-review-open');
   document.getElementById('mistakeCompleteTitle').focus();
+  await startMistakeCompleteConfetti(perfect);
 }
 function closeMistakeCompleteModal() {
   const box = document.getElementById('mistakeCompleteModal');
   if (!box || !box.classList.contains('show')) return;
   box.classList.remove('show');
   document.body.classList.remove('mistake-review-open');
-  document.getElementById('mistakeCompleteConfetti').innerHTML = '';
+  stopMistakeCompleteConfetti();
 }
 async function cancelMistakeComplete() {
   closeMistakeCompleteModal();
@@ -441,6 +520,12 @@ async function cancelMistakeComplete() {
 }
 async function replayMistakeQueue() {
   if (!mistakeQueue || mistakeReviewBusy || mistakeQueueLoading) return;
+  if(mistakeQueue.sessionId) {
+    try {const session=await reviewSessionRequest(mistakeQueue.sessionId+'/repeat',{requestId:reviewRequestId()});
+      mistakeQueue.sessionId=session.id;mistakeQueue.sessionItems=reviewSessionMap(session);mistakeQueue.ids=session.items.map(item=>item.item_id);mistakeQueue.types=Object.fromEntries(session.items.map(item=>[item.item_id,item.mistake_type]));
+      if(session.excluded.length)showToast(`已排除 ${session.excluded.length} 项不可复习内容`);
+    }catch(err){showToast(err.message);return;}
+  }
   closeMistakeCompleteModal();
   mistakeQueue.index = 0;
   mistakeQueue.rounds = {};
@@ -457,6 +542,8 @@ async function startNewMistakeReview() {
 }
 async function pauseMistakeQueue() {
   if (mistakeReviewBusy) return;
+  if(mistakeQueue?.centerContext)return pauseCenterReview();
+  if(mistakeQueue?.sessionId){try{await recordedReviewAction(mistakeQueue.sessionId,'pause');}catch(err){showToast(err.message);return;}}
   if (mistakeQueue?.planContext) { forgetMistakeDetailLocation(); return returnFromPlanReview(); }
   closeMistakeCompleteModal();
   forgetMistakeDetailLocation();
@@ -468,9 +555,11 @@ async function pauseMistakeQueue() {
 }
 async function endMistakeQueue() {
   if (mistakeReviewBusy) return;
+  if(mistakeQueue?.centerContext)return pauseCenterReview();
+  if(mistakeQueue?.sessionId){try{await recordedReviewAction(mistakeQueue.sessionId,'pause');}catch(err){showToast(err.message);return;}}
   if (mistakeQueue?.planContext) {
     mistakeStorageSet(mistakeQueue.storageKey,null); forgetMistakeDetailLocation(); return returnFromPlanReview();
   }
-  mistakeStorageSet('mistake-queue:' + currentCourseId, null); mistakeQueue = null;
+  updateLegacyReviewBackup(mistakeQueue,true);mistakeStorageSet('mistake-queue:' + currentCourseId, null); mistakeQueue = null;
   await pauseMistakeQueue();
 }

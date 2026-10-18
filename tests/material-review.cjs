@@ -12,7 +12,7 @@ function testMaterialReviewMigration(source,temp) {
     const material=store.createMaterial(course.id,'旧资料','/uploads/old.pdf','application/pdf',[tag.id],'资料原文');
     store.db.exec('ALTER TABLE materials DROP COLUMN review_status'); store.db.exec('PRAGMA user_version=7');
     delete require.cache[require.resolve('./db/schema.js')]; require('./db/schema.js');
-    assert.equal(store.db.prepare('PRAGMA user_version').get().user_version,12);
+    assert.equal(store.db.prepare('PRAGMA user_version').get().user_version,16);
     assert.equal(store.findMaterial(material.id).review_status,'unreviewed');
     store.setMaterialReviewStatus(material.id,course.id,'reviewed');
     const note=store.createNote(course.id,'旧笔记','/uploads/old.png','image/png','manual',[tag.id],'笔记原文');
@@ -27,7 +27,7 @@ function testMaterialReviewMigration(source,temp) {
     store.db.exec('PRAGMA user_version=8'); delete require.cache[require.resolve('./db/schema.js')]; require('./db/schema.js');
     assert.equal(store.findNote(note.id).review_status,'reviewed');
     assert.equal(store.db.prepare('PRAGMA table_info(notes)').all().filter(c=>c.name==='review_status').length,1);
-    assert.equal(store.db.prepare('PRAGMA user_version').get().user_version,12);
+    assert.equal(store.db.prepare('PRAGMA user_version').get().user_version,16);
     for (const table of ['materials','notes']) store.db.exec('ALTER TABLE '+table+' DROP COLUMN favorite');
     store.db.exec('PRAGMA user_version=9'); delete require.cache[require.resolve('./db/schema.js')]; require('./db/schema.js');
     assert.equal(store.findMaterial(material.id).favorite,0); assert.equal(store.findNote(note.id).favorite,0);
@@ -37,12 +37,12 @@ function testMaterialReviewMigration(source,temp) {
     assert.equal(store.findNote(note.id).review_status,'reviewed'); assert.equal(store.findMaterial(material.id).review_status,'reviewed');
     assert.equal(store.findMaterial(material.id).content,material.content); assert.equal(store.findNote(note.id).content,note.content);
     assert.deepEqual(store.listNoteNodes(note.id).map(n=>n.id),[tag.id]);
-    assert.equal(store.db.prepare('PRAGMA user_version').get().user_version,12);
+    assert.equal(store.db.prepare('PRAGMA user_version').get().user_version,16);
     assert.deepEqual(store.db.prepare('PRAGMA foreign_key_check').all(),[]); store.db.close();
   `;
   const result=spawnSync(process.execPath,['-e',script],{cwd:fixture,windowsHide:true,encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
-  console.log('PASS reading migration: v7/v8/v9 to v12, legacy content/files/tags/status preserved, favorites default and repeat safe');
+  console.log('PASS reading migration: v7/v8/v9 to v13, legacy content/files/tags/status preserved, favorites default and repeat safe');
 }
 async function testMaterialReviewApi({base,course,child,other,restart}) {
   async function request(method,url,body,status=200) {
@@ -230,7 +230,7 @@ function materialBrowserScenario(data,kind='materials') {
     await readingController.start();check(JSON.stringify(readingController.queue.ids)===JSON.stringify(readingIds),'fixed ordered independent queue');
     check(!document.querySelector('[data-material-review="unreviewed"]')&&document.getElementById('materialReviewNext').textContent==='跳过此条','new reading actions');
     const readingFetch=window.fetch;let readingLost=true;
-    window.fetch=async(url,options)=>{const response=await readingFetch(url,options);if(readingLost&&options?.method==='PATCH'&&String(url).includes('/${kind}/')&&String(url).endsWith('/review')){readingLost=false;throw new TypeError('committed response lost');}return response;};
+    window.fetch=async(url,options)=>{const response=await readingFetch(url,options);if(readingLost&&options?.method==='PATCH'&&String(url).includes('/${kind}/')&&new URL(url).pathname.endsWith('/review')){readingLost=false;throw new TypeError('committed response lost');}return response;};
     document.querySelector('[data-material-review="reviewed"]').click();
     await waitUntil(()=>!readingController.busy&&readingController.queue.pending,'failed save actual button');
     check(readingController.queue.pending&&readingController.queue.index===0&&Object.keys(readingController.queue.results).length===0,'failed save stays without success count');

@@ -23,7 +23,7 @@ function testReviewPlanMigrations(source,temp) {
     const fixture=path.join(temp,'plan-migration-'+version); fs.mkdirSync(fixture);
     fs.cpSync(path.join(source,'db'),path.join(fixture,'db'),{recursive:true});
     const schema=fs.readFileSync(path.join(source,'db/schema.js'),'utf8');
-    const oldSchema=schema.replace('CURRENT_DB_VERSION = 12','CURRENT_DB_VERSION = 11').replace('if (getUserVersion() === 11)','if (false)');
+    const oldSchema=schema.replace('CURRENT_DB_VERSION = 16','CURRENT_DB_VERSION = 11').replace('if (getUserVersion() === 11)','if (false)').replace('migrateReviewSessions();','').replace('migrateReviewScheduling();','').replace('migrateReviewResults();','').replace('migratePlanScheduleSnapshot();','');
     assert.notEqual(oldSchema,schema);
     fs.writeFileSync(path.join(fixture,'db/schema.js'),oldSchema);
     const script=`
@@ -47,7 +47,7 @@ function testReviewPlanMigrations(source,temp) {
         d.exec('DROP TABLE idx_review_plans_course');
       }
       require('./db/schema.js');
-      assert.equal(d.prepare('PRAGMA user_version').get().user_version,12,'single startup reaches v12');
+      assert.equal(d.prepare('PRAGMA user_version').get().user_version,16,'single startup reaches v16');
       for(const s of snapshots) assert.deepEqual(d.prepare('SELECT '+s.columns+' FROM '+s.name+' ORDER BY rowid').all(),s.rows);
       const p=store.createReviewPlan(c.id,{name:'plan',startDate:'2026-10-16',examDate:'2026-10-28',selectedItems:[{type:'material',id:m.id}]});
       const before=JSON.stringify(store.getReviewPlan(c.id,p.id));
@@ -60,7 +60,7 @@ function testReviewPlanMigrations(source,temp) {
     const result=spawnSync(process.execPath,['-e',script],{cwd:fixture,windowsHide:true,encoding:'utf8'});
     assert.equal(result.status,0,result.stderr);
   }
-  console.log('PASS review plan schedule/migration: balanced/stable/bounded dates, leap/year boundaries, v10/v11 to v12 once, rollback, repeat safety, source data unchanged, course constraint');
+  console.log('PASS review plan schedule/migration: balanced/stable/bounded dates, leap/year boundaries, v10/v11 through v12 to v13 once, rollback, repeat safety, source data unchanged, course constraint');
 }
 
 async function testReviewPlanApi({base,temp}) {
@@ -110,8 +110,11 @@ async function testReviewPlanApi({base,temp}) {
     const review=c+'/mistakes/'+w.id+'/review',context='?planItemId='+task('mistake').id;
     let p=await api('POST',review+context,{action:'start',requestId:'plan-start',expectedVersion:0});
     const operation={action:'recall',recall:'forgotten',requestId:'plan-forgotten',expectedVersion:p.version};
+    // 未通过也会写步骤和计划轮次；用事件触发器验证整笔回滚，而不再依赖“失败即完成任务”。
+    d.exec("CREATE TRIGGER reject_mistake_event BEFORE INSERT ON mistake_review_events WHEN NEW.request_id='plan-forgotten' BEGIN SELECT RAISE(ABORT,'mistake rollback'); END");
     await api('POST',review+'/events'+context,operation,500);
     assert.equal((await api('GET',review)).version,p.version);assert.equal((await api('GET',url)).completed,0);
+    d.exec('DROP TRIGGER reject_mistake_event');
     d.exec('DROP TRIGGER reject_plan_completion');
     const completed=await api('POST',review+'/events'+context,operation);
     assert.equal(completed.stage,'completed');assert.equal(completed.reviewStatus,'unreviewed');
@@ -120,16 +123,54 @@ async function testReviewPlanApi({base,temp}) {
     await api('POST',review+'/events?planItemId='+otherTask.id,operation,409);
     await api('POST',review+'/events'+context,{...operation,requestId:'new-stale'},409);
     await api('PATCH',readUrl,{reviewStatus:'reviewed'});
+    // 日历必须包含已物化的任务（标题来自任务快照），否则会出现“任务已完成但日历没勾”。
+    const scheduleAfter=await api('GET',url+'/schedule');
+    assert.ok(scheduleAfter.days.some(day=>day.date===today && day.items.some(item=>item.type==='material' && item.title==='material')),'schedule calendar includes materialized tasks');
     const firstTime=(await api('GET',url+'/items')).find(row=>row.item_type==='material').completed_at;
     await api('PATCH',readUrl,{reviewStatus:'reviewed'});
     assert.equal((await api('GET',url+'/items')).find(row=>row.item_type==='material').completed_at,firstTime);
-    assert.equal((await api('GET',url)).completed,2);assert.equal((await api('GET',prefix+'/'+second.id)).completed,0);
+    // 未通过的错题不算完成：completed 只有阅读类的那一条，错题任务保持待完成。
+    assert.equal((await api('GET',url)).completed,1);assert.equal((await api('GET',url)).pending,2);assert.equal((await api('GET',prefix+'/'+second.id)).completed,0);
     await api('PATCH',url,{status:'archived',name:'renamed'});
     await api('PATCH',c+'/notes/'+n.id+'/review?planItemId='+task('note').id,{reviewStatus:'reviewed'},409);
     await api('PATCH',url,{status:'active'});
     await api('DELETE','/notes/'+n.id);
-    const changed=await api('GET',url);assert.equal(changed.skipped,1);assert.equal(changed.completed,2);assert.equal(changed.completionRate,100);
+    const changed=await api('GET',url);assert.equal(changed.skipped,1);assert.equal(changed.completed,1);assert.equal(changed.pending,1);assert.equal(changed.completionRate,50);
     items=await api('GET',url+'/items?status=skipped');assert.equal(items[0].title_snapshot,'note');assert.equal(items[0].source_deleted,1);
+    // 提前复习：计划内容在“当天没有任务”的预估日期也能开计划会话，并挂回日历那一天。
+    const spanExam=new Date(Date.parse(today+'T00:00:00Z')+86400000*5).toISOString().slice(0,10);
+    const span=await api('POST',prefix,{...body,name:'span',examDate:spanExam,selectedItems:[{type:'material',id:m.id}]},201);
+    const spanSchedule=await api('GET',prefix+'/'+span.id+'/schedule');
+    const futureDay=spanSchedule.days.find(day=>day.date>today);
+    assert.ok(futureDay,'span plan has a future preview day');
+    const preview=await api('POST',c+'/review-sessions',{requestId:'plan-preview-session',sourceType:'plan',sourceId:span.id,scheduledDate:futureDay.date,selectedItems:[{type:'material',id:m.id}]},201);
+    assert.equal(preview.source_type,'plan');assert.equal(preview.source_date,futureDay.date);
+    const afterSchedule=await api('GET',prefix+'/'+span.id+'/schedule');
+    const linked=afterSchedule.days.find(day=>day.date===futureDay.date);
+    assert.ok(linked && Array.isArray(linked.sessionItems) && linked.sessionItems.length===1,'preview-date session appears on the calendar');
+    // 排期快照：提前复习后先保持旧排期，点「应用新排期」才切换。
+    const snapPlan=await api('POST',prefix,{...body,name:'snapshot',examDate:spanExam,selectedItems:[{type:'material',id:m.id}]},201);
+    const firstSchedule=await api('GET',prefix+'/'+snapPlan.id+'/schedule');
+    assert.equal(firstSchedule.hasNewSchedule,false,'initial snapshot matches the computed schedule');
+    d.prepare(`INSERT INTO review_item_states(course_id,item_type,item_id,stability,difficulty,reps,lapses,state,last_grade,last_review_date,due_date,elapsed_days,scheduled_days,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(course_id,item_type,item_id) DO UPDATE SET
+      stability=excluded.stability,difficulty=excluded.difficulty,reps=excluded.reps,state=excluded.state,
+      last_grade=excluded.last_grade,last_review_date=excluded.last_review_date,due_date=excluded.due_date,updated_at=excluded.updated_at`)
+      .run(course.id,'material',m.id,60,5,3,0,'review',3,today,spanExam,0,20,new Date().toISOString());
+    const changedSchedule=await api('GET',prefix+'/'+snapPlan.id+'/schedule');
+    assert.equal(changedSchedule.hasNewSchedule,true,'recomputed schedule is flagged for approval');
+    assert.deepEqual(changedSchedule.days.map(day=>day.date),firstSchedule.days.map(day=>day.date),'old schedule stays until applied');
+    const applied=await api('POST',prefix+'/'+snapPlan.id+'/schedule/apply',undefined,200);
+    assert.equal(applied.hasNewSchedule,false,'applying clears the pending flag');
+    // 回归：未来日期已完成的旧任务 + 应用新排期，不能因为空日期而 500。
+    const m2=await api('POST',c+'/materials',{title:'future material',content:'future body'});
+    const futurePlan=await api('POST',prefix,{...body,name:'future-apply',examDate:spanExam,selectedItems:[{type:'material',id:m.id},{type:'material',id:m2.id}]},201);
+    const futureTask=(await api('GET',prefix+'/'+futurePlan.id+'/items')).find(item=>item.scheduled_date>today);
+    if (futureTask) {
+      await api('PATCH',`${c}/materials/${futureTask.item_id}/review?planItemId=${futureTask.id}`,{reviewStatus:'reviewed'});
+    }
+    const appliedFuture=await api('POST',prefix+'/'+futurePlan.id+'/schedule/apply',undefined,200);
+    assert.equal(appliedFuture.hasNewSchedule,false,'apply survives future completed tasks');
     const empty=await api('POST',prefix,{...body,selectedItems:[{type:'material',id:m.id}]},201);
     await api('DELETE','/materials/'+m.id);
     const skipped=await api('GET',prefix+'/'+empty.id);assert.equal(skipped.skipped,1);assert.equal(skipped.completed,0);assert.equal(skipped.completionRate,0);
