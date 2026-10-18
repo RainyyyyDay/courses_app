@@ -53,6 +53,14 @@ function reviewPlanBrowserPrelude() {
       await patchCurrentReviewPlan({status:'active'});
       const request=async(method,url,body)=>{const response=await requestApi(API+url,{method,...(body?{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});return response.json();};
       const c='/courses/'+saved.courseId;
+      const futureExam=new Date(Date.parse(saved.today+'T00:00:00Z')+86400000*10).toISOString().slice(0,10);
+      const futurePlan=await request('POST',c+'/review-plans',{name:'提前复习计划',startDate:saved.today,examDate:futureExam,selectedItems:[{type:'material',id:saved.remainingMaterial}]});
+      await openReviewPlan(futurePlan.id);
+      const futureDate=[...planCalendar.dayMap.keys()].find(date=>date>planLocalDate());
+      check(futureDate,'future plan has a later schedule day');
+      openPlanScheduleDay(futureDate);
+      check(document.getElementById('reviewPlanDayBody').textContent.includes('提前复习会缩短'),'future day explains the early-review tradeoff');
+      closePlanScheduleDay();
       const deleted=await request('POST',c+'/notes',{title:'删除后保留的标题',content:'body'});
       const p=await request('POST',c+'/review-plans',{name:'删除来源',startDate:saved.today,examDate:saved.tomorrow,selectedItems:[{type:'note',id:deleted.id}]});
       await request('DELETE','/notes/'+deleted.id);await openReviewPlan(p.id);

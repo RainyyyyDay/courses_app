@@ -79,7 +79,9 @@ function shiftPlanCalendar(delta) {
 function openPlanScheduleDay(date) {
   const day = planCalendar?.dayMap.get(date);
   if (!day) return;
-  const overdue = date < planLocalDate() && day.state !== 'done';
+  const today = planLocalDate();
+  const overdue = date < today && day.state !== 'done';
+  const future = date > today;
   const tasks = (reviewPlanDetail?.items || []).filter(item => item.scheduled_date === date);
   const doneTasks = tasks.filter(item => item.status === 'completed').length;
   const skippedTasks = tasks.filter(item => item.status === 'skipped').length;
@@ -96,8 +98,12 @@ function openPlanScheduleDay(date) {
     return `<article class="review-day-card" data-plan-day-type="${type}"><div><strong>${PLAN_TYPE_LABELS[type]}</strong><p class="detail-meta">${items.length} 项 · 约 ${minutes} 分钟</p>${deleted.length ? `<p class="detail-meta plan-deleted">内容已删除：${deleted.map(escapeHtml).join('、')}</p>` : ''}</div><button type="button" onclick="startPlanScheduleDay('${date}','${type}','${label}')">${label}</button></article>`;
   }).join('');
   document.getElementById('reviewPlanDayTitle').textContent = `${date} · ${day.items.length} 项 · 约 ${day.minutes} 分钟`;
-  document.getElementById('reviewPlanDayBody').innerHTML = `${stats}${day.state === 'done' ? '<p class="plan-day-done">当天已全部通过 ✓</p>'
+  document.getElementById('reviewPlanDayBody').innerHTML = `${stats}${day.state === 'done' ? `<p class="plan-day-done">当天已全部通过 ✓${future ? '（提前完成）' : ''}</p>`
     : day.state === 'partial' ? '<p class="plan-day-partial">当天还有未通过或跳过，可以继续。</p>' : ''}${rows}`;
+  if (future) {
+    document.getElementById('reviewPlanDayBody').insertAdjacentHTML('afterbegin',
+      '<p class="plan-day-early">提前复习会缩短这道题的间隔收益；完成后会按今天重新计算下次复习。</p>');
+  }
   if (overdue) {
     const movedTo = Array.isArray(day.movedTo) ? day.movedTo.slice(0, 2) : [];
     document.getElementById('reviewPlanDayBody').insertAdjacentHTML('afterbegin',

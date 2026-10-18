@@ -1,7 +1,8 @@
 // 单次复习的固定范围与执行记录。实际阅读/错题判断仍由原复习模块负责。
 const {db} = require('./connection');
-const {planError,dateNumber} = require('./reviewPlanSchedule');
+const {planError,dateNumber,planToday} = require('./reviewPlanSchedule');
 const {reviewPlanContext,completePlanItem} = require('./reviewPlans');
+const {recordGradeInTransaction} = require('./reviewItems');
 const TYPES = {material:'materials',note:'notes',mistake:'mistakes'};
 const SOURCES = ['plan','total',...Object.keys(TYPES)];
 const LABELS = {plan:'考前计划复习',total:'总复习',material:'资料复习',note:'笔记复习',mistake:'错题复习'};
@@ -155,6 +156,11 @@ function saveSessionReadingReview(sessionItemId,row,type,status,setStatus,planIt
     const result=setStatus(row.id,row.course_id,status);
     if(task) completePlanItem(task);
     completeSessionItem(item,null,null,'passed');
+    // 阅读类通过也写入记忆状态，排期才能按实际完成日期重新计算下次复习。
+    recordGradeInTransaction({
+      courseId: row.course_id, type, id: row.id, grade: 3,
+      reviewDate: planToday(), sessionId: item.session_id, sessionItemId: item.id,
+    });
     db.exec('COMMIT');return result;
   } catch(err) {db.exec('ROLLBACK');throw err;}
 }
