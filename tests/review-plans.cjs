@@ -79,6 +79,7 @@ async function testReviewPlanApi({base,temp}) {
   await api('PATCH',c+'/materials/'+m.id+'/review',{reviewStatus:'reviewed'});
   const plan=await api('POST',prefix,body,201), second=await api('POST',prefix,{...body,name:'second'},201);
   assert.equal(plan.total,3);assert.equal(plan.pending,3);assert.equal(plan.completed,0);assert.equal(plan.days.length,1);assert.equal(plan.todayStats.pending,3);
+  assert.ok(plan.scheduleStats && plan.scheduleStats.total>=1,'plan summary exposes full-schedule progress');
   const url=prefix+'/'+plan.id;
   let items=await api('GET',url+'/items');
   assert.ok(items.every(item=>item.status==='pending' && item.scheduled_date===today));

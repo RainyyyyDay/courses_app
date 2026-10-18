@@ -307,6 +307,8 @@ function getReviewPlanSchedule(courseId, planId) {
         id: row.item_id,
         title: row.title_snapshot,
         sourceDeleted: row.source_deleted ? 1 : 0,
+        status: row.status,
+        result: row.status === 'completed' ? 'passed' : null,
         minutes: Number(row.estimated_minutes) || 5,
         roundNo: 1,
       })),
@@ -355,4 +357,24 @@ function applyReviewPlanSchedule(courseId, planId) {
   return getReviewPlanSchedule(courseId, planId);
 }
 
-module.exports = { getReviewItemState, recordReviewItemGrade, recordGradeInTransaction, getReviewPlanSchedule, applyReviewPlanSchedule };
+// 计划进度按“完整排期”统计（含后续多轮），与日历显示保持一致。
+function getPlanScheduleStats(courseId, planId) {
+  const schedule = getReviewPlanSchedule(courseId, planId);
+  let total = 0, passed = 0, failed = 0, skipped = 0, pending = 0;
+  for (const day of schedule.days) {
+    const items = day.sessionItems && day.sessionItems.length ? day.sessionItems : day.items;
+    for (const item of items) {
+      total += 1;
+      if (item.status === 'completed') {
+        if (item.result === 'failed') failed += 1; else passed += 1;
+      } else if (item.status === 'skipped') skipped += 1;
+      else pending += 1;
+    }
+  }
+  return { total, passed, failed, skipped, pending, completionRate: total ? Math.round(passed / total * 100) : 0 };
+}
+
+module.exports = {
+  getReviewItemState, recordReviewItemGrade, recordGradeInTransaction, getReviewPlanSchedule,
+  applyReviewPlanSchedule, getPlanScheduleStats,
+};

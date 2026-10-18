@@ -1,5 +1,6 @@
 const {db} = require('./connection');
 const {planError,dateNumber,planDates,schedulePlan,planToday} = require('./reviewPlanSchedule');
+const {getPlanScheduleStats} = require('./reviewItems');
 const PLAN_SOURCES = {material:'materials',note:'notes',mistake:'mistakes'};
 
 function listPlanCandidates(courseId) {
@@ -38,7 +39,11 @@ function planSummary(plan, detailed=false) {
   const items = listPlanItems(plan.course_id,plan.id), today = planToday();
   const result = {...plan,...planCounts(items),today,remainingDays:Math.max(0,dateNumber(plan.exam_date)-dateNumber(today)),
     todayStats:planCounts(items.filter(item=>item.scheduled_date===today))};
-  result.reviewState = result.pending===0 ? 'completed' : plan.exam_date<=today ? 'expired' : 'active';
+  // 进度以完整排期为准（含后续多轮），与计划详情里的日历保持一致。
+  try { result.scheduleStats = getPlanScheduleStats(plan.course_id, plan.id); } catch { result.scheduleStats = null; }
+  const sched = result.scheduleStats;
+  const pending = sched && sched.total ? sched.pending : result.pending;
+  result.reviewState = pending===0 ? 'completed' : plan.exam_date<=today ? 'expired' : 'active';
   if (detailed) result.days = planDates(plan.start_date,plan.exam_date).map(date=>{
     const rows = items.filter(item=>item.scheduled_date===date);
     return {date,...planCounts(rows),types:Object.fromEntries(Object.keys(PLAN_SOURCES).map(type=>[type,planCounts(rows.filter(item=>item.item_type===type))]))};

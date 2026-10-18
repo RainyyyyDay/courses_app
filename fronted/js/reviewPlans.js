@@ -11,7 +11,14 @@ function reviewPlanApi(id = '') { return `${API}/courses/${currentCourseId}/revi
 function planLocalDate() { return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
 function planProgressHtml(plan) {
   // 百分比按全部任务计算（完成 / (总任务 - 源已删除)），不是当天完成量。
-  return `<div class="plan-progress"><span class="plan-progress-label">总进度</span><progress max="100" value="${plan.completionRate}" aria-label="全部任务完成进度 ${plan.completionRate}%"></progress><span class="plan-progress-value">${plan.completionRate}%</span></div><p class="detail-meta">总任务 ${plan.total} · 已完成 ${plan.completed} · 待完成 ${plan.pending} · 已跳过 ${plan.skipped}</p>`;
+  // 有完整排期统计时以它为准（含后续多轮），和日历里看到的内容保持一致。
+  const stats = plan.scheduleStats && plan.scheduleStats.total ? plan.scheduleStats : null;
+  const total = stats ? stats.total : plan.total;
+  const completed = stats ? stats.passed : plan.completed;
+  const pending = stats ? stats.pending : plan.pending;
+  const skipped = stats ? stats.skipped : plan.skipped;
+  const rate = stats ? stats.completionRate : plan.completionRate;
+  return `<div class="plan-progress"><span class="plan-progress-label">总进度</span><progress max="100" value="${rate}" aria-label="全部任务完成进度 ${rate}%"></progress><span class="plan-progress-value">${rate}%</span></div><p class="detail-meta">总任务 ${total} · 已完成 ${completed} · 待完成 ${pending} · 已跳过 ${skipped}</p>`;
 }
 // 智能排期预览：后台按记忆状态算好的日程，渲染成月历；请求失败时整块不显示。
 let planCalendar = null;
