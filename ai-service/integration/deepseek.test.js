@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const { loadConfig } = require('../src/config');
 const { createApp } = require('../src/app');
+const safeCodes = ['AI_AUTH_FAILED', 'AI_BALANCE_UNAVAILABLE', 'AI_UPSTREAM_RATE_LIMITED', 'AI_TIMEOUT', 'AI_UNAVAILABLE', 'AI_BUSY'];
 
 // Separate opt-in command; npm test neither loads .env nor discovers this file.
 const skip = !process.env.DEEPSEEK_API_KEY?.trim() ? 'DEEPSEEK_API_KEY is not configured' :
@@ -26,8 +27,7 @@ test('real DeepSeek through local HTTP and result validation', { skip, timeout: 
     if (!response.ok) {
       // Only allow predefined local diagnostics, never a raw response or exception.
       const body = await response.json();
-      const codes = ['AI_AUTH_FAILED', 'AI_BALANCE_UNAVAILABLE', 'AI_UPSTREAM_RATE_LIMITED', 'AI_TIMEOUT', 'AI_UNAVAILABLE'];
-      const code = codes.includes(body?.error) ? body.error : 'LOCAL_CHECK_FAILED';
+      const code = safeCodes.includes(body?.error) ? body.error : 'LOCAL_CHECK_FAILED';
       throw new Error(code);
     }
     if (response.headers.get('x-ai-provider') !== 'deepseek' ||
@@ -38,8 +38,7 @@ test('real DeepSeek through local HTTP and result validation', { skip, timeout: 
         typeof result.reason !== 'string' || !result.reason.trim() || result.reason.length > 500 ||
         result.needs_review !== true) throw new Error();
   } catch (err) {
-    const allowed = ['AI_AUTH_FAILED', 'AI_BALANCE_UNAVAILABLE', 'AI_UPSTREAM_RATE_LIMITED', 'AI_TIMEOUT', 'AI_UNAVAILABLE'];
-    const code = allowed.includes(err?.message) ? err.message : 'LOCAL_CHECK_FAILED';
+    const code = safeCodes.includes(err?.message) ? err.message : 'LOCAL_CHECK_FAILED';
     throw new Error(`DeepSeek integration failed: ${code}. Check local configuration/network and retry manually.`);
   } finally {
     if (server) await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });

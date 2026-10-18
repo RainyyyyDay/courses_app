@@ -31,6 +31,7 @@ const originalHash = fs.existsSync(original) ? digest() : null;
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'courses-regression-'));
 let server;
 let db;
+let snapshotDb;
 
 async function testBackend() {
   fs.cpSync(path.join(source, 'db'), path.join(temp, 'db'), { recursive: true });
@@ -45,7 +46,7 @@ async function testBackend() {
       { cwd: temp, windowsHide: true, encoding: 'utf8' });
     assert.equal(seeded.status, 0, seeded.stderr);
   }
-  const before = new DatabaseSync(path.join(temp, 'data/app.db'), { readOnly: true });
+  const before = snapshotDb = new DatabaseSync(path.join(temp, 'data/app.db'), { readOnly: true });
   const existing = before.prepare('SELECT id, name FROM courses ORDER BY id').all();
   const snapshots = before.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map(({ name }) => {
     const columns = before.prepare(`PRAGMA table_info("${name}")`).all().map(c => `"${c.name}"`).join(',');
@@ -53,8 +54,10 @@ async function testBackend() {
     return { sql, rows: before.prepare(sql).all() };
   });
   before.close();
+  snapshotDb = null;
+  // Keep the connection reachable even if schema initialization throws.
+  db = require(path.join(temp, 'db/connection.js')).db;
   const store = require(path.join(temp, 'db/index.js'));
-  db = store.db;
   assert.equal(db.prepare('PRAGMA user_version').get().user_version, 12);
   assert.deepEqual(db.prepare('SELECT id, name FROM courses ORDER BY id').all(), existing);
   for (const snapshot of snapshots) assert.deepEqual(db.prepare(snapshot.sql).all(), snapshot.rows);
@@ -350,7 +353,41 @@ async function testFrontend() {
   console.log('PASS frontend: empty/error lists, failed mutations, preserved selections/files/body, retries, double-click guard, legacy PDF');
 }
 
+async function cleanupRegression() {
+  const errors = [];
+  async function attempt(label, operation) {
+    try { await operation(); } catch (err) { errors.push(new Error(label, { cause: err })); }
+  }
+  if (snapshotDb) await attempt('Closing snapshot database failed', () => { snapshotDb.close(); snapshotDb = null; });
+  if (db) await attempt('Closing test database failed', () => { db.close(); db = null; });
+  if (server && server.exitCode === null && server.signalCode === null) {
+    await attempt('Stopping test server failed', () => new Promise((resolve, reject) => {
+      const exited = () => { server.off('error', failed); resolve(); };
+      const failed = err => { server.off('exit', exited); reject(err); };
+      server.once('exit', exited);
+      server.once('error', failed);
+      if (!server.kill()) {
+        server.off('exit', exited);
+        server.off('error', failed);
+        reject(new Error('Test server could not be stopped'));
+      }
+    }));
+  }
+  await attempt('Unsafe temporary directory cleanup target', () => {
+    assert.ok(path.resolve(temp).startsWith(path.resolve(os.tmpdir()) + path.sep + 'courses-regression-'));
+  });
+  // Never try to delete files while a resource may still be open.
+  if (errors.length === 0) {
+    await attempt('Removing test temporary directory failed', () => {
+      fs.rmSync(temp, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    });
+  }
+  if (errors.length === 0) console.log('PASS regression cleanup: resources released and temporary directory removed');
+  return errors;
+}
+
 (async () => {
+  let primaryFailure = false;
   try {
     testMistakeMigrations(source, temp);
     testMaterialReviewMigration(source, temp);
@@ -372,12 +409,18 @@ async function testFrontend() {
       assert.equal(fs.existsSync(original), false, 'fresh checkout database remains absent');
       console.log('PASS fresh checkout: all database writes isolated');
     }
+  } catch (err) {
+    primaryFailure = true;
+    throw err;
   } finally {
-    if (db) db.close();
-    if (server && server.exitCode === null) {
-      await new Promise(resolve => { server.once('exit', resolve); server.kill(); });
+    const cleanupErrors = await cleanupRegression();
+    if (cleanupErrors.length) {
+      const cleanupFailure = new AggregateError(cleanupErrors, 'Regression cleanup failed');
+      if (primaryFailure) {
+        console.error('Additional cleanup failure; original test error follows:', cleanupFailure);
+      } else {
+        throw cleanupFailure;
+      }
     }
-    assert.ok(path.resolve(temp).startsWith(path.resolve(os.tmpdir()) + path.sep + 'courses-regression-'));
-    fs.rmSync(temp, { recursive: true, force: true });
   }
 })().catch(err => { console.error(err); process.exitCode = 1; });

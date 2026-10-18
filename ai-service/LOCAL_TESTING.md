@@ -26,6 +26,8 @@ npm test --prefix ai-service
 | NODE_ENV | development | development（测试也允许 test），禁止 production |
 | PORT | 3001 | 3001，若占用可改为其他端口 |
 | AI_TIMEOUT_MS | 15000 | 默认 15000，慢网络可手动改为 30000，最高 120000 |
+| AI_MAX_CONCURRENT | 2 | 单进程未结束 Provider 调用上限，允许 1–100 |
+| AI_LOG_REQUESTS | false | 可选 true 启用白名单元数据日志，不记录正文/Key |
 | RATE_LIMIT_MAX / RATE_LIMIT_WINDOW_MS | 30 / 60000 | 每进程每分钟 30 次，适合本地联调 |
 
 模型、JSON Output 和 thinking 参数依据 [DeepSeek 官方 Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion/)；当前配置不接受客户端 URL 或模型参数。请求使用固定 HTTPS 官方地址，禁止跟随重定向。
@@ -67,6 +69,8 @@ $result.Content | ConvertFrom-Json
 
 成功标准：HTTP **200**，`X-AI-Provider=deepseek`，`X-AI-Result-Source=provider`，返回 JSON 含配置内的 review_method、非空 reason、needs_review=true。真实 Provider 不会在失败时改用 mock。类别可能是 unclassified；只要来源为 provider 就表示收到并通过了校验，不表示分类教学质量已经验证。
 
+响应还有服务端生成的 X-Request-ID，可在启用 AI_LOG_REQUESTS 后用于关联白名单排障日志。不需要也不要打印题目、配置或请求头来排查密钥问题。项目负责人已反馈本机真实联调通过；后续基础改进可先运行普通测试，无需每次重复付费请求。
+
 不要只看响应速度、reason 文案或分类名称判断。`provider=mock` 表示仍在 mock 模式；`input_fallback` 表示信息不足、完全没调用 AI；`validation_fallback` 表示完成上游调用但结果校验未通过。空 `{}` 请求即使在 deepseek 模式也不产生真实调用。上述响应头只含固定枚举，不含 Key、提示词或题目正文。
 
 ## 5. 可选：运行一次真实集成测试
@@ -91,6 +95,7 @@ npm run test:integration --prefix ai-service
 | 502 AI_AUTH_FAILED | DeepSeek 返回 401；在本地确认 Key 有效、未撤销，不要贴出 Key |
 | 503 AI_BALANCE_UNAVAILABLE | DeepSeek 返回 402；自行查看账户状态，本服务不会购买或充值 |
 | 503 AI_UPSTREAM_RATE_LIMITED | DeepSeek 返回 429；稍后手动再试 |
+| 503 AI_BUSY | 本进程 Provider 并发已满；等已有调用结束，不自动重试。忽略取消的 Provider 会一直占用名额，必要时本地重启排查 |
 | 502 AI_UNAVAILABLE | 网络/TLS、其他上游 HTTP 错误、非法/过大/截断 JSON 或空内容；先确认网络与模型配置 |
 | 504 AI_TIMEOUT | 超时覆盖连接、响应读取和解析流程；检查网络，必要时调整允许范围内的超时后重启 |
 | 200 + validation_fallback | 检查类别配置和规则提示；语法合法但类别/字段不合格的结果已安全兜底 |

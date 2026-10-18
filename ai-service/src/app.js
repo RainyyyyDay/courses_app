@@ -1,21 +1,26 @@
 const express = require('express');
-const { MockProvider } = require('./providers/mock');
-const { DeepSeekProvider, DeepSeekError } = require('./providers/deepseek');
-const fields = ['question', 'student_answer', 'error_type', 'correct_answer', 'context'];
-const fallback = () => ({ review_method: 'unclassified', reason: '信息不足或分类结果不可靠，需要人工复核。', needs_review: true });
+const { createProvider } = require('./providers');
+const { DeepSeekError } = require('./providers/deepseek');
+const { parseInput, hasEvidence, normalizeResult, fallback } = require('./contracts/classification');
+const { diagnostics } = require('./diagnostics');
+function fail(res, status, code) {
+  res.locals.aiErrorCode = code;
+  return res.status(status).json({ error: code });
+}
 
-function createApp(config, { provider, authenticate } = {}) {
+function createApp(config, { provider, authenticate, logger } = {}) {
   const app = express();
-  provider ||= config.provider === 'mock' ? new MockProvider() : new DeepSeekProvider(config);
+  provider ||= createProvider(config);
   app.disable('x-powered-by');
   app.set('trust proxy', false);
+  app.use(diagnostics(config, logger));
   app.use((req, res, next) => {
     res.set({ 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     const remote = req.socket.remoteAddress;
     if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(remote) ||
         req.headers.origin || req.headers['x-forwarded-for'] ||
         !/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(req.headers.host || '')) {
-      return res.status(403).json({ error: 'LOCAL_ONLY' });
+      return fail(res, 403, 'LOCAL_ONLY');
     }
     next();
   });
@@ -29,51 +34,55 @@ function createApp(config, { provider, authenticate } = {}) {
     if (now >= reset) { reset = now + config.rateWindowMs; count = 0; }
     if (++count > config.rateMax) {
       res.set('Retry-After', String(Math.ceil((reset - now) / 1000)));
-      return res.status(429).json({ error: 'RATE_LIMITED' });
+      return fail(res, 429, 'RATE_LIMITED');
     }
     next();
   });
   app.use(express.json({ limit: '16kb', strict: true, inflate: false }));
+  let active = 0;
   app.post('/api/ai/classify', async (req, res) => {
     res.set('X-AI-Provider', config.provider);
-    if (!req.is('application/json')) return res.status(415).json({ error: 'JSON_REQUIRED' });
-    const body = req.body;
-    if (!body || Array.isArray(body) || typeof body !== 'object' ||
-        Object.keys(body).some(k => !fields.includes(k)) ||
-        Object.values(body).some(v => typeof v !== 'string' || v.length > 4000)) {
-      return res.status(400).json({ error: 'INVALID_INPUT' });
-    }
-    const input = Object.fromEntries(Object.entries(body).map(([k, v]) => [k, v.trim()]));
+    if (!req.is('application/json')) return fail(res, 415, 'JSON_REQUIRED');
+    const input = parseInput(req.body);
+    if (!input) return fail(res, 400, 'INVALID_INPUT');
     // Conservative evidence gate, shared by every provider. Error labels alone are insufficient.
-    if (!input.question || !input.student_answer || !input.error_type) {
+    if (!hasEvidence(input)) {
       res.set('X-AI-Result-Source', 'input_fallback');
       return res.json(fallback());
     }
+    if (active >= config.maxConcurrent) {
+      res.set('X-AI-Result-Source', 'error');
+      return fail(res, 503, 'AI_BUSY');
+    }
+    active++;
     const controller = new AbortController();
     let timer;
     const disconnect = () => controller.abort();
     res.once('close', disconnect);
     try {
+      const work = Promise.resolve().then(() => provider.classify(input, config.rules, { signal: controller.signal }));
+      // Release only when work actually settles, not merely when HTTP times out.
+      // An uncooperative provider must not allow unlimited abandoned calls.
+      const release = () => { active--; };
+      work.then(release, release);
       const result = await Promise.race([
-        provider.classify(input, config.rules, { signal: controller.signal }),
+        work,
         new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('timeout')); }, config.timeoutMs); })
       ]);
-      const valid = result && typeof result === 'object' && !Array.isArray(result) && config.rules.categories.some(c => c.id === result.review_method) &&
-        typeof result.reason === 'string' && result.reason.trim().length > 0 && result.reason.length <= 500 &&
-        typeof result.needs_review === 'boolean';
-      res.set('X-AI-Result-Source', valid ? 'provider' : 'validation_fallback');
-      return res.json(valid ? { review_method: result.review_method, reason: result.reason.trim(), needs_review: true } : fallback());
+      const normalized = normalizeResult(result, config.rules);
+      res.set('X-AI-Result-Source', normalized ? 'provider' : 'validation_fallback');
+      return res.json(normalized || fallback());
     } catch (err) {
       res.set('X-AI-Result-Source', 'error');
-      if (controller.signal.aborted) return res.status(504).json({ error: 'AI_TIMEOUT' });
-      if (err instanceof DeepSeekError) return res.status(err.httpStatus).json({ error: err.code });
-      return res.status(502).json({ error: 'AI_UNAVAILABLE' });
+      if (controller.signal.aborted) return fail(res, 504, 'AI_TIMEOUT');
+      if (err instanceof DeepSeekError) return fail(res, err.httpStatus, err.code);
+      return fail(res, 502, 'AI_UNAVAILABLE');
     } finally { clearTimeout(timer); res.off('close', disconnect); }
   });
-  app.use((req, res) => res.status(404).json({ error: 'NOT_FOUND' }));
+  app.use((req, res) => fail(res, 404, 'NOT_FOUND'));
   app.use((err, req, res, next) => {
     const status = [400, 413, 415].includes(err.status) ? err.status : 500;
-    res.status(status).json({ error: { 400: 'INVALID_JSON', 413: 'BODY_TOO_LARGE', 415: 'UNSUPPORTED_ENCODING' }[status] || 'INTERNAL_ERROR' });
+    fail(res, status, { 400: 'INVALID_JSON', 413: 'BODY_TOO_LARGE', 415: 'UNSUPPORTED_ENCODING' }[status] || 'INTERNAL_ERROR');
   });
   return app;
 }

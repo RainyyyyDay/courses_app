@@ -24,9 +24,12 @@ function loadConfig(env = process.env, rulesPath = path.join(__dirname, '../conf
   const model = env.DEEPSEEK_MODEL || 'deepseek-flash';
   if (!['deepseek-flash', 'deepseek-v4-pro'].includes(model)) throw new Error('Unsupported DeepSeek model');
   if (provider === 'deepseek' && !env.DEEPSEEK_API_KEY?.trim()) throw new Error('DeepSeek key required');
+  if (env.AI_LOG_REQUESTS !== undefined && !['true', 'false'].includes(env.AI_LOG_REQUESTS)) throw new Error('Invalid logging configuration');
   return { provider, rules, model, apiKey: env.DEEPSEEK_API_KEY,
     port: positive(env.PORT, 3001, 65535), host: '127.0.0.1',
     timeoutMs: positive(env.AI_TIMEOUT_MS, 15000, 120000),
+    maxConcurrent: positive(env.AI_MAX_CONCURRENT, 2, 100),
+    logRequests: env.AI_LOG_REQUESTS === 'true',
     rateMax: positive(env.RATE_LIMIT_MAX, 30, 10000),
     rateWindowMs: positive(env.RATE_LIMIT_WINDOW_MS, 60000, 3600000) };
 }

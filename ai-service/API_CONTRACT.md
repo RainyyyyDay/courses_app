@@ -2,21 +2,24 @@
 
 核对日期：2026-10-18。适用版本：`courses-ai-service` 0.1.0，当前仓库源码。本文用于业务对接和部署交接，**不是 CloudBase 已部署或可公开上线的证明**。
 
-本文只依据源码、配置、测试和已有说明描述现状；建议均单独标注，无法从仓库确认的事项标为“待确认”。本次仅更新已有接口文档，不读取本地 `.env`，不修改代码、不运行真实付费请求、不执行部署。分工：你负责 AI 接口与云函数 API 接入，组员负责复习模式实现；两方先按本文的现有契约和固定示例并行开发，新增功能的候选契约需共同确认后再实施。
+本文只依据源码、配置、测试和已有说明描述现状；建议均单独标注，无法从仓库确认的事项标为“待确认”。本轮基础改进只涉及 ai-service，保留原请求/响应 JSON；不读取本地 `.env`、不运行真实付费请求、不执行部署。分工：你负责 AI 接口与云函数 API 接入，组员负责复习模式实现；两方先按本文的现有契约和固定示例并行开发，新增功能的候选契约需共同确认后再实施。
 
 ## 1. 依据与适用边界
 
 | 依据文件 | 核对内容 |
 | --- | --- |
 | [src/app.js](src/app.js) | 路由、输入与结果校验、安全门禁、限流、超时和错误响应 |
+| [src/contracts/classification.js](src/contracts/classification.js)、[src/providers/index.js](src/providers/index.js) | 分类任务合同与显式 Provider 工厂 |
+| [src/diagnostics.js](src/diagnostics.js) | 服务端请求 ID 与可选白名单诊断 |
 | [src/server.js](src/server.js) | HTTP 监听入口、接收超时、启动错误处理 |
 | [src/config.js](src/config.js) | 环境变量默认值、取值范围、启动阻断及分类配置验证 |
 | [src/providers/mock.js](src/providers/mock.js)、[src/providers/deepseek.js](src/providers/deepseek.js) | Provider 行为、上游地址、协议和错误映射 |
 | [config/classification.json](config/classification.json) | 当前类别、示例规则与版本标记 |
-| [test/service.test.js](test/service.test.js) | 11 组普通测试定义，含模拟上游、本机访问、错误脱敏及超时 |
+| [test/service.test.js](test/service.test.js) | 18 组普通测试定义，含模拟上游、本机访问、并发、断连取消、日志白名单与超时 |
 | [integration/deepseek.test.js](integration/deepseek.test.js) | 可选真实请求的条件、请求路径及验收检查 |
 | [package.json](package.json)、[.env.example](.env.example) | 命令、依赖和无密钥配置模板 |
 | [README.md](README.md)、[LOCAL_TESTING.md](LOCAL_TESTING.md) | 使用与联调说明，发生歧义时以源码为准 |
+| [CLOUDBASE_PREPARATION.md](CLOUDBASE_PREPARATION.md) | 已核对官方文档的 HTTP 云函数差异、上线缺口与准备清单 |
 
 当前服务独立于原有学习模块，只处理文字错题复习方式分类；不访问 SQLite、不查询课程或学生数据、不保存分类结果。默认本机基址为 `http://127.0.0.1:3001`。CloudBase 环境 ID、实际域名、访问前缀和部署形态均**待确认**。
 
@@ -26,9 +29,9 @@
 | --- | --- | --- | --- |
 | GET /health | 已实现 | 普通测试检查 200 与 provider | 仓库未交付云适配/域名或部署验收，尚不能作为云端接口对接 |
 | POST /api/ai/classify | 已实现，含 mock 与 DeepSeek Provider | 普通测试覆盖输入、分类、兜底、上游模拟和错误处理；另有可选真实集成测试 | 同上；本次不部署，外部是否另行部署待负责人确认 |
-| 真实 DeepSeek 连通 | 已有调用代码 | 集成测试仅在 Key 与 Provider 条件满足时运行；SKIP 不证明连通 | 目标云运行环境的真实调用验收待确认 |
+| 真实 DeepSeek 连通 | 已有调用代码，项目负责人反馈本机真实联调通过 | 集成测试仅在 Key 与 Provider 条件满足时运行；本轮不读取 Key 或重复真实请求，SKIP 不证明连通 | 目标云运行环境的真实调用验收待确认 |
 | 智能挖空、答案评价、笔记/资料推荐 | 尚未实现，见第 9 节候选方案 | 没有这些功能的自动测试 | 尚无本模块可部署的对应实现 |
-| 云函数 handler、正式认证、网站 AI 接入 | 尚未实现 | 没有云端/登录/网站 AI 集成验收 | 尚未形成可交付的云端接入方案，见第 11 节 |
+| 云端启动适配、正式认证、网站 AI 接入 | 尚未实现；HTTP 云函数可复用 Express 服务，不要求改为事件 handler | 没有云端/登录/网站 AI 集成验收 | 尚未形成可交付的云端接入方案，见第 11 节与准备清单 |
 
 “已在本地实现”不等于服务此刻正在运行，也不等于已部署。源码无法证明仓库之外的云资源状态；本文不提供虚构线上地址。
 
@@ -130,6 +133,8 @@ mock 对未知错误类型会自行返回有效的 unclassified，此时来源�
 
 全局应用中间件设置 `Cache-Control: no-store`、`X-Content-Type-Options: nosniff` 并关闭 `X-Powered-By`。分类来源头不保证出现在所有错误上：本机门禁、限流、JSON 解析失败发生在分类处理函数之前；JSON_REQUIRED、INVALID_INPUT 虽有 Provider 头，但没有结果来源头。
 
+每个进入 Express 的请求另有服务端随机生成的 `X-Request-ID`，可关联可选诊断日志；不反射客户端传入的请求 ID。默认关闭诊断；启用 AI_LOG_REQUESTS=true 时仅输出白名单元数据，不输出题目、模型 reason、URL/查询参数、请求头、IP、Key、配置对象或异常堆栈。Node/网关在应用外生成的响应不保证含该头。
+
 ## 3. 错误状态码与含义
 
 应用 JSON 错误格式为 `{"error":"CODE"}`。不要把上游 HTTP 状态与本地 HTTP 状态混淆。
@@ -149,6 +154,7 @@ mock 对未知错误类型会自行返回有效的 unclassified，此时来源�
 | 502 | AI_UNAVAILABLE | 其他上游非 2xx、网络/TLS、读取错误、响应超过 65536 字节、JSON 解析失败、finish_reason 非 stop、无字符串 content 等 |
 | 503 | AI_BALANCE_UNAVAILABLE | DeepSeek 上游返回 402 |
 | 503 | AI_UPSTREAM_RATE_LIMITED | DeepSeek 上游返回 429；不透传上游错误正文或重试头 |
+| 503 | AI_BUSY | 本进程未结束的 Provider 调用达到 AI_MAX_CONCURRENT；不调用新 Provider、不排队、不自动重试 |
 | 504 | AI_TIMEOUT | Provider 等待超时触发 AbortController；该 catch 分支按 signal.aborted 判断 |
 
 示例：
@@ -170,7 +176,11 @@ mock 对未知错误类型会自行返回有效的 unclassified，此时来源�
 
 模型白名单按当前 `src/config.js`：`deepseek-flash`（默认）、`deepseek-v4-pro`。通过 `DEEPSEEK_MODEL` 选择，不能由客户端传入。这里记录的是代码允许值；部署时账户对目标模型的实际可用性与真实请求验收**待确认**。
 
-内部接口为 `classify(input, rules, { signal })`；返回上述分类对象。百炼 Provider 尚未实现；当前也没有动态 Provider 注册、请求级 Provider 切换或任意上游地址配置。
+内部接口为 `classify(input, rules, { signal })`；返回上述分类对象。工厂为 src/providers/index.js，未知 Provider 拒绝；分类任务合同位于 src/contracts/classification.js。百炼 Provider 尚未实现；当前也没有动态 Provider 注册、请求级 Provider 切换或任意上游地址配置。
+
+`error_type` 是调用方提供的错误标签，`review_method` 是临时复习推荐标签，`needs_review` 是人工复核标志；没有把错误原因推断或模式活动生成当作现有功能。未来新任务应独立定义合同，不能直接沿用错题三项证据门槛。
+
+原业务的 `mistakeType`/`mistake_type` 枚举为 knowledge、thinking、execution、unclassified（依据 back/db/mistakes.js、fronted/js/mistakes.js），不等于 AI 示例 error_type，也不等于 review_method。原 review_status 是独立学习状态，不等于 needs_review。当前没有两套分类的自动映射或数据库回写；AI 接口拒绝 mistakeType/mistake_type 字段，mock 接收 error_type=knowledge 时无匹配规则，会返回 unclassified。映射与失效/人工修改语义必须由双方确认。
 
 `config/classification.json` 当前 version 为 `example-1`，仅是待确认的教学规则：
 
@@ -212,6 +222,8 @@ CloudBase 应通过选定运行方式的受控环境/密钥注入提供配置，
 | PORT | 3001；整数 1–65535 | CloudBase 注入端口及转发目标待确认，不能假定就是 3001 |
 | NODE_ENV | 可不设置、development 或 test | production 会阻断；不能把伪装 development 当作完成安全上线 |
 | AI_TIMEOUT_MS | 15000；整数 1–120000 | 网关/运行时/客户端超时预算需与之协调 |
+| AI_MAX_CONCURRENT | 2；整数 1–100 | 每 app 进程未结束的 Provider 调用上限；超时后若工作未结束仍占位 |
+| AI_LOG_REQUESTS | false；只允许字面值 true 或 false | 可选白名单 JSON 诊断，非集中监控或费用审计 |
 | RATE_LIMIT_MAX | 30；整数 1–10000 | 当前只是单进程全局次数，不是用户配额 |
 | RATE_LIMIT_WINDOW_MS | 60000；整数 1–3600000 | 计数窗口，进程重启即重置 |
 
@@ -233,12 +245,12 @@ npm run test:integration --prefix ai-service
 | 身份与授权 | createApp 提供 authenticate 中间件注入点；应用范围 `/api` | server.js 没有注入认证，默认直接 next；无登录/JWT/会话验证、用户/课程权限、角色或网关身份验证 |
 | 本机门禁 | 固定监听 127.0.0.1；app 允许回环远端地址；Host 只匹配 127.0.0.1 或 localhost 加可选数字端口；拒绝非空 Origin、X-Forwarded-For；trust proxy=false | 这是本地开发限制，不是正式身份认证，不能防止本机恶意进程或人为代理暴露 |
 | 生产保护 | NODE_ENV=production、非回环 HOST、AI_KEY_MODE=user 会被拒绝 | 不是可公开部署版本，尚无经评审的生产运行模式 |
-| 限流 | `/api` 中认证接入点之后计数，单 app 进程共享固定窗口；默认 60 秒 30 次；超限返回 429 和 Retry-After | 非按 IP/用户；无分布式存储、并发限制、金额/Token 配额；多个实例分别计数，health 不限流 |
+| 限流与并发 | `/api` 中认证接入点之后单进程共享窗口，默认 60 秒 30 次；另限制同时未结束的 Provider 调用为 2，超限 503 AI_BUSY；不排队 | 非按 IP/用户；无分布式存储、金额/Token 配额；多个实例分别计数，health 不限流，输入兜底不占 Provider 名额 |
 | 输入防护 | 字段白名单、字符串与长度校验、16kb JSON 上限、禁用压缩解包 | 无图片识别、文件扫描、学生身份识别或内容脱敏过滤 |
-| AI 超时 | AbortController + Promise.race；默认 15 秒；传递给 fetch，覆盖响应读取；响应连接 close 时取消 | 取消不能保证上游不计费；不是并发排队机制，也不是完整请求 SLA |
+| AI 超时 | AbortController + Promise.race；默认 15 秒；传递给 fetch，覆盖响应读取；响应连接 close 时取消；容量仅在工作实际结束时释放 | 取消不能保证上游不计费；忽略取消的 Provider 保持占位直到结束/重启；不是完整请求 SLA |
 | HTTP 接收超时 | server.js：requestTimeout=20000ms、headersTimeout=10000ms | 控制接收请求/请求头，不等同于 AI 处理时长或网关等待时长 |
 | 上游与输出 | 固定 HTTPS 地址、禁止重定向、上游读取最多 65536 字节、检查 finish_reason、双层 JSON 解析与字段/类别验证、额外字段丢弃 | 无语义正确性验证、置信度算法或自动纠错；提示注入防护主要依赖提示和结构限制，不能称为全面防护 |
-| 密钥与日志 | 开发 Key 用环境变量，应用不记录请求/上游正文、不回传堆栈和原始上游错误；只输出固定启动信息/提示 | 无用户 Key 生命周期治理、集中审计/监控、密钥轮换或加密保存方案；平台、网关和外部日志设置待确认 |
+| 密钥与日志 | 开发 Key 用环境变量，不记录请求/上游正文、不回传堆栈和原始错误；新增随机请求 ID 和默认关闭的白名单诊断；日志写入失败不阻断请求 | 无用户 Key 生命周期治理、集中审计/监控、密钥轮换或加密保存方案；平台、网关和外部日志设置待确认 |
 | 浏览器与传输 | 当前不开放 CORS，应用自身提供 HTTP 本机服务 | 无浏览器跨域接入、CSRF 方案或应用内 TLS；云端 TLS/可信代理策略待确认 |
 | 数据处理 | 不连接现有 SQLite、不保存题目或 Key；真实 Provider 将输入和分类配置发至 DeepSeek | 无个人数据自动脱敏、隐私授权/保留策略、业务持久化或结果审计；reason 需使用 textContent 安全渲染 |
 
@@ -248,17 +260,17 @@ npm run test:integration --prefix ai-service
 
 | 交接项 | 当前事实 | 需 AI/云函数接入负责人确认 |
 | --- | --- | --- |
-| CloudBase 运行形态 | 当前是常驻 Express HTTP 进程入口，无专用云函数事件 handler | 使用哪种托管/函数/容器形态及对应适配方案，**待确认** |
+| CloudBase 运行形态 | 当前是 Express HTTP 进程；官方 HTTP 云函数支持 Express，不要求事件 handler | 对照准备清单实现安全的 HTTP 云端启动适配，目标环境配置仍待确认 |
 | 打包与启动 | 独立模块有 lockfile；未提供 CloudBase 部署配置、Dockerfile 或云适配入口 | 部署根目录是否 ai-service、依赖安装命令、启动入口、平台 Node 24 支持与配置方式，**待确认** |
-| 地址、端口、健康检查 | 源码回环监听，health 同样受 Host/来源门禁 | 平台要求的监听地址/端口、探针来源与 Host、健康检查路径、独立 readiness 是否需要，**待确认** |
+| 地址、端口、健康检查 | 源码回环监听，health 同样受 Host/来源门禁；官方 HTTP 云函数要求 9000 与非回环监听 | 当前不能直接部署；安全改造、探针来源与 Host、健康检查路径、独立 readiness 是否需要，**待确认** |
 | 网关认证与权限 | 默认无正式认证，Authorization 不会被应用验证 | 网关能否强制认证、应用如何验证可信身份、鉴权失败格式、health 访问范围，以及绕过网关的防护，**待确认** |
 | 路由映射 | 应用路径为 /health 和 /api/ai/classify，不带部署前缀 | 外部域名/基础路径、前缀剥离或保留、转发是否改写路径，**待确认** |
 | 转发头与代理信任 | trust proxy=false；Origin / X-Forwarded-For / 非本机 Host 将被拦截 | 网关注入哪些头、远端地址变化、可信代理链和防伪造策略，**待确认**；不能盲目信任全部转发头 |
 | 浏览器接入 | 当前拒绝来源头，无 CORS 预检契约 | 前端是同源后端代理调用还是跨域直连；来源白名单、OPTIONS、凭据/CSRF 策略，**待确认** |
 | 超时和请求限制 | 应用有 16kb、默认 15 秒 AI 超时及 HTTP 接收超时 | 网关/运行时/客户端等待与体积上限、重试策略、断连行为，**待确认**；网关等待需给应用错误响应留余量 |
-| 响应透传 | 有 X-AI-Provider、X-AI-Result-Source、Retry-After 和 JSON 状态码 | 网关是否保留状态码/响应头，跨域时如何暴露这些头，网关自身错误格式，**待确认** |
+| 响应透传 | 有 X-AI-Provider、X-AI-Result-Source、X-Request-ID、Retry-After 和 JSON 状态码 | 网关是否保留状态码/响应头，跨域时如何暴露这些头，网关自身错误格式，**待确认** |
 | 出站网络与秘密注入 | 固定请求 api.deepseek.com:443，不支持任意上游 URL | DNS/TLS/HTTPS 出站连通性、凭据注入与轮换、日志脱敏、目标模型/账户验收，**待确认** |
-| 扩缩容和成本 | 限流只在单实例内；无并发和费用配额 | 最大实例/并发预算、共享用户配额、告警/审计、密钥费用责任人，**待确认** |
+| 扩缩容和成本 | 速率和 Provider 并发限制只在单实例内，无共享金额配额 | 最大实例/并发预算、共享用户配额、告警/审计、密钥费用责任人，**待确认** |
 
 在上述生产改造前，本地联调文档中的限制仍然有效：不要使用公网反向代理或隧道把当前开发接口公开。未来真正上线的环境变量取值、CloudBase 部署文件和操作命令应由部署负责人另行确认，不能将本文列出的本机取值视为最终部署方案。
 
@@ -464,7 +476,7 @@ const result = await response.json();
 // 业务层先处理 HTTP 非成功状态，再按第 2.3 节识别人工兜底。
 ```
 
-跨域 HTTP 方案还需实现来源白名单、OPTIONS 对 Content-Type/Authorization 的允许规则，以及 X-AI-Provider、X-AI-Result-Source、Retry-After 的可读响应头配置；当前均未完成。若改为同源业务后端代理，也要验证用户身份、保留必要来源信息并保护 AI 上游访问。具体采用哪种入口待确认；不能以删除本机门禁替代正式认证。
+跨域 HTTP 方案还需实现来源白名单、OPTIONS 对 Content-Type/Authorization 的允许规则，以及 X-AI-Provider、X-AI-Result-Source、X-Request-ID、Retry-After 的可读响应头配置；当前均未完成。若改为同源业务后端代理，也要验证用户身份、保留必要来源信息并保护 AI 上游访问。具体采用哪种入口待确认；不能以删除本机门禁替代正式认证。
 
 ## 12. 交给复习模式组员的并行开发清单
 
