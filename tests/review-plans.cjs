@@ -137,6 +137,17 @@ async function testReviewPlanApi({base,temp}) {
     await api('DELETE','/notes/'+n.id);
     const changed=await api('GET',url);assert.equal(changed.skipped,1);assert.equal(changed.completed,1);assert.equal(changed.pending,1);assert.equal(changed.completionRate,50);
     items=await api('GET',url+'/items?status=skipped');assert.equal(items[0].title_snapshot,'note');assert.equal(items[0].source_deleted,1);
+    // 提前复习：计划内容在“当天没有任务”的预估日期也能开计划会话，并挂回日历那一天。
+    const spanExam=new Date(Date.parse(today+'T00:00:00Z')+86400000*5).toISOString().slice(0,10);
+    const span=await api('POST',prefix,{...body,name:'span',examDate:spanExam,selectedItems:[{type:'material',id:m.id}]},201);
+    const spanSchedule=await api('GET',prefix+'/'+span.id+'/schedule');
+    const futureDay=spanSchedule.days.find(day=>day.date>today);
+    assert.ok(futureDay,'span plan has a future preview day');
+    const preview=await api('POST',c+'/review-sessions',{requestId:'plan-preview-session',sourceType:'plan',sourceId:span.id,scheduledDate:futureDay.date,selectedItems:[{type:'material',id:m.id}]},201);
+    assert.equal(preview.source_type,'plan');assert.equal(preview.source_date,futureDay.date);
+    const afterSchedule=await api('GET',prefix+'/'+span.id+'/schedule');
+    const linked=afterSchedule.days.find(day=>day.date===futureDay.date);
+    assert.ok(linked && Array.isArray(linked.sessionItems) && linked.sessionItems.length===1,'preview-date session appears on the calendar');
     const empty=await api('POST',prefix,{...body,selectedItems:[{type:'material',id:m.id}]},201);
     await api('DELETE','/materials/'+m.id);
     const skipped=await api('GET',prefix+'/'+empty.id);assert.equal(skipped.skipped,1);assert.equal(skipped.completed,0);assert.equal(skipped.completionRate,0);

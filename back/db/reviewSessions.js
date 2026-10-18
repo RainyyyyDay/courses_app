@@ -94,7 +94,11 @@ function createReviewSession(courseId,body,repeatFrom=null) {
       let planItem=null;
       if(plan) {
         planItem=db.prepare("SELECT id FROM review_plan_items WHERE plan_id=? AND item_type=? AND item_id=? AND scheduled_date=? AND status='pending'").get(plan.id,item.type,item.id,body.scheduledDate);
-        if(!planItem) planError(409,'PLAN_ITEM_UNAVAILABLE','内容不是该日期的待完成计划任务');
+        if(!planItem) {
+          // 允许提前复习/补做：内容属于这个计划即可，不强制绑定某条具体任务。
+          const inPlan=db.prepare('SELECT 1 FROM review_plan_items WHERE plan_id=? AND item_type=? AND item_id=?').get(plan.id,item.type,item.id);
+          if(!inPlan) planError(409,'PLAN_ITEM_UNAVAILABLE','内容不属于当前计划');
+        }
       }
       return {...item,title:row.title,planItemId:planItem?.id || null};
     });

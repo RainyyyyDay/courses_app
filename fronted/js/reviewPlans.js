@@ -14,6 +14,11 @@ function planProgressHtml(plan) {
 }
 // 智能排期预览：后台按记忆状态算好的日程，渲染成月历；请求失败时整块不显示。
 let planCalendar = null;
+// 当天有真实会话时以会话项目为准（包含已跳过/未通过），否则用排期预估。
+function planDayItems(day) {
+  if (!day) return [];
+  return day.sessionItems && day.sessionItems.length ? day.sessionItems : day.items;
+}
 function planCalendarDate(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
@@ -29,7 +34,9 @@ function planCalendarHtml() {
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = planCalendarDate(c.year, c.month, day);
     const info = c.dayMap.get(date);
-    const count = info ? info.items.length : 0;
+    const dayItems = planDayItems(info);
+    const count = dayItems.length;
+    const minutes = dayItems.reduce((sum, item) => sum + (Number(item.minutes) || 0), 0);
     const overdue = !!info && date < today && info.state !== 'done';
     const classes = ['plan-calendar-cell'];
     if (!info) classes.push('is-empty');
@@ -42,7 +49,7 @@ function planCalendarHtml() {
       : info && info.state === 'done' ? '<span class="plan-calendar-mark is-check">✓</span>'
         : overdue ? '<span class="plan-calendar-mark is-overdue-mark">!</span>'
           : info && date === today ? '<span class="plan-calendar-mark is-today-mark">▼</span>' : '';
-    const title = info ? `${date} · ${count} 项 · 约 ${info.minutes} 分钟` : (date === c.examDate ? `${date} · 考试日` : '');
+    const title = info ? `${date} · ${count} 项 · 约 ${minutes} 分钟` : (date === c.examDate ? `${date} · 考试日` : '');
     cells.push(`<div class="${classes.join(' ')}" ${info ? `onclick="openPlanScheduleDay('${date}')"` : ''} ${title ? `title="${escapeHtml(title)}"` : ''}><span class="plan-calendar-day">${day}</span>${mark}${info ? `<span class="plan-calendar-count">${count} 项</span>` : ''}</div>`);
   }
   return `<div class="plan-calendar-head"><button type="button" onclick="shiftPlanCalendar(-1)" aria-label="上个月">‹</button><strong>${c.year} 年 ${c.month + 1} 月</strong><button type="button" onclick="shiftPlanCalendar(1)" aria-label="下个月">›</button></div>
@@ -92,16 +99,23 @@ function openPlanScheduleDay(date) {
     : day.sessionCounts || { total: day.items.length, completed: 0, skipped: 0, pending: day.items.length };
   const stats = statsSource.total
     ? `<p class="plan-day-stats">已完成 ${statsSource.completed} / ${statsSource.total - statsSource.skipped} · 待完成 ${statsSource.pending} · 已跳过 ${statsSource.skipped}</p>` : '';
+  // 当天有会话时以会话的真实项目为准（包含已跳过/未通过），否则用排期预估。
+  const source = planDayItems(day);
   const rows = ['mistake', 'material', 'note'].map(type => {
-    const items = day.items.filter(item => item.type === type);
+    const items = source.filter(item => item.type === type);
     if (!items.length) return ''; // 没有内容的类型不显示
     const minutes = items.reduce((sum, item) => sum + (Number(item.minutes) || 0), 0);
+    const pending = items.filter(item => !item.status || item.status === 'pending').length;
+    const skipped = items.filter(item => item.status === 'skipped').length;
+    const failed = items.filter(item => item.status === 'completed' && item.result === 'failed').length;
     const canResume = !!day.sessionId && ['active', 'paused'].includes(day.sessionStatus) && (day.sessionTypes || []).includes(type);
-    const label = canResume ? '继续' : day.state === 'done' ? '再来一遍' : '复习';
+    const label = canResume ? '继续' : pending > 0 ? '复习' : '再来一遍';
+    const detail = `${items.length} 项 · 约 ${minutes} 分钟${failed ? ` · 未通过 ${failed}` : ''}${skipped ? ` · 跳过 ${skipped}` : ''}`;
     const deleted = items.filter(item => item.sourceDeleted).map(item => item.title);
-    return `<article class="review-day-card" data-plan-day-type="${type}"><div><strong>${PLAN_TYPE_LABELS[type]}</strong><p class="detail-meta">${items.length} 项 · 约 ${minutes} 分钟</p>${deleted.length ? `<p class="detail-meta plan-deleted">内容已删除：${deleted.map(escapeHtml).join('、')}</p>` : ''}</div><button type="button" onclick="startPlanScheduleDay('${date}','${type}','${label}')">${label}</button></article>`;
+    return `<article class="review-day-card" data-plan-day-type="${type}"><div><strong>${PLAN_TYPE_LABELS[type]}</strong><p class="detail-meta">${detail}</p>${deleted.length ? `<p class="detail-meta plan-deleted">内容已删除：${deleted.map(escapeHtml).join('、')}</p>` : ''}</div><button type="button" onclick="startPlanScheduleDay('${date}','${type}','${label}')">${label}</button></article>`;
   }).join('');
-  document.getElementById('reviewPlanDayTitle').textContent = `${date} · ${day.items.length} 项 · 约 ${day.minutes} 分钟`;
+  const minutes = source.reduce((sum, item) => sum + (Number(item.minutes) || 0), 0);
+  document.getElementById('reviewPlanDayTitle').textContent = `${date} · ${source.length} 项 · 约 ${minutes} 分钟`;
   document.getElementById('reviewPlanDayBody').innerHTML = `${stats}${day.state === 'done' ? `<p class="plan-day-done">当天已全部通过 ✓${future ? '（提前完成）' : ''}</p>`
     : day.state === 'partial' ? '<p class="plan-day-partial">当天还有未通过或跳过，可以继续。</p>' : ''}${rows}`;
   if (future) {
@@ -124,13 +138,14 @@ async function startPlanScheduleDay(date, type, action = '复习') {
   const state = reviewPlanDetail, day = planCalendar?.dayMap.get(date);
   if (!state || !day || planReviewStarting) return;
   closePlanScheduleDay();
+  if (state.plan.status !== 'active') { showToast('计划已归档，请先恢复计划'); return; }
   if (action === '继续' && day.sessionId) return resumeReviewRecord(day.sessionId);
   if (action === '再来一遍') {
     const items = day.items.filter(item => item.type === type).map(item => ({ type: item.type, id: item.id }));
     if (!items.length) return;
     planReviewStarting = true;
     try {
-      const session = await createReviewRecord('total', items, { requestId: reviewRequestId() });
+      const session = await createReviewRecord('plan', items, { planId: state.plan.id, date, requestId: reviewRequestId() });
       await enterCenterReview(session);
     } catch (err) { showToast(err.message); }
     finally { planReviewStarting = false; }
@@ -142,7 +157,7 @@ async function startPlanScheduleDay(date, type, action = '复习') {
   if (!items.length) return;
   planReviewStarting = true;
   try {
-    const session = await createReviewRecord('total', items, { requestId: reviewRequestId() });
+    const session = await createReviewRecord('plan', items, { planId: state.plan.id, date, requestId: reviewRequestId() });
     await enterCenterReview(session);
   } catch (err) { showToast(err.message); }
   finally { planReviewStarting = false; }

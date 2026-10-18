@@ -973,6 +973,7 @@ body.mistake-review-open { overflow: hidden; }
 .plan-calendar-cell.is-overdue { border-color: #eb9a9a; background: #fdeeee; }
 .plan-calendar-cell.is-exam { border-color: #eeb04a; background: #fff5e2; }
 .plan-calendar-day { font-weight: 600; }
+.plan-calendar-day, .plan-calendar-mark, .plan-calendar-count { pointer-events: none; }
 .plan-calendar-mark { position: absolute; top: 4px; right: 6px; font-size: 11px; color: #4a6cf7; }
 .plan-calendar-mark.is-check { color: #1f9d5b; font-weight: 700; font-size: 16px; }
 .plan-calendar-mark.is-overdue-mark { color: #d64545; font-weight: 700; }
@@ -992,6 +993,8 @@ body.mistake-review-open { overflow: hidden; }
 
 /* 排期日历：当天任务弹窗 */
 .review-day-dialog { max-width: 430px; }
+/* 关闭后遮罩正在淡出时也不要吃点击 */
+#reviewPlanDayModal:not(.show) { pointer-events: none; }
 .review-day-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .review-day-head h3 { margin: 0; font-size: 16px; }
 .review-day-close { width: 30px; height: 30px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #7a8394; font-size: 22px; cursor: pointer; }

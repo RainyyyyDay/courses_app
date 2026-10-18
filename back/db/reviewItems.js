@@ -192,6 +192,7 @@ function getReviewPlanSchedule(courseId, planId) {
     let state = 'none';
     let sessionTypes = [];
     let sessionCounts = null;
+    let sessionItems = [];
     if (session) {
       const counts = db.prepare(`SELECT COUNT(*) total,
         SUM(CASE WHEN status='completed' AND result='failed' THEN 1 ELSE 0 END) failed,
@@ -213,6 +214,15 @@ function getReviewPlanSchedule(courseId, planId) {
       };
       sessionTypes = db.prepare('SELECT DISTINCT item_type FROM review_session_items WHERE session_id=?')
         .all(session.id).map(row => row.item_type);
+      sessionItems = db.prepare(`SELECT item_type,item_id,title_snapshot,status,result
+        FROM review_session_items WHERE session_id=? ORDER BY position`).all(session.id).map(row => ({
+        type: row.item_type,
+        id: row.item_id,
+        title: row.title_snapshot,
+        status: row.status,
+        result: row.result,
+        minutes: 5,
+      }));
     }
     return {
       ...day,
@@ -221,6 +231,7 @@ function getReviewPlanSchedule(courseId, planId) {
       sessionStatus: session ? session.status : null,
       sessionTypes,
       sessionCounts,
+      sessionItems,
       items: day.items.map(item => ({ ...item, title: titleFor(item.type, item.id) })),
     };
   });
@@ -257,6 +268,7 @@ function getReviewPlanSchedule(courseId, planId) {
       sessionStatus: preview ? preview.sessionStatus : null,
       sessionTypes: preview ? preview.sessionTypes : [],
       sessionCounts: preview ? preview.sessionCounts : null,
+      sessionItems: preview ? preview.sessionItems : [],
       source: 'plan',
     };
   });
