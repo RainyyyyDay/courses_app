@@ -318,7 +318,7 @@ function getReviewPlanSchedule(courseId, planId) {
       sessionItems: preview ? preview.sessionItems : [],
       source: 'plan',
     };
-  });
+  }).filter(Boolean);
   // 过期未完成的项目，按当前排期算出它们下一次出现在哪一天，供界面提示「已往后排」。
   const futureByItem = new Map();
   for (const day of days) {

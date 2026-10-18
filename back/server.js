@@ -575,9 +575,9 @@ function mistakeApi(handler) {
     catch (err) {
       // 失败的创建请求只清理本次新上传的文件。
       if (req.file) fs.rm(path.join(uploadDir, req.file.filename), { force: true }, () => {});
-      if (!err.status) console.error('错题接口失败', err);
+      if (!err.status) console.error('接口失败', req.method, req.originalUrl, err);
       res.status(err.status || 500).json({ code: err.code || 'INTERNAL_ERROR',
-        message: err.status ? err.message : '错题操作失败', details: {} });
+        message: err.status ? err.message : '操作失败，请重试', details: {} });
     }
   };
 }

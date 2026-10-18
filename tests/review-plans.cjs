@@ -162,6 +162,15 @@ async function testReviewPlanApi({base,temp}) {
     assert.deepEqual(changedSchedule.days.map(day=>day.date),firstSchedule.days.map(day=>day.date),'old schedule stays until applied');
     const applied=await api('POST',prefix+'/'+snapPlan.id+'/schedule/apply',undefined,200);
     assert.equal(applied.hasNewSchedule,false,'applying clears the pending flag');
+    // 回归：未来日期已完成的旧任务 + 应用新排期，不能因为空日期而 500。
+    const m2=await api('POST',c+'/materials',{title:'future material',content:'future body'});
+    const futurePlan=await api('POST',prefix,{...body,name:'future-apply',examDate:spanExam,selectedItems:[{type:'material',id:m.id},{type:'material',id:m2.id}]},201);
+    const futureTask=(await api('GET',prefix+'/'+futurePlan.id+'/items')).find(item=>item.scheduled_date>today);
+    if (futureTask) {
+      await api('PATCH',`${c}/materials/${futureTask.item_id}/review?planItemId=${futureTask.id}`,{reviewStatus:'reviewed'});
+    }
+    const appliedFuture=await api('POST',prefix+'/'+futurePlan.id+'/schedule/apply',undefined,200);
+    assert.equal(appliedFuture.hasNewSchedule,false,'apply survives future completed tasks');
     const empty=await api('POST',prefix,{...body,selectedItems:[{type:'material',id:m.id}]},201);
     await api('DELETE','/materials/'+m.id);
     const skipped=await api('GET',prefix+'/'+empty.id);assert.equal(skipped.skipped,1);assert.equal(skipped.completed,0);assert.equal(skipped.completionRate,0);
