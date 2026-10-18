@@ -42,7 +42,7 @@ function planCalendarHtml() {
     const classes = ['plan-calendar-cell'];
     if (!info) classes.push('is-empty');
     else classes.push('has-items');
-    if (date === today) classes.push('is-today');
+    if (date === today && info) classes.push('is-today');
     if (info && info.state === 'done') classes.push('is-done');
     if (overdue) classes.push('is-overdue');
     if (date === c.examDate) classes.push('is-exam');
@@ -50,14 +50,17 @@ function planCalendarHtml() {
       : info && info.state === 'done' ? '<span class="plan-calendar-mark is-check">✓</span>'
         : overdue ? '<span class="plan-calendar-mark is-overdue-mark">!</span>'
           : info && date === today ? '<span class="plan-calendar-mark is-today-mark">▼</span>' : '';
-    const title = info ? `${date} · ${count} 项 · 约 ${minutes} 分钟` : (date === c.examDate ? `${date} · 考试日` : '');
+    const title = info ? `${date} · ${count} 项 · 约 ${minutes} 分钟`
+      : date === c.examDate ? `${date} · 考试日`
+        : date === today ? `${date} · 今天没有安排` : '';
     if (info) {
       cells.push(`<button type="button" class="${classes.join(' ')}" data-plan-date="${date}" ${title ? `title="${escapeHtml(title)}"` : ''}><span class="plan-calendar-day">${day}</span>${mark}<span class="plan-calendar-count">${count} 项</span></button>`);
     } else {
       cells.push(`<div class="${classes.join(' ')}" ${title ? `title="${escapeHtml(title)}"` : ''}><span class="plan-calendar-day">${day}</span>${mark}</div>`);
     }
   }
-  return `<div class="plan-calendar-head"><button type="button" onclick="shiftPlanCalendar(-1)" aria-label="上个月">‹</button><strong>${c.year} 年 ${c.month + 1} 月</strong><button type="button" onclick="shiftPlanCalendar(1)" aria-label="下个月">›</button></div>
+  const applyButton = c.hasNewSchedule ? '<button type="button" class="plan-calendar-apply" onclick="applyPlanSchedule()">应用新排期</button>' : '';
+  return `<div class="plan-calendar-head"><button type="button" onclick="shiftPlanCalendar(-1)" aria-label="上个月">‹</button><strong>${c.year} 年 ${c.month + 1} 月</strong><div class="plan-calendar-actions"><button type="button" onclick="shiftPlanCalendar(1)" aria-label="下个月">›</button>${applyButton}</div></div>
     <div class="plan-calendar-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
     <div class="plan-calendar-grid">${cells.join('')}</div>
     <p class="plan-calendar-legend"><span class="is-today-mark">▼</span> 今天要复习 · <span class="is-check">✓</span> 已全部通过 · <span class="is-overdue-mark">!</span> 已过期未完成 · <span class="is-exam-mark">试</span> 考试日</p>`;
@@ -72,6 +75,7 @@ function planScheduleHtml(schedule) {
     month: (month || 1) - 1,
     dayMap: new Map(schedule.days.map(day => [day.date, day])),
     examDate: schedule.examDate,
+    hasNewSchedule: !!schedule.hasNewSchedule,
   };
   const warnings = (feasibility.warnings || []).map(text => `<li>${escapeHtml(text)}</li>`).join('');
   return `<section class="detail-card plan-schedule"><h2>智能排期预览</h2>
@@ -87,6 +91,16 @@ function shiftPlanCalendar(delta) {
   c.month = date.getUTCMonth();
   const box = document.getElementById('reviewPlanCalendar');
   if (box) box.innerHTML = planCalendarHtml();
+}
+async function applyPlanSchedule() {
+  const state = reviewPlanDetail;
+  if (!state || state.busy) return;
+  state.busy = true;
+  try {
+    await requestApi(reviewPlanApi(state.plan.id + '/schedule/apply'), { method: 'POST' });
+    if (state.courseId === currentCourseId) await openReviewPlan(state.plan.id);
+  } catch (err) { showToast(err.message); }
+  finally { state.busy = false; }
 }
 // 事件委托：整格（含内部文字、标记）都算点击，不依赖具体子元素。
 function bindPlanCalendarClicks() {

@@ -8,7 +8,7 @@
 const { db } = require('./connection');
 
 // ===== 当前程序支持的数据库版本 =====
-const CURRENT_DB_VERSION = 15;
+const CURRENT_DB_VERSION = 16;
 
 // 判断某张表是否已经存在
 function tableExists(name) {
@@ -270,6 +270,19 @@ function migrateReviewResults() {
   catch (err) { db.exec('ROLLBACK'); throw err; }
 }
 
+// v15 → v16：保存「已确认的排期快照」。提前复习后先不自动展示新排期，
+// 由用户在日历上点「应用新排期」才切换。
+function migratePlanScheduleSnapshot() {
+  if (getUserVersion() !== 15) return;
+  db.exec('BEGIN');
+  try {
+    const exists = db.prepare('PRAGMA table_info(review_plans)').all().some((c) => c.name === 'schedule_json');
+    if (!exists) db.exec('ALTER TABLE review_plans ADD COLUMN schedule_json TEXT');
+    setUserVersion(16);
+    db.exec('COMMIT');
+  } catch (err) { db.exec('ROLLBACK'); throw err; }
+}
+
 function upgradeToV15() {
   const exists = db.prepare('PRAGMA table_info(review_session_items)').all().some((c) => c.name === 'result');
   if (!exists) {
@@ -494,6 +507,7 @@ migrate();
 migrateReviewSessions();
 migrateReviewScheduling();
 migrateReviewResults();
+migratePlanScheduleSnapshot();
 
 // ===== 建表：Phase 0 的基础结构（version 1）=====
 // 每一张“子表”都用 course_id 指向 courses(id)，

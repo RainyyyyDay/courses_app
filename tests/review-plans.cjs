@@ -23,7 +23,7 @@ function testReviewPlanMigrations(source,temp) {
     const fixture=path.join(temp,'plan-migration-'+version); fs.mkdirSync(fixture);
     fs.cpSync(path.join(source,'db'),path.join(fixture,'db'),{recursive:true});
     const schema=fs.readFileSync(path.join(source,'db/schema.js'),'utf8');
-    const oldSchema=schema.replace('CURRENT_DB_VERSION = 15','CURRENT_DB_VERSION = 11').replace('if (getUserVersion() === 11)','if (false)').replace('migrateReviewSessions();','').replace('migrateReviewScheduling();','').replace('migrateReviewResults();','');
+    const oldSchema=schema.replace('CURRENT_DB_VERSION = 16','CURRENT_DB_VERSION = 11').replace('if (getUserVersion() === 11)','if (false)').replace('migrateReviewSessions();','').replace('migrateReviewScheduling();','').replace('migrateReviewResults();','').replace('migratePlanScheduleSnapshot();','');
     assert.notEqual(oldSchema,schema);
     fs.writeFileSync(path.join(fixture,'db/schema.js'),oldSchema);
     const script=`
@@ -47,7 +47,7 @@ function testReviewPlanMigrations(source,temp) {
         d.exec('DROP TABLE idx_review_plans_course');
       }
       require('./db/schema.js');
-      assert.equal(d.prepare('PRAGMA user_version').get().user_version,15,'single startup reaches v15');
+      assert.equal(d.prepare('PRAGMA user_version').get().user_version,16,'single startup reaches v16');
       for(const s of snapshots) assert.deepEqual(d.prepare('SELECT '+s.columns+' FROM '+s.name+' ORDER BY rowid').all(),s.rows);
       const p=store.createReviewPlan(c.id,{name:'plan',startDate:'2026-10-16',examDate:'2026-10-28',selectedItems:[{type:'material',id:m.id}]});
       const before=JSON.stringify(store.getReviewPlan(c.id,p.id));
@@ -148,6 +148,20 @@ async function testReviewPlanApi({base,temp}) {
     const afterSchedule=await api('GET',prefix+'/'+span.id+'/schedule');
     const linked=afterSchedule.days.find(day=>day.date===futureDay.date);
     assert.ok(linked && Array.isArray(linked.sessionItems) && linked.sessionItems.length===1,'preview-date session appears on the calendar');
+    // 排期快照：提前复习后先保持旧排期，点「应用新排期」才切换。
+    const snapPlan=await api('POST',prefix,{...body,name:'snapshot',examDate:spanExam,selectedItems:[{type:'material',id:m.id}]},201);
+    const firstSchedule=await api('GET',prefix+'/'+snapPlan.id+'/schedule');
+    assert.equal(firstSchedule.hasNewSchedule,false,'initial snapshot matches the computed schedule');
+    d.prepare(`INSERT INTO review_item_states(course_id,item_type,item_id,stability,difficulty,reps,lapses,state,last_grade,last_review_date,due_date,elapsed_days,scheduled_days,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(course_id,item_type,item_id) DO UPDATE SET
+      stability=excluded.stability,difficulty=excluded.difficulty,reps=excluded.reps,state=excluded.state,
+      last_grade=excluded.last_grade,last_review_date=excluded.last_review_date,due_date=excluded.due_date,updated_at=excluded.updated_at`)
+      .run(course.id,'material',m.id,60,5,3,0,'review',3,today,spanExam,0,20,new Date().toISOString());
+    const changedSchedule=await api('GET',prefix+'/'+snapPlan.id+'/schedule');
+    assert.equal(changedSchedule.hasNewSchedule,true,'recomputed schedule is flagged for approval');
+    assert.deepEqual(changedSchedule.days.map(day=>day.date),firstSchedule.days.map(day=>day.date),'old schedule stays until applied');
+    const applied=await api('POST',prefix+'/'+snapPlan.id+'/schedule/apply',undefined,200);
+    assert.equal(applied.hasNewSchedule,false,'applying clears the pending flag');
     const empty=await api('POST',prefix,{...body,selectedItems:[{type:'material',id:m.id}]},201);
     await api('DELETE','/materials/'+m.id);
     const skipped=await api('GET',prefix+'/'+empty.id);assert.equal(skipped.skipped,1);assert.equal(skipped.completed,0);assert.equal(skipped.completionRate,0);

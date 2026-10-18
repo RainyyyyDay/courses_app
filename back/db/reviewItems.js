@@ -141,10 +141,9 @@ function recordReviewItemGrade(courseId, type, id, body) {
 }
 
 // 计划排期预览：只读，不落库。真正执行仍走 review-sessions。
-function getReviewPlanSchedule(courseId, planId) {
-  const plan = db.prepare('SELECT * FROM review_plans WHERE id=? AND course_id=?').get(planId, courseId);
-  if (!plan) planError(404, 'PLAN_NOT_FOUND', '找不到当前课程的计划');
-  const rows = db.prepare('SELECT DISTINCT item_type,item_id FROM review_plan_items WHERE plan_id=?').all(planId);
+// 计划里选中的内容 + 各自记忆状态 + 计划参数（生成排期用）。
+function planScheduleParts(courseId, plan) {
+  const rows = db.prepare('SELECT DISTINCT item_type,item_id FROM review_plan_items WHERE plan_id=?').all(plan.id);
   const items = rows.map(row => {
     const mistakeType = row.item_type === 'mistake'
       ? db.prepare('SELECT mistake_type FROM mistakes WHERE id=?').get(row.item_id)?.mistake_type || null
@@ -158,6 +157,38 @@ function getReviewPlanSchedule(courseId, planId) {
   });
   const states = {};
   for (const item of items) states[item.type + ':' + item.id] = fromRow(stateRow(courseId, item.type, item.id));
+  return {
+    items,
+    states,
+    profile: { ...(PROFILES[plan.strategy] || PROFILES.balanced), targetRetention: plan.target_retention },
+    capacity: { dailyMinutes: plan.daily_minutes, dailyMaxItems: plan.daily_max_items },
+  };
+}
+
+// 只保留排期的“结构”（日期 + 当天内容），状态每次展示时实时计算。
+function scheduleStructure(days) {
+  return (days || []).map(day => ({
+    date: day.date,
+    minutes: Number(day.minutes) || 0,
+    items: (day.items || []).map(item => ({
+      type: item.type,
+      id: item.id,
+      minutes: Number(item.minutes) || 5,
+      roundNo: item.roundNo || 1,
+      reason: item.reason || 'repeat',
+    })),
+  }));
+}
+function structureKey(days) {
+  return scheduleStructure(days)
+    .map(day => day.date + ':' + day.items.map(item => item.type + item.id).sort().join(','))
+    .join('|');
+}
+
+function getReviewPlanSchedule(courseId, planId) {
+  const plan = db.prepare('SELECT * FROM review_plans WHERE id=? AND course_id=?').get(planId, courseId);
+  if (!plan) planError(404, 'PLAN_NOT_FOUND', '找不到当前课程的计划');
+  const { items, states, profile, capacity } = planScheduleParts(courseId, plan);
 
   const today = planToday();
   const base = {
@@ -166,14 +197,23 @@ function getReviewPlanSchedule(courseId, planId) {
     dailyMinutes: plan.daily_minutes, dailyMaxItems: plan.daily_max_items,
   };
   if (today >= plan.exam_date) {
-    return { ...base, days: [], occurrences: [], unscheduled: [],
+    return { ...base, days: [], occurrences: [], unscheduled: [], hasNewSchedule: false,
       feasibility: { feasible: false, shortfallMinutes: 0, coverage: {}, warnings: ['考试日期已过，计划不可再排期'] } };
   }
-  const profile = { ...(PROFILES[plan.strategy] || PROFILES.balanced), targetRetention: plan.target_retention };
-  const result = planOccurrences({
-    items, states, today, examDate: plan.exam_date, profile,
-    capacity: { dailyMinutes: plan.daily_minutes, dailyMaxItems: plan.daily_max_items },
-  });
+  const result = planOccurrences({ items, states, today, examDate: plan.exam_date, profile, capacity });
+  // 已确认的排期快照：提前复习后先不自动替换，用户点「应用新排期」才切换。
+  const liveStructure = scheduleStructure(result.days);
+  let snapshot = null;
+  try { snapshot = plan.schedule_json ? JSON.parse(plan.schedule_json) : null; } catch { snapshot = null; }
+  if (!snapshot || !Array.isArray(snapshot.days)) {
+    snapshot = { days: liveStructure, generatedAt: new Date().toISOString() };
+    db.prepare('UPDATE review_plans SET schedule_json=? WHERE id=?').run(JSON.stringify(snapshot), plan.id);
+  }
+  const hasNewSchedule = structureKey(snapshot.days) !== structureKey(liveStructure);
+  // 采纳新排期后，只把「采纳之后」的会话算作这一版的完成记录：
+  // 之前的提前复习不在这版排期里显示绿勾。
+  const since = snapshot.generatedAt || null;
+  result.days = snapshot.days;
   // 日历要用标题；同一天的完成状态取该计划该日期最近一次计划复习会话。
   const titleCache = new Map();
   const titleFor = (type, id) => {
@@ -188,7 +228,8 @@ function getReviewPlanSchedule(courseId, planId) {
   const scheduledDays = result.days.map(day => {
     const session = db.prepare(`SELECT id,status FROM review_sessions
       WHERE course_id=? AND source_type='plan' AND source_id=? AND source_date=?
-      ORDER BY (status='completed') DESC, updated_at DESC, id DESC LIMIT 1`).get(courseId, planId, day.date);
+      ${since ? 'AND created_at >= ?' : ''}
+      ORDER BY (status='completed') DESC, updated_at DESC, id DESC LIMIT 1`).get(courseId, planId, day.date, ...(since ? [since] : []));
     let state = 'none';
     let sessionTypes = [];
     let sessionCounts = null;
@@ -290,7 +331,20 @@ function getReviewPlanSchedule(courseId, planId) {
     }
     day.movedTo = [...dates].sort();
   }
-  return { ...base, ...result, days };
+  return { ...base, ...result, days, hasNewSchedule };
 }
 
-module.exports = { getReviewItemState, recordReviewItemGrade, recordGradeInTransaction, getReviewPlanSchedule };
+// 采纳当前记忆状态算出的新排期（替换快照）。
+function applyReviewPlanSchedule(courseId, planId) {
+  const plan = db.prepare('SELECT * FROM review_plans WHERE id=? AND course_id=?').get(planId, courseId);
+  if (!plan) planError(404, 'PLAN_NOT_FOUND', '找不到当前课程的计划');
+  if (planToday() < plan.exam_date) {
+    const { items, states, profile, capacity } = planScheduleParts(courseId, plan);
+    const live = planOccurrences({ items, states, today: planToday(), examDate: plan.exam_date, profile, capacity });
+    const snapshot = { days: scheduleStructure(live.days), generatedAt: new Date().toISOString() };
+    db.prepare('UPDATE review_plans SET schedule_json=? WHERE id=?').run(JSON.stringify(snapshot), plan.id);
+  }
+  return getReviewPlanSchedule(courseId, planId);
+}
+
+module.exports = { getReviewItemState, recordReviewItemGrade, recordGradeInTransaction, getReviewPlanSchedule, applyReviewPlanSchedule };

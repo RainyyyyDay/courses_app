@@ -226,6 +226,9 @@ app.get('/api/courses/:courseId/review-plans/:planId/items', mistakeApi((req,res
 app.get('/api/courses/:courseId/review-plans/:planId/schedule', mistakeApi((req,res) => {
   res.json(db.getReviewPlanSchedule(mistakeCourse(req.params.courseId),positiveId(req.params.planId)));
 }));
+app.post('/api/courses/:courseId/review-plans/:planId/schedule/apply', mistakeApi((req,res) => {
+  res.json(db.applyReviewPlanSchedule(mistakeCourse(req.params.courseId),positiveId(req.params.planId)));
+}));
 function reviewItemType(value) {
   if (!['material','note','mistake'].includes(value)) mistakeError(400,'INVALID_ARGUMENT','内容类型必须是 material / note / mistake');
   return value;
