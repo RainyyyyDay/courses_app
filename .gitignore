@@ -1,5 +1,6 @@
 # Installed dependencies
 **/node_modules/
+ai-service/work/
 
 # Local application data and uploaded files
 back/data/

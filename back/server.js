@@ -9,12 +9,17 @@ const fs = require('fs');
 // 这里负责处理接口。
 const db = require('./db/index.js');
 const aiService = require('./ai/service');
+const { createAiProxy } = require('./aiProxy.js');
 
 const app = express();
 
 // 允许跨域、允许解析 JSON 数据
 app.use(cors());
 app.use(express.json());
+
+// AI 入口先按正式路径占位，但在真实用户认证接入前保持关闭。
+// 不传 authenticate / upstreamBaseUrl 时，模块会在任何上游请求发生前返回 503。
+app.use('/api/ai', createAiProxy());
 
 // ===== 文件上传配置 =====
 const uploadDir = path.join(__dirname, 'uploads');
