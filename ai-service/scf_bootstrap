@@ -1,0 +1,4 @@
+#!/bin/bash
+set -eu
+cd /var/user
+exec /var/lang/node24/bin/node src/scf-server.js

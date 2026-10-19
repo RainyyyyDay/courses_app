@@ -1,5 +1,7 @@
 # 独立 AI 复习分类服务（本地开发版）
 
+SCF Web 函数的独立 mock 准备入口、默认关闭的业务路由、离线打包及验收见 [SCF_PREPARATION.md](SCF_PREPARATION.md)。下文本地入口约束不变；旧 CloudBase 准备说明中的“尚无云入口”已由该阶段文档更新，尚未接入正式认证或部署。
+
 遵循仓库 CommonJS、Express 5、Node.js 24、npm lockfile 和 Node 内置测试约定。不加载 `back`、不访问 SQLite、不修改学习流程、不处理图片。只新增本目录。类别和分类依据尚未确定，本版所有结果 `needs_review: true`（表示需要人工复核），不是判断学生是否需要复习。
 
 ## 本地启动

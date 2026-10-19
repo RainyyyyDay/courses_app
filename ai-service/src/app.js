@@ -9,6 +9,22 @@ function fail(res, status, code) {
 }
 
 function createApp(config, { provider, authenticate, logger } = {}) {
+  return createApplication(config, { provider, authenticate, logger }, true);
+}
+
+// Deliberately no authentication/provider injection seam in this preparation entry.
+// All API requests stay closed until a separately reviewed service authorization exists.
+function createScfPreparationApp(config) {
+  if (config.profile !== 'scf-preparation' || config.provider !== 'mock' ||
+      config.host !== '0.0.0.0' || config.port !== 9000) throw new Error('Invalid SCF preparation profile');
+  const { MockProvider } = require('./providers/mock');
+  return createApplication(config, {
+    provider: new MockProvider(),
+    authenticate: (req, res) => fail(res, 503, 'AI_AUTH_NOT_CONFIGURED')
+  }, false);
+}
+
+function createApplication(config, { provider, authenticate, logger }, localOnly) {
   const app = express();
   provider ||= createProvider(config);
   app.disable('x-powered-by');
@@ -17,14 +33,16 @@ function createApp(config, { provider, authenticate, logger } = {}) {
   app.use((req, res, next) => {
     res.set({ 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     const remote = req.socket.remoteAddress;
-    if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(remote) ||
+    if (localOnly && (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(remote) ||
         req.headers.origin || req.headers['x-forwarded-for'] ||
-        !/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(req.headers.host || '')) {
+        !/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(req.headers.host || ''))) {
       return fail(res, 403, 'LOCAL_ONLY');
     }
     next();
   });
-  app.get('/health', (req, res) => res.json({ status: 'ok', provider: config.provider, local_only: true }));
+  app.get('/health', (req, res) => res.json(localOnly ?
+    { status: 'ok', provider: config.provider, local_only: true } :
+    { status: 'ok', provider: 'mock', local_only: false, mode: 'scf-preparation', business_enabled: false }));
   // Authentication seam: replace with verified user identity before any public deployment.
   app.use('/api', authenticate || ((req, res, next) => next()));
   let count = 0;
@@ -86,4 +104,4 @@ function createApp(config, { provider, authenticate, logger } = {}) {
   });
   return app;
 }
-module.exports = { createApp };
+module.exports = { createApp, createScfPreparationApp };

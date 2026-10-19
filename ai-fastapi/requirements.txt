@@ -1,0 +1,5 @@
+# Python >=3.11. Host FastAPI may already provide this dependency.
+fastapi>=0.115,<1
+httpx>=0.28.1,<0.29
+# Development harness only; omit from the host if it already has an ASGI server.
+uvicorn>=0.30,<1

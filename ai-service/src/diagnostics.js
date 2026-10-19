@@ -1,6 +1,6 @@
 const { randomUUID } = require('node:crypto');
 const sources = ['input_fallback', 'provider', 'validation_fallback', 'error'];
-const codes = ['LOCAL_ONLY', 'RATE_LIMITED', 'JSON_REQUIRED', 'INVALID_INPUT', 'INVALID_JSON',
+const codes = ['AI_AUTH_NOT_CONFIGURED', 'LOCAL_ONLY', 'RATE_LIMITED', 'JSON_REQUIRED', 'INVALID_INPUT', 'INVALID_JSON',
   'BODY_TOO_LARGE', 'UNSUPPORTED_ENCODING', 'NOT_FOUND', 'INTERNAL_ERROR', 'AI_BUSY',
   'AI_AUTH_FAILED', 'AI_BALANCE_UNAVAILABLE', 'AI_UPSTREAM_RATE_LIMITED', 'AI_TIMEOUT', 'AI_UNAVAILABLE'];
 
