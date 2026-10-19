@@ -146,9 +146,16 @@ function browserScenario(base,courseId){return `window.COURSES_API_BASE=${JSON.s
     await editMistakeFromList(newOpen.id);document.getElementById('mistakeEditFormat').value='choice';markMistakeFormatSelected();toggleMistakeChoiceFields('Edit');
     setMistakeChoiceEditor('Edit',[{id:'A',text:'1'},{id:'B',text:'2'}],'B','single');
     let saving=saveMistakeDetail();await wait(()=>document.getElementById('confirmModal').classList.contains('show'));
-    check(document.getElementById('confirmMsg').textContent.includes('历史评分'),'type edit explains preserved history');closeConfirm(false);await saving;
+    check(document.getElementById('confirmMsg').textContent.includes('历史评分'),'type edit explains preserved history');
+    const confirmButton=document.querySelector('#confirmModal .btn-confirm');
+    const isOnTop=button=>{const rect=button.getBoundingClientRect();return button.contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2));};
+    await wait(()=>getComputedStyle(document.getElementById('confirmModal')).opacity==='1');
+    check(isOnTop(confirmButton)&&isOnTop(document.querySelector('#confirmModal .btn-cancel')),'confirmation buttons appear above editor and receive pointer events');
+    document.querySelector('#confirmModal .btn-cancel').click();await saving;
     check(mistakeEditPending&&currentMistakes.find(item=>item.id===newOpen.id).question_format==='open','cancel does not change format');
-    saving=saveMistakeDetail();await wait(()=>document.getElementById('confirmModal').classList.contains('show'));closeConfirm(true);await saving;
+    check(document.getElementById('mistakeEditModal').classList.contains('show')&&document.getElementById('mistakeEditFormat').value==='choice','cancel returns to populated editor');
+    check(document.getElementById('mistakeEditModal').querySelectorAll('.choice-option-input')[1].value==='2','cancel retains choice option input');
+    saving=saveMistakeDetail();await wait(()=>document.getElementById('confirmModal').classList.contains('show'));confirmButton.click();await saving;
     check(!mistakeEditPending&&card(newOpen.id).querySelector('.mistake-format').textContent==='选择题','confirmed actual type edit updates list immediately');
     check(document.documentElement.scrollWidth<=innerWidth+1,'layout fits viewport');
     sessionStorage.setItem('format-phase','saved');location.reload();

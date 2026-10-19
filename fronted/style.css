@@ -130,6 +130,8 @@ body {
   transition: opacity 0.3s ease, visibility 0.3s ease;
 }
 .modal-mask.show { opacity: 1; visibility: visible; }
+/* 二次确认需盖住编辑弹窗（100）和标签选择器（120），避免被后面的 DOM 遮挡。 */
+#confirmModal { z-index: 130; }
 
 .modal {
   background: #fff; border-radius: 12px; padding: 20px;
