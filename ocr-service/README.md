@@ -1,69 +1,104 @@
 # 本地 PaddleOCR 服务
 
-这个目录是给 `courses_app` 用的通用 OCR 服务。它不访问数据库，也不保存文件；只接收图片/PDF，返回识别文本。服务本身不区分用户，用户身份、文件归属、配额和审计由业务后端/网关注入和控制，因此同一套服务可以供所有用户使用。
+给 `courses_app` 用的通用 OCR 服务。它不访问数据库，也不保存文件：只接收图片或 PDF，返回识别文本。
 
-## 环境
+服务本身不区分用户。用户身份、文件归属、配额、限流都由业务后端/网关负责，所以一套服务可以供所有用户共用。识别结果只用于前端校对，用户确认后才写入题干/选项/答案。
 
-建议 Python 3.10 或 3.11，Windows CPU 也能跑。第一次启动 PaddleOCR 会下载中文模型，需要网络。
+## 已经装好的环境
+
+本机已建好独立虚拟环境（不污染 Anaconda base）：
+
+```
+C:\Users\LENOVO\anaconda3\envs\ocr
+```
+
+版本：Python 3.11.3、paddlepaddle 3.3.1、paddleocr 3.7.0、pymupdf 1.24.10。
+
+重建环境：
 
 ```powershell
-cd D:\捞捞\courses_app\ocr-service
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -U pip
-pip install -r requirements.txt
+C:\Users\LENOVO\anaconda3\python.exe -m venv C:\Users\LENOVO\anaconda3\envs\ocr
+C:\Users\LENOVO\anaconda3\envs\ocr\Scripts\python.exe -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
 ## 启动
 
 ```powershell
-uvicorn app:app --host 127.0.0.1 --port 8001
+cd D:\捞捞\courses_app\ocr-service
+C:\Users\LENOVO\anaconda3\envs\ocr\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8001
 ```
 
-另开一个终端自检：
+第一次真正识别时会自动下载模型（检测 + 识别约 70MB，需要联网），之后直接走缓存。模型缓存在 `%USERPROFILE%\.paddlex`。
+
+自检：
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8001/health
 curl.exe -F "file=@C:\path\sample.png" http://127.0.0.1:8001/ocr
 ```
 
-返回结构：
+返回：
 
 ```json
 {
-  "text": "1+1=?\nA. 1\nB. 2\n答案：B",
-  "lines": [{"text": "1+1=?", "confidence": 0.99}],
+  "text": "1. 下列关于细胞呼吸的叙述…\nA. …\n答案：A",
+  "lines": [{"text": "1. …", "confidence": 0.976, "box": [[40, 30], [520, 30], [520, 68], [40, 68]]}],
   "pages": 1,
-  "confidence": 0.99,
+  "confidence": 0.9869,
   "warnings": []
 }
 ```
 
+## 两个必须知道的 Windows 坑
+
+1. **模型路径不能含中文。** Paddle 的 C++ 层打不开非 ASCII 路径，会把模型文件读成空内容，报 `json parse error: empty input`。项目在 `D:\捞捞\`，所以缓存必须放在 `%USERPROFILE%\.paddlex` 这类英文路径，不要指到项目目录里。
+2. **这台机器上 oneDNN 会崩。** paddlepaddle 3.3.1 开 MKLDNN 时报 `ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute<pir::DoubleAttribute>]`。`app.py` 默认 `enable_mkldnn=False`；以后换了确认正常的 paddle 版本，可以用 `PADDLE_OCR_ENABLE_MKLDNN=1` 打开。
+
+可用环境变量：
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `PADDLE_PDX_CACHE_HOME` | `%USERPROFILE%\.paddlex` | 模型缓存目录（必须英文路径） |
+| `PADDLE_OCR_LANG` | `ch` | 模型语言 |
+| `PADDLE_OCR_TEXTLINE_ORIENTATION` | 关 | 设 `1` 打开文字方向分类；个别截图会被它误判成 180° 翻转，导致整段乱码，所以默认关 |
+| `PADDLE_OCR_ENABLE_MKLDNN` | 关 | 设 `1` 开启 oneDNN 加速 |
+| `PADDLE_OCR_MIN_SCORE` | `0.5` | 低于该置信度的识别行直接丢弃，用来过滤截图里的杂色小块 |
+
 ## 接到 courses_app
 
-启动 `back` 前设置：
+后端通过 `back/.env` 读配置（已随项目创建，`npm run dev` / `npm start` 自动加载）：
 
-```powershell
-$env:OCR_PROVIDER = "http"
-$env:OCR_API_BASE = "http://127.0.0.1:8001"
-npm run dev --prefix back
+```
+OCR_PROVIDER=http
+OCR_API_BASE=http://127.0.0.1:8001
 ```
 
-前端仍然只调本地后端的 `POST /api/ocr`；PaddleOCR 只监听 `127.0.0.1:8001`，不要直接暴露到公网。
+所以只要 OCR 服务在跑，直接 `npm run dev --prefix back` 即可，不用再手设环境变量。
 
-如果是多人共用的部署，建议使用 Docker，并只在内部网络开放：
+想临时切回 mock（不用模型、返回固定样例）：
+
+```powershell
+$env:OCR_PROVIDER = "mock"; npm run dev --prefix back
+```
+
+前端始终只调后端的 `POST /api/ocr`，不直连 OCR 服务。OCR 只监听 `127.0.0.1`，不要暴露到公网。
+
+出错时后端会透传原因：服务没起是 `无法连接 OCR 服务（…请先运行 ocr-service/start.ps1）`，图里没有文字是 `没有识别到文字，请换一张更清晰的文件`。
+
+## 多用户部署
 
 ```powershell
 docker compose up -d --build
 ```
 
-业务后端的 `OCR_API_BASE` 指向 OCR 容器/内网地址，例如 `http://ocr:8001`。不要把 OCR 端口直接暴露给公网；用户登录、课程归属、单用户配额和限流放在业务后端/网关。PaddleOCR 进程内用锁串行推理，扩容时增加容器/进程，不要依赖单进程无限并发。
+业务后端的 `OCR_API_BASE` 指向 OCR 容器/内网地址，例如 `http://ocr:8001`。
 
-## 当前限制
+PaddleOCR 推理不是线程安全的，`app.py` 用锁把推理串行化，单进程吞吐有限。要提并发就多开容器（`--workers` 保持在 1），不要在一个进程里开线程。用户配额、鉴权、审计放在业务后端。
 
-- 图片或 PDF；DOCX 的文本抽取应在本地后端另做，不交给 OCR。
-- 最多 20MB、20 页；可改 `app.py` 顶部常量。
-- PDF 有文本层时优先取文本，扫描 PDF 才逐页 OCR。
-- 中文模型 `ch`；数学公式、手写体、复杂表格需要另选模型或后处理。
-- 当前只针对**非手写的清晰扫描/拍照/文本层 PDF**。普通中文模型可能识别常见的加减乘除、百分比和简单符号，但复杂数学公式不保证；公式识别是单独能力，不放进 OCR MVP。
-- 识别结果只用于校对，不自动写入数据库；用户点击“替换题干 / 填入选项 / 填入答案”后才进入错题字段。
+## 范围
+
+- 支持 PNG/JPG/BMP/TIFF 图片与 PDF；单文件 20MB、PDF 20 页以内。
+- PDF 有文本层时直接取文本（精确、快），扫描页才逐页 OCR。
+- 目标是非手写的清晰打印/扫描件。手写体不做。
+- 常见中文、英文、数字、标点稳定；简单数学符号可能出，复杂公式（分式、积分、矩阵）不保证，需要用户在校对面板里改。
+- DOCX 的文本抽取不在本服务，应在业务后端另做。

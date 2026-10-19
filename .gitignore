@@ -17,3 +17,12 @@ back/db/data/
 *.log
 .DS_Store
 Thumbs.db
+
+# Python OCR service artifacts
+ocr-service/__pycache__/
+ocr-service/.paddlex/
+
+# OCR trial build output and sample images
+ocr-trial/dist/
+ocr-trial/models/
+ocr-trial/samples/

@@ -688,7 +688,6 @@
                   <button type="button" onclick="applyMistakeOcr('question','replace')">替换题干</button>
                   <button type="button" onclick="applyMistakeOcr('question','append')">追加题干</button>
                   <button type="button" id="mistakeCreateOcrToOptions" onclick="applyMistakeOcr('options')">填入选项</button>
-                  <button type="button" id="mistakeCreateOcrToAnswer" onclick="applyMistakeOcr('answer')">填入答案</button>
                   <button type="button" class="btn-cancel" onclick="closeMistakeOcr()">放弃</button>
                 </div>
                 <small id="mistakeCreateOcrMeta"></small>
@@ -726,6 +725,22 @@
                 <div id="mistakeCreateAnswerOptions" class="choice-answer-options"></div>
                 <small>只能从已添加的选项里选；多选题可多选。</small>
               </div>
+              <div id="mistakeCreateAnswerFileSummary" class="mistake-create-file" style="display:none;"></div>
+              <div class="edit-file-actions">
+                <button type="button" class="edit-btn" onclick="document.getElementById('mistakeCreateAnswerUpload').click()">上传答案附件</button>
+                <button type="button" class="edit-btn" id="mistakeCreateAnswerOcrBtn" style="display:none;" onclick="recognizeMistakeAnswerFile()">识别答案文字</button>
+                <button type="button" class="edit-btn edit-btn-danger" id="mistakeCreateAnswerRemove" style="display:none;" onclick="clearMistakeAnswerFile()">移除附件</button>
+              </div>
+              <input type="file" id="mistakeCreateAnswerUpload" style="display:none" onchange="chooseMistakeAnswerFile(this)" />
+              <section id="mistakeCreateAnswerOcrPanel" class="mistake-ocr-panel" style="display:none;">
+                <div class="mistake-ocr-head"><b>答案识别结果</b><span>校对后点“填入答案”</span></div>
+                <textarea id="mistakeCreateAnswerOcrText" rows="5"></textarea>
+                <div class="mistake-ocr-actions">
+                  <button type="button" onclick="applyMistakeAnswerOcr()">填入答案</button>
+                  <button type="button" class="btn-cancel" onclick="closeMistakeAnswerOcr()">放弃</button>
+                </div>
+                <small id="mistakeCreateAnswerOcrMeta"></small>
+              </section>
               <div id="mistakeCreateOpenAnswerFields" class="edit-open-answer-fields">
                 <textarea id="mistakeCreateAnswer" rows="3" placeholder="参考答案" oninput="updateMistakeCreateAnswerClear()"></textarea>
               </div>

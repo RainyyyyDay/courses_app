@@ -222,6 +222,7 @@ function closeTagPicker() {
 
   tagPickerState = null;
   pendingUploadFile = null;
+  pendingAnswerFile = null;
   pendingManual = null;
 }
 

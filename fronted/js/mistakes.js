@@ -384,9 +384,11 @@ async function uploadMistake() {
 function openMistakeCreate() {
   pendingUploadFile = null;
   pendingManual = null;
+  pendingAnswerFile = null;
   return openTagPicker('upload', 'mistake', null);
 }
 function renderMistakeCreateFileSummary() {
+  renderMistakeCreateAnswerFileSummary();
   const summary = document.getElementById('mistakeCreateFileSummary');
   const remove = document.getElementById('mistakeCreateQuestionRemove');
   const ocr = document.getElementById('mistakeCreateOcrBtn');
@@ -431,6 +433,93 @@ function clearMistakeCreateFile() {
   closeMistakeOcr();
   renderMistakeCreateFileSummary();
 }
+
+// ===== 答案附件：单独上传/识别，保存错题后一起提交 =====
+let pendingAnswerFile = null;
+
+function renderMistakeCreateAnswerFileSummary() {
+  const summary = document.getElementById('mistakeCreateAnswerFileSummary');
+  const remove = document.getElementById('mistakeCreateAnswerRemove');
+  const ocr = document.getElementById('mistakeCreateAnswerOcrBtn');
+  if (!summary) return;
+  if (!pendingAnswerFile) {
+    summary.style.display = 'none';
+    summary.innerHTML = '';
+    if (remove) remove.style.display = 'none';
+    if (ocr) ocr.style.display = 'none';
+    closeMistakeAnswerOcr();
+    return;
+  }
+  summary.innerHTML = `<span class="mistake-create-file-icon">📎</span><div><strong>${escapeHtml(pendingAnswerFile.name)}</strong><small>${escapeHtml(pendingAnswerFile.type || '附件')} · 保存后上传</small></div>`;
+  summary.style.display = 'flex';
+  if (remove) remove.style.display = 'inline-flex';
+  if (ocr) ocr.style.display = 'inline-flex';
+}
+
+function chooseMistakeAnswerFile(input) {
+  pendingAnswerFile = input.files?.[0] || null;
+  closeMistakeAnswerOcr();
+  renderMistakeCreateAnswerFileSummary();
+}
+
+function clearMistakeAnswerFile() {
+  pendingAnswerFile = null;
+  const input = document.getElementById('mistakeCreateAnswerUpload');
+  if (input) input.value = '';
+  closeMistakeAnswerOcr();
+  renderMistakeCreateAnswerFileSummary();
+}
+
+function closeMistakeAnswerOcr() {
+  const panel = document.getElementById('mistakeCreateAnswerOcrPanel');
+  const text = document.getElementById('mistakeCreateAnswerOcrText');
+  const meta = document.getElementById('mistakeCreateAnswerOcrMeta');
+  if (panel) panel.style.display = 'none';
+  if (text) text.value = '';
+  if (meta) meta.textContent = '';
+}
+
+async function recognizeMistakeAnswerFile() {
+  if (!pendingAnswerFile) { showToast('请先选择答案附件'); return; }
+  const button = document.getElementById('mistakeCreateAnswerOcrBtn');
+  if (button?.disabled) return;
+  const original = button ? button.textContent : '';
+  if (button) { button.disabled = true; button.textContent = '识别中…'; }
+  try {
+    const fd = new FormData();
+    fd.append('file', pendingAnswerFile);
+    const response = await requestApi(`${API}/ocr`, { method: 'POST', body: fd });
+    const result = await response.json();
+    const text = document.getElementById('mistakeCreateAnswerOcrText');
+    const panel = document.getElementById('mistakeCreateAnswerOcrPanel');
+    const meta = document.getElementById('mistakeCreateAnswerOcrMeta');
+    if (text) text.value = result.text || '';
+    if (panel) panel.style.display = 'grid';
+    if (meta) {
+      const parts = [];
+      if (result.provider) parts.push(`识别来源：${result.provider}`);
+      if (Number.isFinite(result.confidence)) parts.push(`置信度 ${Math.round(result.confidence * 100)}%`);
+      if (result.warnings?.length) parts.push(result.warnings.join('；'));
+      meta.textContent = parts.join(' · ');
+    }
+    if (result.provider === 'mock') {
+      if (meta) meta.textContent = '⚠ 这是 mock 样例数据，不是真实识别。';
+      showToast('当前是 mock 样例数据，不是真实识别');
+      return;
+    }
+    showToast('识别完成，请校对后填入答案');
+  } catch (err) {
+    showToast(err.message);
+  } finally {
+    if (button) { button.disabled = false; button.textContent = original; }
+  }
+}
+
+function applyMistakeAnswerOcr() {
+  const text = (document.getElementById('mistakeCreateAnswerOcrText')?.value || '').trim();
+  if (!text) { showToast('识别结果为空'); return; }
+  fillMistakeAnswerFromOcr(text);
+}
 function updateMistakeCreateContentClear() {
   const button = document.getElementById('mistakeCreateContentClear');
   const content = document.getElementById('mistakeCreateContent');
@@ -472,9 +561,7 @@ function clearMistakeCreateExplanation() {
 function updateMistakeCreateOcrActions() {
   const choice = document.getElementById('mistakeCreateFormat')?.value === 'choice';
   const toOptions = document.getElementById('mistakeCreateOcrToOptions');
-  const toAnswer = document.getElementById('mistakeCreateOcrToAnswer');
   if (toOptions) toOptions.style.display = choice ? 'inline-flex' : 'none';
-  if (toAnswer) toAnswer.style.display = 'inline-flex';
   updateMistakeCreateContentClear();
   updateMistakeCreateAnswerClear();
   updateMistakeCreateExplanationClear();
@@ -511,6 +598,11 @@ async function recognizeMistakeCreateFile() {
       meta.textContent = parts.join(' · ');
     }
     updateMistakeCreateOcrActions();
+    if (result.provider === 'mock') {
+      if (meta) meta.textContent = '⚠ 这是 mock 样例数据，不是真实识别。后端没走 OCR 服务，请检查 OCR_PROVIDER。';
+      showToast('当前是 mock 样例数据，不是真实识别');
+      return;
+    }
     showToast('识别完成，请核对后再填入');
   } catch (err) {
     showToast(err.message);
@@ -518,6 +610,21 @@ async function recognizeMistakeCreateFile() {
     if (button) { button.disabled = false; button.textContent = original; }
   }
 }
+// OCR 出来的是整页文字，塞进答案栏前先切出“答案：…”那一段。
+function extractMistakeOcrAnswer(text) {
+  const lines = String(text || '').normalize('NFKC').split('\n').map(line => line.trim()).filter(Boolean);
+  const head = /^(?:正确答案|参考答案|答案|答)\s*[:：]\s*/;
+  const stop = /^(?:解析|分析|说明|点评|考点|错因)\s*[:：]?/;
+  const index = lines.findIndex(line => head.test(line));
+  if (index === -1) return '';
+  const picked = [];
+  for (let i = index; i < lines.length; i += 1) {
+    if (i > index && stop.test(lines[i])) break;
+    picked.push(i === index ? lines[i].replace(head, '') : lines[i]);
+  }
+  return picked.join('\n').trim();
+}
+
 function applyMistakeOcr(target, mode = 'replace') {
   const text = (document.getElementById('mistakeCreateOcrText')?.value || '').trim();
   if (!text) { showToast('识别结果为空'); return; }
@@ -533,8 +640,10 @@ function applyMistakeOcr(target, mode = 'replace') {
   if (target === 'options') {
     if (format !== 'choice') return;
     const values = [];
-    for (const line of text.split('\n')) {
-      const match = line.match(/^\s*([A-Za-z])\s*[.、:：)]\s*(.+)$/);
+    for (const rawLine of text.split('\n')) {
+      // OCR 常输出全角字母、全角标点、（A）这类写法，先归一化再解析。
+      const line = rawLine.normalize('NFKC');
+      const match = line.match(/^\s*[（(]?\s*([A-Za-z])\s*(?:[）)]\s*|[.、,:：;；)）]\s*|\s+)(.+)$/);
       if (match) values.push(match[2].trim());
     }
     if (values.length < 2) { showToast('没有识别到 A./B./C. 形式的选项行，请手动校对'); return; }
@@ -542,24 +651,30 @@ function applyMistakeOcr(target, mode = 'replace') {
     showToast('已填入选项，请核对编号和内容');
     return;
   }
-  if (target === 'answer') {
-    if (format === 'choice') {
-      const match = text.match(/(?:正确答案|答案)\s*[：:]\s*([A-Z](?:\s*[,，、]\s*[A-Z])*)/i);
-      if (!match) { showToast('没有识别到“答案：A”形式的字母'); return; }
-      const ids = [...new Set((match[1].toUpperCase().match(/[A-Z]/g) || []))];
-      const letters = choiceLetters(readMistakeChoiceOptionValues('Create').length);
-      const valid = ids.filter(id => letters.includes(id));
-      if (!valid.length) { showToast('答案字母不在当前选项中，请先填入选项'); return; }
-      const type = document.getElementById('mistakeCreateChoiceType')?.value || 'single';
-      renderMistakeChoiceAnswerOptions('Create', type === 'single' ? valid.slice(0, 1) : valid);
-      updateMistakeCreateAnswerClear();
-      showToast('已填入正确答案，请核对');
-    } else {
-      const answer = document.getElementById('mistakeCreateAnswer');
-      if (answer) answer.value = text;
-      updateMistakeCreateAnswerClear();
-      showToast('已填入答案');
-    }
+  // 答案走答案附件自己的识别面板，题目识别只负责题干和选项。
+}
+
+// 题目附件和答案附件共用这一套“填答案”逻辑。
+function fillMistakeAnswerFromOcr(text) {
+  const format = document.getElementById('mistakeCreateFormat')?.value || 'open';
+  const answerText = extractMistakeOcrAnswer(text);
+  const payload = answerText || text;
+  if (format === 'choice') {
+    const match = text.normalize('NFKC').match(/(?:正确答案|答案)\s*[：:]?\s*((?:[A-Za-z]\s*[,，、;；\s]*)+)/);
+    if (!match) { showToast('没有识别到“答案：A”形式的字母'); return; }
+    const ids = [...new Set((match[1].toUpperCase().match(/[A-Z]/g) || []))];
+    const letters = choiceLetters(readMistakeChoiceOptionValues('Create').length);
+    const valid = ids.filter(id => letters.includes(id));
+    if (!valid.length) { showToast('答案字母不在当前选项中，请先填入选项'); return; }
+    const type = document.getElementById('mistakeCreateChoiceType')?.value || 'single';
+    renderMistakeChoiceAnswerOptions('Create', type === 'single' ? valid.slice(0, 1) : valid);
+    updateMistakeCreateAnswerClear();
+    showToast('已填入正确答案，请核对');
+  } else {
+    const answer = document.getElementById('mistakeCreateAnswer');
+    if (answer) answer.value = payload;
+    updateMistakeCreateAnswerClear();
+    showToast(answerText ? '已填入答案（只取“答案：”之后的内容）' : '没有找到“答案：”标记，已填入整段识别文字');
   }
 }
 async function doCreateMistake(file, knowledgeIds, title, content) {
@@ -574,8 +689,25 @@ async function doCreateMistake(file, knowledgeIds, title, content) {
       ? JSON.stringify(value) : value);
   }
   try {
-    await requestApi(`${API}/courses/${currentCourseId}/mistakes`, { method: 'POST', body: fd });
-    showToast(file ? '上传成功' : '已添加错题');
+    const response = await requestApi(`${API}/courses/${currentCourseId}/mistakes`, { method: 'POST', body: fd });
+    const created = await response.json().catch(() => null);
+    // 答案附件是独立接口：错题建好后再挂上去，失败不影响已保存的错题。
+    let answerError = '';
+    if (pendingAnswerFile && created?.id) {
+      const answerForm = new FormData();
+      answerForm.append('file', pendingAnswerFile);
+      try {
+        await requestApi(`${API}/courses/${currentCourseId}/mistakes/${created.id}/answer-file`, {
+          method: 'PUT', body: answerForm,
+        });
+      } catch (err) {
+        answerError = err.message;
+      }
+    }
+    pendingAnswerFile = null;
+    showToast(answerError
+      ? `错题已保存，但答案附件上传失败：${answerError}`
+      : (file ? '上传成功' : '已添加错题'));
     await loadMistakes();
     return true;
   } catch (err) {

@@ -1047,4 +1047,7 @@ app.post('/api/ocr', upload.single('file'), async (req, res) => {
 app.listen(3000, () => {
   console.log('后端已启动，地址：http://localhost:3000');
   console.log('前端可以开始连接了！');
+  console.log(process.env.OCR_PROVIDER === 'http'
+    ? `OCR：真实识别 -> ${process.env.OCR_API_BASE || 'http://127.0.0.1:8001'}`
+    : 'OCR：mock（返回固定样例 1+1=?，仅用于界面调试，不是真实识别）');
 });

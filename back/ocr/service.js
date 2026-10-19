@@ -58,14 +58,20 @@ async function httpRecognize(file) {
   const form = new FormData();
   form.append('file', new Blob([buffer], { type: file.mimetype || 'application/octet-stream' }), file.originalname || path.basename(file.path));
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60000);
+  // The first recognition of a fresh process also loads the models (~20s).
+  const timeoutMs = Number(process.env.OCR_TIMEOUT_MS) > 0 ? Number(process.env.OCR_TIMEOUT_MS) : 120000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(`${base}/ocr`, { method: 'POST', body: form, signal: controller.signal });
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
-      throw Object.assign(new Error(payload?.message || `OCR HTTP ${response.status}`), {
-        status: 502, code: 'OCR_UNAVAILABLE',
-      });
+      // FastAPI reports {"detail": ...}; surface it instead of a blanket 502 so the
+      // user can tell "no text found" apart from "service is down".
+      const detail = payload?.detail || payload?.message || `OCR 服务返回 HTTP ${response.status}`;
+      const rejected = [400, 415, 422].includes(response.status);
+      throw Object.assign(new Error(detail), rejected
+        ? { status: 400, code: 'OCR_REJECTED' }
+        : { status: response.status === 413 ? 413 : 502, code: response.status === 413 ? 'FILE_TOO_LARGE' : 'OCR_UNAVAILABLE' });
     }
     if (!payload || typeof payload !== 'object') {
       throw Object.assign(new Error('OCR 返回格式不正确'), { status: 502, code: 'OCR_INVALID_RESULT' });
@@ -74,7 +80,9 @@ async function httpRecognize(file) {
   } catch (err) {
     if (err.name === 'AbortError') throw Object.assign(new Error('OCR 服务超时'), { status: 504, code: 'OCR_TIMEOUT' });
     if (err.status) throw err;
-    throw Object.assign(new Error(err.message || '无法连接 OCR 服务'), { status: 502, code: 'OCR_UNAVAILABLE' });
+    throw Object.assign(new Error(`无法连接 OCR 服务（${base}），请先运行 ocr-service/start.ps1`), {
+      status: 502, code: 'OCR_UNAVAILABLE',
+    });
   } finally {
     clearTimeout(timer);
   }

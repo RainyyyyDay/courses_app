@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>OCR 对比试验：浏览器端 vs 服务端</title>
+<style>
+  :root { --line: #dfe4ee; --ink: #1b2230; --muted: #6b7488; --accent: #3b6cf6; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; font: 14px/1.6 "Microsoft YaHei", system-ui, sans-serif; color: var(--ink); background: #f6f8fc; }
+  h1 { margin: 0 0 4px; font-size: 20px; }
+  .sub { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 14px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+  .bar label { font-size: 13px; color: var(--muted); }
+  select, input[type=file] { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  button { font: inherit; padding: 7px 14px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer; }
+  button.ghost { background: #eef2ff; color: #2b4bb5; }
+  #fileName { color: var(--muted); font-size: 13px; }
+  #status { margin: 12px 0; color: var(--muted); font-size: 13px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .card h2 { margin: 0; font-size: 15px; display: flex; justify-content: space-between; align-items: baseline; }
+  .card h2 small { font-weight: 400; color: var(--muted); font-size: 12px; }
+  textarea { width: 100%; min-height: 260px; font: 13px/1.7 ui-monospace, Consolas, monospace; padding: 10px; border: 1px solid var(--line); border-radius: 8px; resize: vertical; }
+  .gt { margin-top: 14px; }
+  .gt textarea { min-height: 120px; }
+  .meta { font-size: 12px; color: var(--muted); min-height: 18px; }
+  .cer { color: #b4301f; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+  <h1>OCR 对比试验</h1>
+  <p class="sub">同一张图，左边在浏览器里跑（ONNX Runtime Web），右边走现有本地服务。用来判断纯前端方案够不够用。</p>
+
+  <div class="bar">
+    <input type="file" id="file" accept="image/*">
+    <span id="fileName">未选择</span>
+    <label>后端</label>
+    <select id="backend">
+      <option value="auto">auto（优先 WebGPU）</option>
+      <option value="webgpu">webgpu</option>
+      <option value="wasm">wasm</option>
+    </select>
+    <button id="runBrowser">浏览器端识别</button>
+    <button id="runServer" class="ghost">服务端识别</button>
+  </div>
+
+  <div id="status">等待开始</div>
+  <div id="env" class="meta"></div>
+
+  <div class="grid">
+    <section class="card">
+      <h2>浏览器端 <small id="browserCer"></small></h2>
+      <div class="meta" id="browserMeta"></div>
+      <textarea id="browserText" spellcheck="false"></textarea>
+    </section>
+    <section class="card">
+      <h2>服务端 <small id="serverCer"></small></h2>
+      <div class="meta" id="serverMeta"></div>
+      <textarea id="serverText" spellcheck="false"></textarea>
+    </section>
+  </div>
+
+  <section class="card gt">
+    <h2>标准答案（可选） <small>填了会算出两边的字符错误率</small></h2>
+    <textarea id="groundTruth" spellcheck="false" placeholder="把正确文本贴进来，会自动对比"></textarea>
+  </section>
+
+  <script type="module" src="/dist/trial.js"></script>
+</body>
+</html>

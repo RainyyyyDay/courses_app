@@ -2,10 +2,12 @@ services:
   ocr:
     build: .
     restart: unless-stopped
+    environment:
+      PADDLE_OCR_ENABLE_MKLDNN: "0"
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     volumes:
-      - paddle-models:/root/.paddleocr
+      - paddle-models:/root/.paddlex
 
 volumes:
   paddle-models:
