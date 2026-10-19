@@ -86,7 +86,7 @@ function mistakeBrowserScenario(data) {
     await openMistakeCategory(null);
     check(document.querySelectorAll('[data-mistake-category]').length === 4, 'four categories');
     check(document.getElementById('mistakeFilters').style.display === 'none', 'home hides filters');
-    check(document.getElementById('mistakeHomeReview').style.display === 'flex', 'home review entry visible');
+    check(document.getElementById('mistakeHomeReview').style.display === 'none', 'standalone mistake review entry removed');
     check(document.getElementById('mistakeHomeReviewStart').textContent === '开始复习', 'home primary review button');
     for (const type of ['knowledge', 'thinking', 'execution', 'unclassified']) {
       document.getElementById('mistakeHomeReviewStart').click();
@@ -125,7 +125,7 @@ function mistakeBrowserScenario(data) {
       check(!mistakeSelection && !document.getElementById('mistakeReviewPicker').classList.contains('show'), 'cancel closes modal');
       check(document.getElementById('pane-mistakes').contains(document.getElementById('mistakeList')), 'close restores ordinary list container');
       await openMistakeCategory(null);
-      check(document.getElementById('mistakeHomeReview').style.display === 'flex', 'return to home restores entry');
+      check(document.getElementById('mistakeHomeReview').style.display === 'none', 'standalone mistake review entry stays hidden');
     }
 
     openManualModal('mistake');
@@ -365,7 +365,7 @@ function mistakeBrowserScenario(data) {
       if (i === 0) {
         await pauseMistakeQueue(); await loadMistakes();
         check(!mistakeUi.type && readMistakeQueue().type === 'mixed', 'mixed pause returns to home and preserves queue');
-        check(document.getElementById('mistakeHomeReviewResume').style.display !== 'none', 'mixed resume visible on home');
+        check(document.getElementById('mistakeHomeReview').style.display === 'none', 'standalone mixed queue resume entry removed');
         await resumeMistakeQueue();
         check(mistakeDetailState.progress.stage === 'completed', 'mixed resume uses backend completion');
       }

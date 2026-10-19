@@ -46,11 +46,24 @@ async function openTagPicker(mode, resourceType, resourceId) {
 
   const resourceLabel =
     resourceType === 'material' ? '资料' : (resourceType === 'note' ? '笔记' : '错题');
-  document.getElementById('tagPickerTitle').textContent =
-    (mode === 'edit' ? '编辑' : '选择') + resourceLabel + '标签';
+  const isMistakeCreate = resourceType === 'mistake' && mode !== 'edit';
+  document.getElementById('tagPickerTitle').textContent = isMistakeCreate
+    ? '添加错题'
+    : (mode === 'edit' ? '编辑' : '选择') + resourceLabel + '标签';
   document.getElementById('tagPickerConfirm').textContent =
-    (mode === 'edit' || mode === 'manual') ? '保存' : '上传';
+    (mode === 'edit' || mode === 'manual' || isMistakeCreate) ? '保存' : '上传';
   document.getElementById('tagPickerConfirm').disabled = false;
+
+  const tagPickerBody = document.getElementById('tagPickerBody');
+  if (tagPickerBody) tagPickerBody.classList.toggle('mistake-create-body', isMistakeCreate);
+  const tagBlock = document.getElementById('tagPickerTagBlock');
+  if (tagBlock) tagBlock.classList.toggle('mistake-create-card', isMistakeCreate);
+  const tagHeading = document.getElementById('tagPickerTagHeading');
+  if (tagHeading) tagHeading.style.display = isMistakeCreate ? 'flex' : 'none';
+  const nameHeading = document.getElementById('tagPickerNameHeading');
+  if (nameHeading) nameHeading.style.display = isMistakeCreate ? 'flex' : 'none';
+  const mistakeTypeField = document.getElementById('tagPickerMistakeTypeField');
+  if (mistakeTypeField) mistakeTypeField.style.display = isMistakeCreate ? 'flex' : 'none';
 
   const mistakeFields = document.getElementById('tagPickerMistakeFields');
   mistakeFields.style.display = resourceType === 'mistake' && mode !== 'edit' ? 'grid' : 'none';
@@ -59,6 +72,20 @@ async function openTagPicker(mode, resourceType, resourceId) {
     document.getElementById('mistakeCreateType').value = mistakeUi.type || '';
     document.getElementById('mistakeCreateAnswer').value = '';
     document.getElementById('mistakeCreateExplanation').value = '';
+    const createFormat = document.getElementById('mistakeCreateFormat');
+    if (createFormat) createFormat.value = 'open';
+    const createChoiceType = document.getElementById('mistakeCreateChoiceType');
+    if (createChoiceType) createChoiceType.value = 'single';
+    setMistakeChoiceEditor('Create', [], [], 'single');
+    toggleMistakeChoiceFields('Create');
+    const createContent = document.getElementById('mistakeCreateContent');
+    if (createContent) createContent.value = mode === 'manual' && pendingManual ? (pendingManual.content || '') : '';
+    const createUpload = document.getElementById('mistakeCreateQuestionUpload');
+    if (createUpload) createUpload.value = '';
+    renderMistakeCreateFileSummary();
+    closeMistakeOcr();
+    updateMistakeCreateContentClear();
+    updateMistakeCreateOcrActions();
   }
 
   // 名称那一行：上传和编辑时都显示，可以改名字。
@@ -67,6 +94,15 @@ async function openTagPicker(mode, resourceType, resourceId) {
   const nameInput = document.getElementById('tagPickerName');
   const extChip = document.getElementById('tagPickerNameExt');
   const nameTip = document.getElementById('tagPickerNameTip');
+  if (nameRow) nameRow.classList.toggle('mistake-create-card', isMistakeCreate && (mode === 'upload' || mode === 'manual'));
+
+  const fileSummary = document.getElementById('mistakeCreateFileSummary');
+  if (isMistakeCreate) {
+    renderMistakeCreateFileSummary();
+  } else if (fileSummary) {
+    fileSummary.style.display = 'none';
+    fileSummary.innerHTML = '';
+  }
 
   let nameBase = '';
   let nameExt = '';
@@ -76,6 +112,8 @@ async function openTagPicker(mode, resourceType, resourceId) {
     const parts = splitNameExt(pendingUploadFile.name || '');
     nameBase = parts.base;
     nameExt = parts.ext;
+  } else if (isMistakeCreate && mode === 'manual' && pendingManual) {
+    nameBase = pendingManual.title || '';
   } else if (mode === 'edit') {
     const row = currentResourceRow(resourceType, resourceId);
     const title = row ? (row.title || '') : '';
@@ -91,7 +129,7 @@ async function openTagPicker(mode, resourceType, resourceId) {
     }
   }
 
-  if (mode === 'upload' || mode === 'edit') {
+  if (mode === 'upload' || mode === 'edit' || (isMistakeCreate && mode === 'manual')) {
     nameRow.style.display = 'block';
     nameInput.value = nameBase;
     extChip.textContent = nameExt;
@@ -241,6 +279,9 @@ async function confirmTagPicker() {
     showToast('请输入名称');
     return;
   }
+  if (mode === 'manual' && resourceType === 'mistake' && manual && title) {
+    manual.title = title;
+  }
 
   const button = document.getElementById('tagPickerConfirm');
   state.saving = true;
@@ -248,12 +289,22 @@ async function confirmTagPicker() {
   try {
     let saved = false;
     if (mode === 'upload') {
-      if (!file) return;
-      if (resourceType === 'material') saved = await doUploadMaterial(file, nodeIds, title);
-      else if (resourceType === 'note') saved = await doUploadNote(file, nodeIds, title);
-      else saved = await doUploadMistake(file, nodeIds, title);
+      if (resourceType === 'mistake') {
+        const content = (document.getElementById('mistakeCreateContent')?.value || '').trim();
+        if (!file && !content) { showToast('请上传题目附件或输入题干'); return; }
+        if (!title && !file) { showToast('请输入名称'); return; }
+        saved = await doCreateMistake(file, nodeIds, title, content);
+      } else {
+        if (!file) return;
+        if (resourceType === 'material') saved = await doUploadMaterial(file, nodeIds, title);
+        else saved = await doUploadNote(file, nodeIds, title);
+      }
     } else if (mode === 'manual') {
       if (!manual) return;
+      if (resourceType === 'mistake') {
+        const content = (document.getElementById('mistakeCreateContent')?.value || '').trim();
+        if (content) manual.content = content;
+      }
       saved = await doCreateManual(nodeIds);
     } else {
       saved = await saveResourceTags(resourceType, resourceId, nodeIds, title);

@@ -24,17 +24,166 @@ function ensureMistakeUi() {
 }
 function rememberMistakeUi() { mistakeStorageSet('mistake-list:' + currentCourseId, mistakeUi); }
 function mistakeStatusText(status) { return status === 'reviewed' ? '已复习' : '未复习'; }
+function choiceLetters(count) {
+  return Array.from({ length: Math.max(0, count) }, (_, index) => String.fromCharCode(65 + index));
+}
+function parseMistakeChoiceOptions(raw) {
+  let options = [];
+  try { options = Array.isArray(raw) ? raw : JSON.parse(raw || '[]'); } catch { options = []; }
+  return Array.isArray(options)
+    ? options.map((option, index) => {
+        const letter = choiceLetters(index + 1)[index];
+        if (typeof option === 'string') return { id: letter, text: option };
+        return { id: String(option?.id || letter).toUpperCase(), text: String(option?.text || '') };
+      })
+    : [];
+}
+function parseMistakeCorrectIds(choiceType, raw) {
+  if (choiceType === 'multiple') {
+    if (Array.isArray(raw)) return raw.map(value => String(value).toUpperCase());
+    try {
+      const parsed = JSON.parse(raw || '[]');
+      if (Array.isArray(parsed)) return parsed.map(value => String(value).toUpperCase());
+    } catch { /* 兼容逗号分隔值 */ }
+    return String(raw || '').split(',').map(value => value.trim().toUpperCase()).filter(Boolean);
+  }
+  return raw ? [String(raw).toUpperCase()] : [];
+}
+function toggleMistakeChoiceFields(prefix) {
+  const format = document.getElementById(`mistake${prefix}Format`);
+  const box = document.getElementById(`mistake${prefix}ChoiceFields`);
+  const choice = format?.value === 'choice';
+  if (box) box.style.display = choice ? (prefix === 'Create' ? 'block' : 'grid') : 'none';
+  const choiceAnswer = document.getElementById(`mistake${prefix}ChoiceAnswerField`);
+  if (choiceAnswer) choiceAnswer.style.display = choice ? 'grid' : 'none';
+  const openAnswer = document.getElementById(`mistake${prefix}OpenAnswerFields`);
+  if (openAnswer) openAnswer.style.display = choice ? 'none' : 'grid';
+  const answerHint = document.getElementById(`mistake${prefix}AnswerHint`);
+  if (answerHint) answerHint.textContent = choice
+    ? '从选项中选择正确答案；多选题可多选'
+    : (prefix === 'Edit' ? '可填写答案文字或上传答案附件；填写后方可进入复习' : '可后补；补齐后才能复习');
+  const questionTitle = document.getElementById(`mistake${prefix}QuestionTitle`);
+  if (questionTitle) questionTitle.textContent = choice ? '题干' : '题目';
+  const questionHint = document.getElementById(`mistake${prefix}QuestionHint`);
+  if (questionHint) questionHint.textContent = choice
+    ? '可上传题干附件，也可直接录入题干'
+    : '可上传题目附件，也可直接录入题目内容';
+  if (prefix === 'Create') updateMistakeCreateOcrActions();
+}
+function readMistakeChoiceOptionValues(prefix) {
+  return [...document.querySelectorAll(`#mistake${prefix}OptionsList .choice-option-input`)].map(input => input.value);
+}
+function readMistakeChoiceAnswerIds(prefix) {
+  return [...document.querySelectorAll(`#mistake${prefix}AnswerOptions input:checked`)].map(input => input.value);
+}
+function renderMistakeChoiceAnswerOptions(prefix, selected = readMistakeChoiceAnswerIds(prefix)) {
+  const box = document.getElementById(`mistake${prefix}AnswerOptions`);
+  if (!box) return;
+  const values = readMistakeChoiceOptionValues(prefix);
+  const type = document.getElementById(`mistake${prefix}ChoiceType`)?.value || 'single';
+  const letters = choiceLetters(values.length);
+  const selectedSet = new Set(type === 'single' ? selected.slice(0, 1) : selected);
+  box.innerHTML = letters.length
+    ? letters.map((letter, index) => `<label class="choice-answer-option">
+        <input type="${type === 'multiple' ? 'checkbox' : 'radio'}" name="mistake${prefix}CorrectAnswer"
+          value="${letter}" ${selectedSet.has(letter) ? 'checked' : ''} ${values[index].trim() ? '' : 'disabled'}
+          onchange="syncMistakeChoiceAnswer('${prefix}')" />
+        <span>${letter}</span>
+      </label>`).join('')
+    : '<span class="tag-none">先添加选项</span>';
+}
+function renderMistakeChoiceOptionRows(prefix, values, selected) {
+  const list = document.getElementById(`mistake${prefix}OptionsList`);
+  if (!list) return;
+  const currentSelected = selected === undefined ? readMistakeChoiceAnswerIds(prefix) : selected;
+  const rows = Array.isArray(values) ? values.slice(0, 26) : [];
+  while (rows.length < 2) rows.push('');
+  const letters = choiceLetters(rows.length);
+  list.innerHTML = rows.map((text, index) => `<div class="choice-option-row" data-choice-option-index="${index}">
+    <span class="choice-option-letter">${letters[index]}.</span>
+    <input class="choice-option-input" maxlength="500" value="${escapeHtml(text || '')}" placeholder="选项内容"
+      oninput="syncMistakeChoiceAnswer('${prefix}')" />
+    <button type="button" class="choice-option-remove" onclick="removeMistakeChoiceOption('${prefix}',${index})"
+      ${rows.length <= 2 ? 'disabled' : ''} aria-label="删除选项 ${letters[index]}">×</button>
+  </div>`).join('');
+  const add = document.querySelector(`#mistake${prefix}ChoiceFields .choice-add-option`);
+  if (add) add.disabled = rows.length >= 26;
+  renderMistakeChoiceAnswerOptions(prefix, currentSelected.filter(id => letters.includes(id)));
+}
+function setMistakeChoiceEditor(prefix, options, correctOption, choiceType = 'single') {
+  const type = choiceType === 'multiple' ? 'multiple' : 'single';
+  const typeSelect = document.getElementById(`mistake${prefix}ChoiceType`);
+  if (typeSelect) typeSelect.value = type;
+  const parsed = parseMistakeChoiceOptions(options);
+  const values = parsed.length ? parsed.map(option => option.text) : ['', ''];
+  const selected = parseMistakeCorrectIds(type, correctOption);
+  renderMistakeChoiceOptionRows(prefix, values, selected);
+}
+function addMistakeChoiceOption(prefix) {
+  const values = readMistakeChoiceOptionValues(prefix);
+  const selected = readMistakeChoiceAnswerIds(prefix);
+  if (values.length >= 26) { showToast('最多只能添加 26 个选项（A–Z）'); return; }
+  values.push('');
+  renderMistakeChoiceOptionRows(prefix, values, selected);
+  if (prefix === 'Edit') refreshMistakeEditDirty();
+}
+function removeMistakeChoiceOption(prefix, index) {
+  const values = readMistakeChoiceOptionValues(prefix);
+  const selected = readMistakeChoiceAnswerIds(prefix);
+  if (values.length <= 2) { showToast('至少保留两个选项'); return; }
+  const letters = choiceLetters(values.length);
+  const removed = letters[index];
+  const mapped = selected.filter(id => id !== removed).map(id => {
+    const code = id.charCodeAt(0);
+    return code > removed.charCodeAt(0) ? String.fromCharCode(code - 1) : id;
+  });
+  values.splice(index, 1);
+  renderMistakeChoiceOptionRows(prefix, values, mapped);
+  if (prefix === 'Edit') refreshMistakeEditDirty();
+}
+function changeMistakeChoiceType(prefix) {
+  const selected = readMistakeChoiceAnswerIds(prefix);
+  const type = document.getElementById(`mistake${prefix}ChoiceType`)?.value || 'single';
+  const next = type === 'single' ? selected.slice(0, 1) : selected;
+  renderMistakeChoiceAnswerOptions(prefix, next);
+  if (prefix === 'Edit') refreshMistakeEditDirty();
+}
+function syncMistakeChoiceAnswer(prefix) {
+  renderMistakeChoiceAnswerOptions(prefix, readMistakeChoiceAnswerIds(prefix));
+  if (prefix === 'Create') updateMistakeCreateAnswerClear();
+  if (prefix === 'Edit') refreshMistakeEditDirty();
+}
+function mistakeChoiceFields(prefix) {
+  const format = document.getElementById(`mistake${prefix}Format`)?.value || 'open';
+  const choiceType = document.getElementById(`mistake${prefix}ChoiceType`)?.value || 'single';
+  if (format === 'open') return { questionFormat: 'open', options: [], correctOption: '', choiceType };
+  const values = readMistakeChoiceOptionValues(prefix).map(value => value.trim());
+  if (values.length < 2) throw new Error('选择题至少需要两个选项');
+  if (values.some(value => !value)) throw new Error('请填写每个选项的内容');
+  if (new Set(values).size !== values.length) throw new Error('选项内容不能重复');
+  const letters = choiceLetters(values.length);
+  const selected = readMistakeChoiceAnswerIds(prefix);
+  if (choiceType === 'single' && selected.length !== 1) throw new Error('单选题只能选择一个正确答案');
+  if (choiceType === 'multiple' && selected.length < 1) throw new Error('多选题至少选择一个正确答案');
+  return {
+    questionFormat: 'choice',
+    options: values.map((text, index) => ({ id: letters[index], text })),
+    correctOption: choiceType === 'single' ? selected[0] : selected,
+    choiceType,
+  };
+}
 function mistakeCreationFields() {
   const mistakeType = document.getElementById('mistakeCreateType').value;
   if (!Object.hasOwn(MISTAKE_TYPES, mistakeType)) throw new Error('请选择错题类型');
   return { mistakeType, answerContent: document.getElementById('mistakeCreateAnswer').value,
-    explanation: document.getElementById('mistakeCreateExplanation').value };
+    explanation: document.getElementById('mistakeCreateExplanation').value, ...mistakeChoiceFields('Create') };
 }
 
 function renderMistakeCategories(rows = null) {
   const home = !mistakeUi.type;
   const reviewEntry = document.getElementById('mistakeHomeReview');
-  if (reviewEntry) reviewEntry.style.display = home ? 'flex' : 'none';
+  // 错题单独复习入口已移除；只保留总复习和考前计划。
+  if (reviewEntry) reviewEntry.style.display = 'none';
   // 录入入口（上传文件 / 手动输入）只留在「错题」大页：
   // 分类详情页是用来查看和复习的，加题请回大页点分类上方的按钮。
   const entryBtns = document.getElementById('mistakeEntryBtns');
@@ -92,7 +241,8 @@ async function loadMistakes() {
     }
     if (!rows.length) { box.innerHTML = '<div class="empty">暂无符合条件的错题</div>'; return; }
     box.innerHTML = rows.map(r => `
-      <div class="item-row ${selecting ? 'mistake-selectable' : ''}" data-mistake-id="${r.id}" ${selecting ? `onclick="toggleMistakeCard(event, ${r.id})"` : 'onclick="openMistakeCard(event, ' + r.id + ')"'}>
+      <div class="item-row ${selecting ? 'mistake-selectable' : 'card-openable'}" data-mistake-id="${r.id}"
+        ${selecting ? `onclick="toggleMistakeCard(event, ${r.id})"` : `role="link" tabindex="0" aria-label="查看错题：${escapeHtml(r.title)}" onclick="openMistakeCard(event, ${r.id})" onkeydown="openMistakeCardKey(event, ${r.id})"`}>
         <div class="info">
           <div${selecting ? ' class="mistake-title-row"' : ''}>
             <div class="title">${escapeHtml(r.title)}</div>
@@ -111,7 +261,7 @@ async function loadMistakes() {
           <button onclick="event.stopPropagation();openMistakeDetail(${r.id})">查看</button>
           <button type="button" class="mistake-ai-entry" onclick="event.stopPropagation();openMistakeAiFromList(${r.id},this)">AI 复习建议</button>
           <button onclick="event.stopPropagation();editMistakeFromList(${r.id})">编辑</button>
-          <button onclick="delItem('mistakes', ${r.id}, loadMistakes)">删除</button>
+          <button onclick="event.stopPropagation();delItem('mistakes', ${r.id}, loadMistakes)">删除</button>
         </div>
       </div>`).join('');
   } catch (err) {
@@ -203,6 +353,12 @@ function openMistakeCard(event, id) {
   if (event.target.closest('a,button,input,label')) return;
   openMistakeDetail(id);
 }
+function openMistakeCardKey(event, id) {
+  if (event.target.closest('a,button,input,label')) return;
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  openMistakeDetail(id);
+}
 
 // 只读取最新数据，不改视图、导航栈或列表筛选。
 async function editMistakeFromList(id) {
@@ -228,21 +384,209 @@ async function uploadMistake() {
   input.value = '';
   await openTagPicker('upload', 'mistake', null);
 }
-async function doUploadMistake(file, knowledgeIds, title) {
+function openMistakeCreate() {
+  pendingUploadFile = null;
+  pendingManual = null;
+  return openTagPicker('upload', 'mistake', null);
+}
+function renderMistakeCreateFileSummary() {
+  const summary = document.getElementById('mistakeCreateFileSummary');
+  const remove = document.getElementById('mistakeCreateQuestionRemove');
+  const ocr = document.getElementById('mistakeCreateOcrBtn');
+  if (!summary) return;
+  if (!pendingUploadFile) {
+    summary.style.display = 'none';
+    summary.innerHTML = '';
+    if (remove) remove.style.display = 'none';
+    if (ocr) ocr.style.display = 'none';
+    return;
+  }
+  summary.innerHTML = `<span class="mistake-create-file-icon">📎</span><div><strong>${escapeHtml(pendingUploadFile.name)}</strong><small>${escapeHtml(pendingUploadFile.type || '附件')} · 保存后上传</small></div>`;
+  summary.style.display = 'flex';
+  if (remove) remove.style.display = 'inline-flex';
+  if (ocr) ocr.style.display = 'inline-flex';
+}
+function chooseMistakeCreateFile(input) {
+  const file = input.files?.[0] || null;
+  pendingUploadFile = file;
+  if (file) {
+    const nameInput = document.getElementById('tagPickerName');
+    const extChip = document.getElementById('tagPickerNameExt');
+    const nameTip = document.getElementById('tagPickerNameTip');
+    const parts = splitNameExt(file.name || '');
+    if (nameInput && !nameInput.value.trim()) nameInput.value = parts.base;
+    if (extChip) {
+      extChip.textContent = parts.ext || '';
+      extChip.style.display = parts.ext ? 'inline-block' : 'none';
+    }
+    if (nameTip) nameTip.style.display = parts.ext ? 'block' : 'none';
+  }
+  renderMistakeCreateFileSummary();
+}
+function clearMistakeCreateFile() {
+  pendingUploadFile = null;
+  const input = document.getElementById('mistakeCreateQuestionUpload');
+  if (input) input.value = '';
+  const extChip = document.getElementById('tagPickerNameExt');
+  if (extChip) { extChip.textContent = ''; extChip.style.display = 'none'; }
+  const nameTip = document.getElementById('tagPickerNameTip');
+  if (nameTip) nameTip.style.display = 'none';
+  closeMistakeOcr();
+  renderMistakeCreateFileSummary();
+}
+function updateMistakeCreateContentClear() {
+  const button = document.getElementById('mistakeCreateContentClear');
+  const content = document.getElementById('mistakeCreateContent');
+  if (button) button.style.display = content?.value.trim() ? 'inline-flex' : 'none';
+}
+function clearMistakeCreateContent() {
+  const content = document.getElementById('mistakeCreateContent');
+  if (content) content.value = '';
+  updateMistakeCreateContentClear();
+}
+function updateMistakeCreateAnswerClear() {
+  const button = document.getElementById('mistakeCreateAnswerClear');
+  const choice = document.getElementById('mistakeCreateFormat')?.value === 'choice';
+  const hasAnswer = choice
+    ? !!document.querySelector('#mistakeCreateAnswerOptions input:checked')
+    : !!document.getElementById('mistakeCreateAnswer')?.value.trim();
+  if (button) button.style.display = hasAnswer ? 'inline-flex' : 'none';
+}
+function clearMistakeCreateAnswer() {
+  const choice = document.getElementById('mistakeCreateFormat')?.value === 'choice';
+  if (choice) {
+    document.querySelectorAll('#mistakeCreateAnswerOptions input:checked').forEach(input => { input.checked = false; });
+  } else {
+    const answer = document.getElementById('mistakeCreateAnswer');
+    if (answer) answer.value = '';
+  }
+  updateMistakeCreateAnswerClear();
+}
+function updateMistakeCreateExplanationClear() {
+  const button = document.getElementById('mistakeCreateExplanationClear');
+  const hasText = !!document.getElementById('mistakeCreateExplanation')?.value.trim();
+  if (button) button.style.display = hasText ? 'inline-flex' : 'none';
+}
+function clearMistakeCreateExplanation() {
+  const explanation = document.getElementById('mistakeCreateExplanation');
+  if (explanation) explanation.value = '';
+  updateMistakeCreateExplanationClear();
+}
+function updateMistakeCreateOcrActions() {
+  const choice = document.getElementById('mistakeCreateFormat')?.value === 'choice';
+  const toOptions = document.getElementById('mistakeCreateOcrToOptions');
+  const toAnswer = document.getElementById('mistakeCreateOcrToAnswer');
+  if (toOptions) toOptions.style.display = choice ? 'inline-flex' : 'none';
+  if (toAnswer) toAnswer.style.display = 'inline-flex';
+  updateMistakeCreateContentClear();
+  updateMistakeCreateAnswerClear();
+  updateMistakeCreateExplanationClear();
+}
+function closeMistakeOcr() {
+  const panel = document.getElementById('mistakeCreateOcrPanel');
+  const text = document.getElementById('mistakeCreateOcrText');
+  const meta = document.getElementById('mistakeCreateOcrMeta');
+  if (panel) panel.style.display = 'none';
+  if (text) text.value = '';
+  if (meta) meta.textContent = '';
+}
+async function recognizeMistakeCreateFile() {
+  if (!pendingUploadFile) { showToast('请先选择题目附件'); return; }
+  const button = document.getElementById('mistakeCreateOcrBtn');
+  if (button?.disabled) return;
+  const original = button ? button.textContent : '';
+  if (button) { button.disabled = true; button.textContent = '识别中…'; }
+  try {
+    const fd = new FormData();
+    fd.append('file', pendingUploadFile);
+    const response = await requestApi(`${API}/ocr`, { method: 'POST', body: fd });
+    const result = await response.json();
+    const text = document.getElementById('mistakeCreateOcrText');
+    const panel = document.getElementById('mistakeCreateOcrPanel');
+    const meta = document.getElementById('mistakeCreateOcrMeta');
+    if (text) text.value = result.text || '';
+    if (panel) panel.style.display = 'grid';
+    if (meta) {
+      const parts = [];
+      if (result.provider) parts.push(`识别来源：${result.provider}`);
+      if (Number.isFinite(result.confidence)) parts.push(`置信度 ${Math.round(result.confidence * 100)}%`);
+      if (result.warnings?.length) parts.push(result.warnings.join('；'));
+      meta.textContent = parts.join(' · ');
+    }
+    updateMistakeCreateOcrActions();
+    showToast('识别完成，请核对后再填入');
+  } catch (err) {
+    showToast(err.message);
+  } finally {
+    if (button) { button.disabled = false; button.textContent = original; }
+  }
+}
+function applyMistakeOcr(target, mode = 'replace') {
+  const text = (document.getElementById('mistakeCreateOcrText')?.value || '').trim();
+  if (!text) { showToast('识别结果为空'); return; }
+  const format = document.getElementById('mistakeCreateFormat')?.value || 'open';
+  if (target === 'question') {
+    const content = document.getElementById('mistakeCreateContent');
+    if (!content) return;
+    content.value = mode === 'append' && content.value.trim() ? `${content.value.trim()}\n\n${text}` : text;
+    updateMistakeCreateContentClear();
+    showToast(mode === 'append' ? '已追加到题干' : '已替换题干');
+    return;
+  }
+  if (target === 'options') {
+    if (format !== 'choice') return;
+    const values = [];
+    for (const line of text.split('\n')) {
+      const match = line.match(/^\s*([A-Za-z])\s*[.、:：)]\s*(.+)$/);
+      if (match) values.push(match[2].trim());
+    }
+    if (values.length < 2) { showToast('没有识别到 A./B./C. 形式的选项行，请手动校对'); return; }
+    renderMistakeChoiceOptionRows('Create', values, []);
+    showToast('已填入选项，请核对编号和内容');
+    return;
+  }
+  if (target === 'answer') {
+    if (format === 'choice') {
+      const match = text.match(/(?:正确答案|答案)\s*[：:]\s*([A-Z](?:\s*[,，、]\s*[A-Z])*)/i);
+      if (!match) { showToast('没有识别到“答案：A”形式的字母'); return; }
+      const ids = [...new Set((match[1].toUpperCase().match(/[A-Z]/g) || []))];
+      const letters = choiceLetters(readMistakeChoiceOptionValues('Create').length);
+      const valid = ids.filter(id => letters.includes(id));
+      if (!valid.length) { showToast('答案字母不在当前选项中，请先填入选项'); return; }
+      const type = document.getElementById('mistakeCreateChoiceType')?.value || 'single';
+      renderMistakeChoiceAnswerOptions('Create', type === 'single' ? valid.slice(0, 1) : valid);
+      updateMistakeCreateAnswerClear();
+      showToast('已填入正确答案，请核对');
+    } else {
+      const answer = document.getElementById('mistakeCreateAnswer');
+      if (answer) answer.value = text;
+      updateMistakeCreateAnswerClear();
+      showToast('已填入答案');
+    }
+  }
+}
+async function doCreateMistake(file, knowledgeIds, title, content) {
   const options = mistakeCreationFields();
-  const uploadBtn = document.querySelector('#pane-mistakes .upload-btn');
-  const originalText = uploadBtn.textContent;
-  uploadBtn.textContent = '上传中…'; uploadBtn.disabled = true;
   const fd = new FormData();
-  fd.append('file', file);
+  if (file) fd.append('file', file);
   if (title) fd.append('title', title);
+  fd.append('content', content || '');
   fd.append('knowledgeIds', JSON.stringify(knowledgeIds));
-  for (const [key, value] of Object.entries(options)) fd.append(key, value);
+  for (const [key, value] of Object.entries(options)) {
+    fd.append(key, key === 'options' || (key === 'correctOption' && Array.isArray(value))
+      ? JSON.stringify(value) : value);
+  }
   try {
     await requestApi(`${API}/courses/${currentCourseId}/mistakes`, { method: 'POST', body: fd });
-    showToast('上传成功');
+    showToast(file ? '上传成功' : '已添加错题');
     await loadMistakes();
     return true;
-  } catch (err) { showToast(err.message); return false; }
-  finally { uploadBtn.textContent = originalText; uploadBtn.disabled = false; }
+  } catch (err) {
+    showToast(err.message || '保存失败，请重试');
+    return false;
+  }
+}
+async function doUploadMistake(file, knowledgeIds, title) {
+  const content = document.getElementById('mistakeCreateContent')?.value || '';
+  return doCreateMistake(file, knowledgeIds, title, content);
 }

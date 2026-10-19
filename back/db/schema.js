@@ -8,7 +8,7 @@
 const { db } = require('./connection');
 
 // ===== 当前程序支持的数据库版本 =====
-const CURRENT_DB_VERSION = 16;
+const CURRENT_DB_VERSION = 17;
 
 // 判断某张表是否已经存在
 function tableExists(name) {
@@ -283,6 +283,54 @@ function migratePlanScheduleSnapshot() {
   } catch (err) { db.exec('ROLLBACK'); throw err; }
 }
 
+// ===== v16 → v17：复习模式与选择题复现 =====
+// 仅新增列/表；旧错题默认仍是主观题，原有复习步骤机不受影响。
+function migrateReviewModes() {
+  if (getUserVersion() !== 16) return;
+  db.exec('BEGIN');
+  try {
+    upgradeToV17();
+    setUserVersion(17);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
+function upgradeToV17() {
+  const addColumn = (table, column, ddl) => {
+    const exists = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+    if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  };
+  addColumn('mistakes', 'question_format', "question_format TEXT NOT NULL DEFAULT 'open' CHECK(question_format IN ('open','choice'))");
+  addColumn('mistakes', 'options_json', "options_json TEXT NOT NULL DEFAULT '[]'");
+  addColumn('mistakes', 'correct_option', "correct_option TEXT NOT NULL DEFAULT ''");
+  addColumn('mistakes', 'choice_type', "choice_type TEXT NOT NULL DEFAULT 'single' CHECK(choice_type IN ('single','multiple'))");
+  addColumn('mistake_review_progress', 'selected_option', 'selected_option TEXT');
+  addColumn('mistake_review_progress', 'choice_correct', 'choice_correct INTEGER CHECK(choice_correct IS NULL OR choice_correct IN (0,1))');
+  addColumn('mistake_review_events', 'mode_id', 'mode_id TEXT');
+  addColumn('mistake_review_events', 'selected_option', 'selected_option TEXT');
+  addColumn('review_item_states', 'last_mode_id', 'last_mode_id TEXT');
+  addColumn('review_item_events', 'mode_id', 'mode_id TEXT');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS review_item_modes (
+      course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      item_type TEXT NOT NULL CHECK(item_type IN ('material','note','mistake')),
+      item_id INTEGER NOT NULL CHECK(item_id > 0),
+      mode_id TEXT NOT NULL,
+      mode_source TEXT NOT NULL CHECK(mode_source IN ('user','rule','ai','default')),
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY(course_id,item_type,item_id)
+    );
+  `);
+  for (const [type, table] of [['material', 'materials'], ['note', 'notes'], ['mistake', 'mistakes']]) {
+    db.exec(`CREATE TRIGGER IF NOT EXISTS review_item_mode_${type}_deleted AFTER DELETE ON ${table} BEGIN
+      DELETE FROM review_item_modes WHERE item_type='${type}' AND item_id=OLD.id;
+    END`);
+  }
+}
+
 function upgradeToV15() {
   const exists = db.prepare('PRAGMA table_info(review_session_items)').all().some((c) => c.name === 'result');
   if (!exists) {
@@ -508,6 +556,7 @@ migrateReviewSessions();
 migrateReviewScheduling();
 migrateReviewResults();
 migratePlanScheduleSnapshot();
+migrateReviewModes();
 
 // ===== 建表：Phase 0 的基础结构（version 1）=====
 // 每一张“子表”都用 course_id 指向 courses(id)，

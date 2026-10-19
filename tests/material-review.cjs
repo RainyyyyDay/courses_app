@@ -12,7 +12,7 @@ function testMaterialReviewMigration(source,temp) {
     const material=store.createMaterial(course.id,'旧资料','/uploads/old.pdf','application/pdf',[tag.id],'资料原文');
     store.db.exec('ALTER TABLE materials DROP COLUMN review_status'); store.db.exec('PRAGMA user_version=7');
     delete require.cache[require.resolve('./db/schema.js')]; require('./db/schema.js');
-    assert.equal(store.db.prepare('PRAGMA user_version').get().user_version,16);
+    assert.equal(store.db.prepare('PRAGMA user_version').get().user_version,17);
     assert.equal(store.findMaterial(material.id).review_status,'unreviewed');
     store.setMaterialReviewStatus(material.id,course.id,'reviewed');
     const note=store.createNote(course.id,'旧笔记','/uploads/old.png','image/png','manual',[tag.id],'笔记原文');
@@ -27,7 +27,7 @@ function testMaterialReviewMigration(source,temp) {
     store.db.exec('PRAGMA user_version=8'); delete require.cache[require.resolve('./db/schema.js')]; require('./db/schema.js');
     assert.equal(store.findNote(note.id).review_status,'reviewed');
     assert.equal(store.db.prepare('PRAGMA table_info(notes)').all().filter(c=>c.name==='review_status').length,1);
-    assert.equal(store.db.prepare('PRAGMA user_version').get().user_version,16);
+    assert.equal(store.db.prepare('PRAGMA user_version').get().user_version,17);
     for (const table of ['materials','notes']) store.db.exec('ALTER TABLE '+table+' DROP COLUMN favorite');
     store.db.exec('PRAGMA user_version=9'); delete require.cache[require.resolve('./db/schema.js')]; require('./db/schema.js');
     assert.equal(store.findMaterial(material.id).favorite,0); assert.equal(store.findNote(note.id).favorite,0);
@@ -37,7 +37,7 @@ function testMaterialReviewMigration(source,temp) {
     assert.equal(store.findNote(note.id).review_status,'reviewed'); assert.equal(store.findMaterial(material.id).review_status,'reviewed');
     assert.equal(store.findMaterial(material.id).content,material.content); assert.equal(store.findNote(note.id).content,note.content);
     assert.deepEqual(store.listNoteNodes(note.id).map(n=>n.id),[tag.id]);
-    assert.equal(store.db.prepare('PRAGMA user_version').get().user_version,16);
+    assert.equal(store.db.prepare('PRAGMA user_version').get().user_version,17);
     assert.deepEqual(store.db.prepare('PRAGMA foreign_key_check').all(),[]); store.db.close();
   `;
   const result=spawnSync(process.execPath,['-e',script],{cwd:fixture,windowsHide:true,encoding:'utf8'});
@@ -237,7 +237,7 @@ function materialBrowserScenario(data,kind='materials') {
     await readingController.skip();check(readingController.queue.index===0,'unconfirmed save cannot jump');
     window.fetch=readingFetch;await readingController.pause();
     await ${kind==='materials'?'loadMaterials':'loadNotes'}();
-    check(document.getElementById('${kind==='materials'?'materialReviewResume':'noteReviewResume'}').style.display!=='none','pause resume entry');
+    check(document.getElementById('${kind==='materials'?'materialReviewResume':'noteReviewResume'}').closest('.material-review-entry').style.display==='none','standalone pause entry removed');
     await readingController.resume();
     sessionStorage.setItem('reading-review-refresh',JSON.stringify({kind:'${kind}',ids:readingController.queue.ids,firstFavorite:readingController.row.favorite,favoriteId:readingFixtures[0].id,materialSnapshot:localStorage.getItem('material-review-queue:'+currentCourseId)}));
     location.reload();return;

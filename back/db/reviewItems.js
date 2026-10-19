@@ -52,6 +52,7 @@ function stateView(courseId, type, id, row) {
   return {
     courseId, itemType: type, itemId: id,
     ...state,
+    lastModeId: row?.last_mode_id || null,
     retention: state.stability > 0 ? Math.round(retrievability(state.stability, elapsed) * 1000) / 1000 : 0,
   };
 }
@@ -65,7 +66,7 @@ function getReviewItemState(courseId, type, id) {
 // sessionItemId 已记录过时返回 null，由调用方保持幂等。
 function recordGradeInTransaction({
   courseId, type, id, grade, reviewDate = planToday(), durationMs = 0,
-  sessionId = null, sessionItemId = null, mistakeType = null,
+  sessionId = null, sessionItemId = null, mistakeType = null, modeId = null,
 }) {
   if (sessionItemId !== null && db.prepare('SELECT 1 FROM review_item_events WHERE session_item_id=?').get(sessionItemId)) {
     return null;
@@ -85,10 +86,14 @@ function recordGradeInTransaction({
       after.lastGrade, after.lastReviewDate, after.dueDate, after.elapsedDays, after.scheduledDays, now);
   const info = db.prepare(`INSERT INTO review_item_events
     (course_id,item_type,item_id,reviewed_at,review_date,grade,duration_ms,session_id,session_item_id,
-     stability_before,stability_after,difficulty_before,difficulty_after,due_before,due_after)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+     stability_before,stability_after,difficulty_before,difficulty_after,due_before,due_after,mode_id)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(courseId, type, id, now, reviewDate, grade, durationMs, sessionId, sessionItemId,
-      before.stability, after.stability, before.difficulty, after.difficulty, before.dueDate, after.dueDate);
+      before.stability, after.stability, before.difficulty, after.difficulty, before.dueDate, after.dueDate, modeId);
+  if (modeId) {
+    db.prepare('UPDATE review_item_states SET last_mode_id=? WHERE course_id=? AND item_type=? AND item_id=?')
+      .run(modeId, courseId, type, id);
+  }
   return { state: after, eventId: Number(info.lastInsertRowid) };
 }
 
@@ -185,6 +190,34 @@ function structureKey(days) {
     .join('|');
 }
 
+// 同一天可能同时存在：排期快照、物化任务、当天会话。
+// 三者按 type:id 合并，会话只覆盖状态，不能把快照里其他未开始的项目挤掉。
+function mergeDayItems(base, extra) {
+  const merged = new Map();
+  for (const item of base || []) {
+    if (!item || !item.type || !Number.isSafeInteger(item.id)) continue;
+    merged.set(item.type + ':' + item.id, { ...item });
+  }
+  for (const item of extra || []) {
+    if (!item || !item.type || !Number.isSafeInteger(item.id)) continue;
+    const key = item.type + ':' + item.id;
+    const current = merged.get(key);
+    if (!current) {
+      merged.set(key, { ...item });
+      continue;
+    }
+    const next = { ...current };
+    if (item.title) next.title = item.title;
+    if (item.status !== undefined) next.status = item.status;
+    if (item.result !== undefined) next.result = item.result;
+    if (item.sourceDeleted !== undefined) next.sourceDeleted = item.sourceDeleted;
+    if (item.minutes !== undefined) next.minutes = item.minutes;
+    if (item.roundNo !== undefined) next.roundNo = item.roundNo;
+    merged.set(key, next);
+  }
+  return [...merged.values()];
+}
+
 function getReviewPlanSchedule(courseId, planId) {
   const plan = db.prepare('SELECT * FROM review_plans WHERE id=? AND course_id=?').get(planId, courseId);
   if (!plan) planError(404, 'PLAN_NOT_FOUND', '找不到当前课程的计划');
@@ -209,7 +242,7 @@ function getReviewPlanSchedule(courseId, planId) {
     snapshot = { days: liveStructure, generatedAt: null, applied: false };
     db.prepare('UPDATE review_plans SET schedule_json=? WHERE id=?').run(JSON.stringify(snapshot), plan.id);
   }
-  const hasNewSchedule = structureKey(snapshot.days) !== structureKey(liveStructure);
+  const structureChanged = structureKey(snapshot.days) !== structureKey(liveStructure);
   // 采纳新排期后，只把「采纳之后」的会话算作这一版的完成记录：
   // 之前的提前复习不在这版排期里显示绿勾。
   // 只有用户主动「应用新排期」之后的快照才以生成时间为界；初始快照保留历史完成状态。
@@ -244,8 +277,6 @@ function getReviewPlanSchedule(courseId, planId) {
         SUM(CASE WHEN status='skipped' THEN 1 ELSE 0 END) skipped,
         SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) pending
         FROM review_session_items WHERE session_id=?`).get(session.id);
-      state = session.status === 'completed' && counts.total > 0
-        && (counts.failed || 0) === 0 && (counts.open || 0) === 0 ? 'done' : 'partial';
       sessionCounts = {
         total: counts.total,
         completed: counts.completed || 0,
@@ -266,6 +297,15 @@ function getReviewPlanSchedule(courseId, planId) {
         minutes: 5,
       }));
     }
+    const previewItems = day.items.map(item => ({ ...item, title: titleFor(item.type, item.id) }));
+    const items = mergeDayItems(previewItems, sessionItems.map(item => ({
+      type: item.type, id: item.id, title: item.title, status: item.status, result: item.result, minutes: item.minutes,
+    })));
+    if (session) {
+      const active = items.filter(item => item.status !== 'skipped');
+      const passed = active.filter(item => item.status === 'completed' && item.result !== 'failed').length;
+      state = active.length && passed === active.length ? 'done' : 'partial';
+    }
     return {
       ...day,
       state,
@@ -274,7 +314,7 @@ function getReviewPlanSchedule(courseId, planId) {
       sessionTypes,
       sessionCounts,
       sessionItems,
-      items: day.items.map(item => ({ ...item, title: titleFor(item.type, item.id) })),
+      items,
     };
   });
   // 物化任务（review_plan_items）才是“实际排了、实际做了什么”的权威记录：
@@ -297,19 +337,26 @@ function getReviewPlanSchedule(courseId, planId) {
     if (materialized && materialized.length === 0) materialized = null;
     const preview = scheduledByDate.get(date) || null;
     if (!materialized) return preview;
-    const active = materialized.filter(row => row.status !== 'skipped');
-    const completed = active.filter(row => row.status === 'completed').length;
+    const materializedItems = materialized.map(row => ({
+      type: row.item_type,
+      id: row.item_id,
+      title: row.title_snapshot,
+      sourceDeleted: row.source_deleted ? 1 : 0,
+      status: row.status,
+      result: row.status === 'completed' ? 'passed' : null,
+      minutes: Number(row.estimated_minutes) || 5,
+      roundNo: 1,
+    }));
+    const items = mergeDayItems(
+      mergeDayItems(materializedItems, preview?.items || []),
+      preview?.sessionItems || [],
+    );
+    const active = items.filter(row => row.status !== 'skipped');
+    const completed = active.filter(row => row.status === 'completed' && row.result !== 'failed').length;
     return {
       date,
-      minutes: materialized.reduce((sum, row) => sum + (Number(row.estimated_minutes) || 5), 0),
-      items: materialized.map(row => ({
-        type: row.item_type,
-        id: row.item_id,
-        title: row.title_snapshot,
-        sourceDeleted: row.source_deleted ? 1 : 0,
-        minutes: Number(row.estimated_minutes) || 5,
-        roundNo: 1,
-      })),
+      minutes: items.reduce((sum, row) => sum + (Number(row.minutes) || 5), 0),
+      items,
       state: active.length && completed === active.length ? 'done' : completed ? 'partial' : 'none',
       sessionId: preview ? preview.sessionId : null,
       sessionStatus: preview ? preview.sessionStatus : null,
@@ -339,7 +386,10 @@ function getReviewPlanSchedule(courseId, planId) {
   }
   // 未来日期已完成 = 提前完成，也应该提示有新排期可应用。
   const hasEarlyDone = days.some(day => day.date > today && day.state === 'done');
-  return { ...base, ...result, days, hasNewSchedule: hasNewSchedule || hasEarlyDone };
+  // 今天按计划全部通过属于正常执行；记忆状态变化导致的未来估算差异不应再要求用户“应用新排期”。
+  // 只有提前完成未来日期，或今天没有全部通过时，才把结构差异呈现为待应用的新排期。
+  const todayDone = days.some(day => day.date === today && day.state === 'done');
+  return { ...base, ...result, days, hasNewSchedule: hasEarlyDone || (!todayDone && structureChanged) };
 }
 
 // 采纳当前记忆状态算出的新排期（替换快照）。
@@ -355,4 +405,24 @@ function applyReviewPlanSchedule(courseId, planId) {
   return getReviewPlanSchedule(courseId, planId);
 }
 
-module.exports = { getReviewItemState, recordReviewItemGrade, recordGradeInTransaction, getReviewPlanSchedule, applyReviewPlanSchedule };
+// 计划进度按“完整排期”统计（含后续多轮），与日历显示保持一致。
+function getPlanScheduleStats(courseId, planId) {
+  const schedule = getReviewPlanSchedule(courseId, planId);
+  let total = 0, passed = 0, failed = 0, skipped = 0, pending = 0;
+  for (const day of schedule.days) {
+    const items = day.items || [];
+    for (const item of items) {
+      total += 1;
+      if (item.status === 'completed') {
+        if (item.result === 'failed') failed += 1; else passed += 1;
+      } else if (item.status === 'skipped') skipped += 1;
+      else pending += 1;
+    }
+  }
+  return { total, passed, failed, skipped, pending, completionRate: total ? Math.round(passed / total * 100) : 0 };
+}
+
+module.exports = {
+  getReviewItemState, recordReviewItemGrade, recordGradeInTransaction, getReviewPlanSchedule,
+  applyReviewPlanSchedule, getPlanScheduleStats,
+};

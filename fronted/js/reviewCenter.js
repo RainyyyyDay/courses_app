@@ -315,6 +315,11 @@ async function centerReviewItemFinished() {
       clearCenterReviewUi();
       // 计划来源的复习完成后直接回计划，让日历按新记忆状态重新排布并立即呈现。
       if(planId && typeof openReviewPlan==='function'){await openReviewPlan(planId);return;}
+      if(s.session.source_type==='total' && typeof openReviewCompleteModal==='function') {
+        if(typeof backToReviewPlans==='function') backToReviewPlans();
+        await openReviewCompleteModal(s.session);
+        return;
+      }
       await openReviewSessionDetail(s.session.id);return;
     }
     s.position=s.session.current_position;await renderCenterReviewItem();

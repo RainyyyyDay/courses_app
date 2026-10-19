@@ -12,6 +12,7 @@ function reviewPlanPickerScenario({pickerOnly=false}={}) {
       const tag=await api('POST',c+'/knowledge-nodes',{name:'直接关联标签',type:'knowledge'});await api('PUT','/materials/'+m.id+'/nodes',{nodeIds:[tag.id]});await api('PUT','/notes/'+n.id+'/nodes',{nodeIds:[tag.id]});
       const field=id=>document.getElementById(id),rect=el=>el.getBoundingClientRect(),today=planLocalDate(),exam=new Date(Date.parse(today+'T00:00:00Z')+86400000*12).toISOString().slice(0,10);
       await openReviewPlanCreate();check(field('reviewPlanModal').classList.contains('show') && field('reviewPlanStart').value===today,'plan picker opens with existing local-date default');
+      await Promise.all(field('reviewPlanForm').getAnimations().map(animation=>animation.finished.catch(()=>{})));
       check(field('reviewPlanGenerate').disabled && !field('reviewPlanType'),'required fields/selection disabled, old type dropdown removed');
       await createReviewPlan();check(reviewPlanCreate && field('reviewPlanCreateError').textContent.includes('名称'),'programmatic invalid submit is blocked locally');
       field('reviewPlanName').value='期末考试复习';field('reviewPlanName').dispatchEvent(new Event('input'));
@@ -29,16 +30,16 @@ function reviewPlanPickerScenario({pickerOnly=false}={}) {
         const all=field('reviewPlanSelectAll'),label=all.closest('label');check(rect(all).width===14 && rect(label).width<220,'all checkbox is small and adjacent to label');
         for(const control of [...modal.querySelectorAll('.total-review-filters select,.total-review-filters button')].filter(el=>el.getClientRects().length))check(rect(control).height>=30 && rect(control).height<=34 && parseFloat(getComputedStyle(control).fontSize)<=13,'compact filters');
         for(const card of modal.querySelectorAll('.total-review-card')){const checkbox=card.querySelector('input'),title=card.querySelector('.total-review-item-title'),preview=card.querySelector('.total-review-item-preview'),meta=card.querySelector('small');check(rect(checkbox).width===14 && rect(title).left-rect(checkbox).right<16 && Math.abs(rect(title).left-rect(meta).left)<1 && rect(preview).left>=rect(title).right-1,'checkbox title metadata preview have stable grid alignment');}
-        check(rect(modal.querySelector('.total-review-footer')).bottom<=rect(dialog).bottom+1 && rect(list).height>=140,'visible footer and useful independent list height');
+        check(rect(modal.querySelector('.total-review-footer')).bottom<=rect(dialog).bottom+1 && rect(list).height>=140,'visible footer and full-height list inside the scroll body');
         for(const el of [dialog,list,...modal.querySelectorAll('.total-review-card')])check(el.scrollWidth<=el.clientWidth+1,'no picker horizontal overflow');
       };
       checkLayout();const actualRows=reviewPlanCreate.rows;
       reviewPlanCreate.rows=[...actualRows,...Array.from({length:28},(_,i)=>({...m,id:900000+i,type:'material',title:i===0 ? '超长文件名WithoutSpaces'.repeat(22)+'.pdf' : '额外复习资料 '+i,nodes:[],reviewable:1}))];renderReviewPlanSelection();checkLayout();
-      check(list.scrollHeight>list.clientHeight,'injected list overflows its own scroll viewport');
-      list.scrollTop=160;rememberReviewPlanScroll();check(list.scrollTop>0,'list scrolls independently of the dialog');const savedScroll=list.scrollTop,head=rect(field('reviewPlanCreateTitle')).top,footer=rect(modal.querySelector('.total-review-footer')).top;
+      const body=field('reviewPlanBody');check(body.scrollHeight>body.clientHeight,'dialog body scrolls as one area');
+      body.scrollTop=160;rememberReviewPlanScroll();check(body.scrollTop>0,'dialog body scrolls while header/footer stay');const savedScroll=body.scrollTop,head=rect(field('reviewPlanCreateTitle')).top,footer=rect(modal.querySelector('.total-review-footer')).top;
       const snapshot=()=>JSON.stringify({name:field('reviewPlanName').value,start:field('reviewPlanStart').value,exam:field('reviewPlanExam').value,tab:reviewPlanCreate.tab,ids:[...reviewPlanCreate.ids],q:field('reviewPlanSearch').value,scroll:reviewPlanCreate.filters[reviewPlanCreate.tab].scroll});
       const before=snapshot();list.querySelector('.total-review-item-title').click();await waitUntil(()=>field('reviewPlanContentPreviewBody').textContent.includes('资料正文检索词'),'plan title opens shared actual text preview');
-      check(!field('reviewPlanContentPreview').hidden && field('reviewPlanSelector').hidden,'preview swaps only modal body');closeReviewPlanPreview();check(snapshot()===before && list.scrollTop===savedScroll,'preview preserves form tab selection filters and exact scroll');
+      check(!field('reviewPlanContentPreview').hidden && field('reviewPlanSelector').hidden,'preview swaps only modal body');closeReviewPlanPreview();check(snapshot()===before && field('reviewPlanBody').scrollTop===savedScroll,'preview preserves form tab selection filters and exact scroll');
       check(rect(field('reviewPlanCreateTitle')).top===head && rect(modal.querySelector('.total-review-footer')).top===footer,'scroll does not move header/footer');
       reviewPlanCreate.rows=actualRows;reviewPlanCreate.filters.material.scroll=0;renderReviewPlanSelection();
       field('reviewPlanSearch').value='资料正文检索词';field('reviewPlanFavorite').checked=true;field('reviewPlanStatus').value='reviewed';renderReviewPlanSelection();field('reviewPlanTagsToggle').click();changeReviewPlanTag(tag.id,true);

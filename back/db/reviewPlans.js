@@ -1,11 +1,21 @@
 const {db} = require('./connection');
 const {planError,dateNumber,planDates,schedulePlan,planToday} = require('./reviewPlanSchedule');
+const {getPlanScheduleStats} = require('./reviewItems');
 const PLAN_SOURCES = {material:'materials',note:'notes',mistake:'mistakes'};
+
+// 迁移夹具会在 v12 旧表上建计划；旧表还没有选择题列时退回原来的答案条件。
+function mistakeReviewableSql(alias = '') {
+  const p = alias ? alias + '.' : '';
+  const hasChoice = db.prepare('PRAGMA table_info(mistakes)').all().some(column => column.name === 'question_format');
+  const answer = `trim(${p}answer_content) != '' OR ${p}answer_image_url != ''`
+    + (hasChoice ? ` OR (${p}question_format = 'choice' AND ${p}correct_option != '' AND ${p}options_json != '[]')` : '');
+  return `CASE WHEN (trim(${p}content) != '' OR ${p}image_url != '' OR trim(${p}ocr_text) != '') AND (${answer}) THEN 1 ELSE 0 END`;
+}
 
 function listPlanCandidates(courseId) {
   // 计划选题只读取内容本身，不联查标签、知识树或复习事件。
   return Object.entries(PLAN_SOURCES).flatMap(([type,table])=>db.prepare(`SELECT id,course_id,title,content,review_status,favorite,
-    '${type}' AS type, ${type==='mistake' ? "mistake_type, CASE WHEN (trim(content) != '' OR image_url != '' OR trim(ocr_text) != '') AND (trim(answer_content) != '' OR answer_image_url != '') THEN 1 ELSE 0 END" : "NULL AS mistake_type, 1"} AS reviewable
+    '${type}' AS type, ${type==='mistake' ? `mistake_type, ${mistakeReviewableSql()}` : "NULL AS mistake_type, 1"} AS reviewable
     FROM ${table} WHERE course_id=? ORDER BY id`).all(courseId));
 }
 
@@ -30,7 +40,7 @@ function listPlanItems(courseId,planId,filters={}) {
   }
   return db.prepare(`SELECT i.*,m.mistake_type,
     CASE WHEN i.source_deleted=1 THEN 0 WHEN i.item_type!='mistake' THEN 1
-      WHEN (trim(m.content)!='' OR m.image_url!='' OR trim(m.ocr_text)!='') AND (trim(m.answer_content)!='' OR m.answer_image_url!='') THEN 1 ELSE 0 END AS reviewable
+      ELSE ${mistakeReviewableSql('m')} END AS reviewable
     FROM review_plan_items i LEFT JOIN mistakes m ON i.item_type='mistake' AND m.id=i.item_id
     WHERE ${where.join(' AND ')} ORDER BY i.scheduled_date,i.sort_order,i.id`).all(...args);
 }
@@ -38,7 +48,11 @@ function planSummary(plan, detailed=false) {
   const items = listPlanItems(plan.course_id,plan.id), today = planToday();
   const result = {...plan,...planCounts(items),today,remainingDays:Math.max(0,dateNumber(plan.exam_date)-dateNumber(today)),
     todayStats:planCounts(items.filter(item=>item.scheduled_date===today))};
-  result.reviewState = result.pending===0 ? 'completed' : plan.exam_date<=today ? 'expired' : 'active';
+  // 进度以完整排期为准（含后续多轮），与计划详情里的日历保持一致。
+  try { result.scheduleStats = getPlanScheduleStats(plan.course_id, plan.id); } catch { result.scheduleStats = null; }
+  const sched = result.scheduleStats;
+  const pending = sched && sched.total ? sched.pending : result.pending;
+  result.reviewState = pending===0 ? 'completed' : plan.exam_date<=today ? 'expired' : 'active';
   if (detailed) result.days = planDates(plan.start_date,plan.exam_date).map(date=>{
     const rows = items.filter(item=>item.scheduled_date===date);
     return {date,...planCounts(rows),types:Object.fromEntries(Object.keys(PLAN_SOURCES).map(type=>[type,planCounts(rows.filter(item=>item.item_type===type))]))};

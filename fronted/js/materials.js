@@ -21,7 +21,10 @@ async function loadMaterials() {
     if (typeof renderMaterialReviewResume === 'function') renderMaterialReviewResume();
     if (rows.length === 0) return box.innerHTML = '<div class="empty">暂无资料</div>';
     box.innerHTML = rows.map(r => `
-      <div class="item-row" data-material-id="${r.id}">
+      <div class="item-row card-openable" data-material-id="${r.id}" role="link" tabindex="0"
+        aria-label="查看资料：${escapeHtml(r.title)}"
+        onclick="openReadingCard(event,'material',${r.id})"
+        onkeydown="openReadingCardKey(event,'material',${r.id})">
         <div class="info">
           <div class="title">${escapeHtml(r.title)}</div>
           <span class="material-review-badge">${r.review_status === 'reviewed' ? '已复习' : '未复习'}</span>
@@ -31,9 +34,8 @@ async function loadMaterials() {
         </div>
         <div class="mistake-actions">
           ${readingFavoriteButton('materials',r)}
-          <button onclick="event.stopPropagation();openResourceDetail('material', ${r.id})">查看</button>
-          <button onclick="openTagPicker('edit', 'material', ${r.id})">编辑</button>
-          <button onclick="delItem('materials', ${r.id}, loadMaterials)">删除</button>
+          <button onclick="event.stopPropagation();openTagPicker('edit', 'material', ${r.id})">编辑</button>
+          <button onclick="event.stopPropagation();delItem('materials', ${r.id}, loadMaterials)">删除</button>
         </div>
       </div>
     `).join('');

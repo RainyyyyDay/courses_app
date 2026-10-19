@@ -10,7 +10,12 @@ function sourceRow(type,id) {
   return Object.hasOwn(TYPES,type) ? db.prepare(`SELECT * FROM ${TYPES[type]} WHERE id=?`).get(id) : null;
 }
 function canReview(type,row) {
-  return !!row && (type!=='mistake' || ((row.content.trim() || row.image_url || row.ocr_text.trim()) && (row.answer_content.trim() || row.answer_image_url)));
+  if (!row) return false;
+  if (type !== 'mistake') return true;
+  const hasQuestion = !!(row.content.trim() || row.image_url || row.ocr_text.trim());
+  const hasAnswer = !!(row.answer_content.trim() || row.answer_image_url
+    || (row.question_format === 'choice' && (row.choice_ready || row.correct_option)));
+  return hasQuestion && hasAnswer;
 }
 function sessionRow(courseId,id) {
   const row=db.prepare('SELECT * FROM review_sessions WHERE id=? AND course_id=?').get(id,courseId);
