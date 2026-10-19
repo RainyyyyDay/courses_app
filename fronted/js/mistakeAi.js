@@ -3,14 +3,41 @@ let mistakeAiState = null;
 const mistakeAiElement = name => document.getElementById('mistakeAi' + name);
 const mistakeAiStorageKey = detail => 'mistake-ai-method:' + detail.courseId + ':' + detail.id;
 
-function readMistakeAiMethod(detail) {
+function readMistakeAiRecord(detail) {
   const saved = mistakeStorageGet(mistakeAiStorageKey(detail));
-  return saved?.version === 1 && typeof saved.method === 'string'
-    && Object.hasOwn(AI_REVIEW_METHODS, saved.method) ? saved.method : null;
+  if (!saved || typeof saved.method !== 'string') return null;
+  if (saved.version === 1 && Object.hasOwn(AI_REVIEW_METHODS, saved.method)) return {method:saved.method};
+  // Never guess a migration for recall/guided/unclassified or unknown versions.
+  // Keep original bytes in storage until the user explicitly confirms a new mode.
+  return {method:null, needsReselection:true};
+}
+
+function readMistakeAiMethod(detail) {
+  return readMistakeAiRecord(detail)?.method || null;
+}
+
+function saveMistakeAiMethod(detail, method) {
+  if (!Number.isSafeInteger(detail.courseId) || detail.courseId < 1
+    || !Number.isSafeInteger(detail.id) || detail.id < 1 || !Object.hasOwn(AI_REVIEW_METHODS, method)) return false;
+  mistakeStorageSet(mistakeAiStorageKey(detail), {version:1, method});
+  return readMistakeAiMethod(detail) === method;
+}
+
+function mistakeAiSuggestionText(result) {
+  return Object.hasOwn(AI_REVIEW_METHODS, result.review_method) ? 'AI 建议：' + AI_REVIEW_METHODS[result.review_method]
+    : 'AI 暂未给出可用建议，请人工选择';
+}
+
+function updateMistakeAiConfirm() {
+  const state = mistakeAiState;
+  mistakeAiElement('Confirm').disabled = !state || state.busy
+    || !(state.result || state.savedMethod || state.needsReselection)
+    || !Object.hasOwn(AI_REVIEW_METHODS, mistakeAiElement('Method').value);
 }
 
 function mistakeAiSavedText(detail) {
-  const method = readMistakeAiMethod(detail);
+  const record = readMistakeAiRecord(detail), method = record?.method;
+  if (record?.needsReselection) return '旧版 AI 复习建议需重新选择（原记录已保留）';
   return method ? '已保存的 AI 复习建议：' + AI_REVIEW_METHODS[method] : '暂无已保存的 AI 复习建议';
 }
 
@@ -91,10 +118,16 @@ function startMistakeAi(detail, options = {}) {
     mistakeAiElement('Suggested').textContent = '本地已保存的最终选择：' + AI_REVIEW_METHODS[saved];
     mistakeAiElement('Status').textContent = '已恢复本浏览器的确认选择；可修改后重新确认。';
     mistakeAiElement('Confirmation').textContent = '已保存到本浏览器：' + AI_REVIEW_METHODS[saved] + '。刷新后可恢复；原错题分类未改变。';
+  } else if (readMistakeAiRecord(detail)?.needsReselection) {
+    mistakeAiState.needsReselection = true;
+    mistakeAiElement('Result').hidden = false;
+    mistakeAiElement('Method').value = '';
+    mistakeAiElement('Suggested').textContent = '旧版 AI 复习建议需重新选择（原记录已保留）';
+    mistakeAiElement('Status').textContent = '旧记录无法可靠对应新模式，请从七种模式中选择并确认；取消不会覆盖旧记录。';
   }
   mistakeAiElement('Panel').hidden = false;
   mistakeAiElement('Toggle').setAttribute('aria-expanded', 'true');
-  mistakeAiElement('Confirm').disabled = !saved;
+  updateMistakeAiConfirm();
   if (options.source !== 'list') mistakeAiElement('Question').focus();
 }
 
@@ -126,12 +159,14 @@ async function requestMistakeAi() {
     if (!mistakeAiIsCurrent(state)) return;
     state.result = result;
     delete state.confirmedMethod;
-    mistakeAiElement('Suggested').textContent = 'AI 建议：' + AI_REVIEW_METHODS[result.review_method];
+    const usable = Object.hasOwn(AI_REVIEW_METHODS, result.review_method);
+    mistakeAiElement('Suggested').textContent = mistakeAiSuggestionText(result);
     mistakeAiElement('Reason').textContent = '分类理由：' + result.reason;
-    mistakeAiElement('Method').value = result.review_method;
+    mistakeAiElement('Method').value = usable ? result.review_method : '';
     mistakeAiElement('Confirmation').textContent = '';
     mistakeAiElement('Result').hidden = false;
-    mistakeAiElement('Status').textContent = '建议已生成，请人工复核。原错题分类未改变。';
+    mistakeAiElement('Status').textContent = usable ? '建议已生成，请人工复核。原错题分类未改变。'
+      : 'AI 暂未给出可用建议，请人工选择';
   } catch (err) {
     if (!mistakeAiIsCurrent(state) || err.name === 'AbortError') return;
     mistakeAiElement('Error').textContent = err.message;
@@ -143,7 +178,7 @@ async function requestMistakeAi() {
       mistakeAiElement('Inputs').disabled = false;
       mistakeAiElement('Submit').disabled = false;
       mistakeAiElement('Submit').textContent = '重新获取 / 重试';
-      mistakeAiElement('Confirm').disabled = !state.result && !state.savedMethod;
+      updateMistakeAiConfirm();
       mistakeAiElement('Method').disabled = false;
       mistakeAiElement('Panel').setAttribute('aria-busy', 'false');
     }
@@ -155,17 +190,17 @@ function changeMistakeAiSuggestion() {
     delete mistakeAiState.confirmedMethod;
     mistakeAiElement('Confirmation').classList.remove('mistake-inline-error');
     mistakeAiElement('Confirmation').textContent = '已修改本次建议，待确认；尚未保存。';
+    updateMistakeAiConfirm();
   }
 }
 
 function confirmMistakeAiSuggestion() {
   const state = mistakeAiState;
-  if (!state || (!state.result && !state.savedMethod) || state.busy || !mistakeAiIsCurrent(state)) return;
+  if (!state || (!state.result && !state.savedMethod && !state.needsReselection) || state.busy || !mistakeAiIsCurrent(state)) return;
   const method = mistakeAiElement('Method').value;
   if (!Object.hasOwn(AI_REVIEW_METHODS, method)) return;
   state.confirmedMethod = method;
-  mistakeStorageSet(mistakeAiStorageKey(state.detail), { version: 1, method });
-  const persisted = readMistakeAiMethod(state.detail) === method;
+  const persisted = saveMistakeAiMethod(state.detail, method);
   mistakeAiElement('Confirmation').classList.toggle('mistake-inline-error', !persisted);
   if (persisted) state.savedMethod = method;
   if (persisted) refreshMistakeAiSaved();
@@ -177,4 +212,103 @@ function confirmMistakeAiSuggestion() {
   mistakeAiElement('Confirmation').textContent = persisted
     ? '已保存到本浏览器：' + AI_REVIEW_METHODS[method] + '。刷新后可恢复；原错题分类未改变。'
     : '已确认：' + AI_REVIEW_METHODS[method] + '。本地保存失败，仅本页暂存，刷新后可能丢失；请重试。原错题分类未改变。';
+}
+
+// Optional creation view: shares adapter, mode map and persistence with existing advice.
+const mistakeCreateAiElement = name => document.getElementById('mistakeCreateAi' + name);
+
+function cancelMistakeCreateAi() {
+  tagPickerState?.aiCreate?.controller?.abort();
+}
+
+function prepareMistakeCreateAi(state) {
+  state.aiCreate = {selectedMethod:'', result:null, busy:false, controller:null};
+  const panel = mistakeCreateAiElement('Panel');
+  panel.open = false;
+  panel.setAttribute('aria-busy','false');
+  for (const name of ['StudentAnswer','ErrorType','Suggested','Reason','Status','Error']) {
+    const node = mistakeCreateAiElement(name);
+    if ('value' in node) node.value = ''; else node.textContent = '';
+  }
+  mistakeCreateAiElement('Method').replaceChildren(new Option('不选择',''),
+    ...Object.entries(AI_REVIEW_METHODS).map(([id,label])=>new Option(label,id)));
+  mistakeCreateAiElement('Fields').disabled = false;
+  mistakeCreateAiElement('Get').disabled = false;
+  mistakeCreateAiElement('Adopt').disabled = true;
+  mistakeCreateAiElement('Result').hidden = true;
+}
+
+function changeMistakeCreateAiMethod() {
+  const state = tagPickerState;
+  if (!state?.aiCreate || state.saving) return;
+  const method = mistakeCreateAiElement('Method').value;
+  state.aiCreate.selectedMethod = Object.hasOwn(AI_REVIEW_METHODS,method) ? method : '';
+  mistakeCreateAiElement('Status').textContent = state.aiCreate.selectedMethod
+    ? '已选择：' + AI_REVIEW_METHODS[method] + (state.createdMistake
+      ? '。错题已创建，点击“重试保存建议”仅保存此选择。' : '。将在错题创建成功后保存到本浏览器。')
+    : '不选择：只添加错题，不保存复习建议。';
+}
+
+function adoptMistakeCreateAi() {
+  const method = tagPickerState?.aiCreate?.result?.review_method;
+  if (!Object.hasOwn(AI_REVIEW_METHODS,method) || tagPickerState.saving) return;
+  mistakeCreateAiElement('Method').value = method;
+  changeMistakeCreateAiMethod();
+}
+
+async function requestMistakeCreateAi() {
+  const state = tagPickerState, draft = state?.aiCreate;
+  if (!draft || draft.busy || state.saving || state.courseId !== currentCourseId) return;
+  const current = ()=>tagPickerState===state && state.aiCreate===draft && state.courseId===currentCourseId;
+  const input = {
+    question:document.getElementById('mistakeCreateContent').value.trim(),
+    student_answer:mistakeCreateAiElement('StudentAnswer').value.trim(),
+    error_type:mistakeCreateAiElement('ErrorType').value,
+    correct_answer:document.getElementById('mistakeCreateFormat').value==='choice'
+      ? readMistakeChoiceAnswerIds('Create').join(', ') : document.getElementById('mistakeCreateAnswer').value.trim(),
+    context:document.getElementById('mistakeCreateExplanation').value.trim()
+  };
+  mistakeCreateAiElement('Error').textContent = '';
+  if (!input.question || !input.student_answer || !input.error_type) {
+    mistakeCreateAiElement('Error').textContent = '获取建议前请填写题干、学生作答并选择明确错误原因；这些信息不影响直接添加错题。';
+    return;
+  }
+  draft.busy = true; draft.controller = new AbortController();
+  mistakeCreateAiElement('Get').disabled = true;
+  mistakeCreateAiElement('Adopt').disabled = true;
+  mistakeCreateAiElement('Panel').setAttribute('aria-busy','true');
+  mistakeCreateAiElement('Status').textContent = '正在获取建议…';
+  try {
+    const result = await classifyMistakeWithAi(input,{signal:draft.controller.signal});
+    if (!current()) return;
+    draft.result = result;
+    mistakeCreateAiElement('Suggested').textContent = mistakeAiSuggestionText(result);
+    mistakeCreateAiElement('Reason').textContent = result.reason;
+    mistakeCreateAiElement('Result').hidden = false;
+    // Never preselect or overwrite an explicit manual selection from an AI response.
+    mistakeCreateAiElement('Status').textContent = '建议仅供参考；采用建议或手动选择后，才会随错题保存。';
+  } catch (err) {
+    if (current() && err.name!=='AbortError') mistakeCreateAiElement('Error').textContent = err.message;
+  } finally {
+    if (current()) {
+      draft.busy = false; draft.controller = null;
+      mistakeCreateAiElement('Get').disabled = false;
+      mistakeCreateAiElement('Adopt').disabled = !Object.hasOwn(AI_REVIEW_METHODS,draft.result?.review_method);
+      mistakeCreateAiElement('Panel').setAttribute('aria-busy','false');
+    }
+  }
+}
+
+function saveCreatedMistakeAi(state, row) {
+  const method = state.aiCreate?.selectedMethod;
+  if (!method) return true;
+  const valid = row?.course_id===state.courseId && Number.isSafeInteger(row.id) && row.id>0;
+  if (valid && saveMistakeAiMethod({courseId:row.course_id,id:row.id},method)) {
+    refreshMistakeAiSaved();return true;
+  }
+  mistakeCreateAiElement('Panel').open = true;
+  mistakeCreateAiElement('Error').textContent = valid
+    ? '错题已创建，但复习建议本地保存失败。选择已保留；点击“重试保存建议”不会重复创建错题。'
+    : '错题已创建，但返回的课程或错题编号无效，建议未关联。请关闭后从列表检查该题。';
+  return false;
 }

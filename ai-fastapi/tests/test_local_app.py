@@ -53,7 +53,7 @@ window.addEventListener('load', async () => {
     await requestMistakeAi();
     if (mistakeAiState.result?.review_method !== 'retry' ||
         !mistakeAiElement('Reason').textContent.includes('Mock')) throw Error('HTTP classification failed');
-    mistakeAiElement('Method').value='guided'; confirmMistakeAiSuggestion();
+    mistakeAiElement('Method').value='self_explain'; confirmMistakeAiSuggestion();
     if (!mistakeAiElement('Confirmation').textContent.includes('已保存到本浏览器') ||
         mistakeDetailState.row.mistake_type !== 'knowledge') throw Error('local confirmation failed');
     result.textContent='HTTP_BROWSER_PASS';
@@ -84,7 +84,7 @@ const base=process.argv[1], root=process.argv[2];
 const ctx=vm.createContext({fetch,AbortController,TextEncoder,setTimeout,clearTimeout,COURSES_AI_API_BASE:base+'/api/'});
 vm.runInContext("const API='http://unused.invalid/api';"+fs.readFileSync(root+'/fronted/js/ai.js','utf8'),ctx);
 (async()=>{
-  for(const [error_type,method] of [['careless','retry'],['knowledge_gap','recall'],['reasoning_gap','guided'],['unknown','unclassified']]){
+  for(const [error_type,method] of [['careless','retry'],['knowledge_gap','cloze'],['reasoning_gap','self_explain'],['unknown','unclassified']]){
     ctx.input={question:'1+1=?',student_answer:'3',error_type};
     const result=await vm.runInContext('classifyMistakeWithAi(input)',ctx);
     assert.equal(result.review_method,method);assert.equal(result.needs_review,true);

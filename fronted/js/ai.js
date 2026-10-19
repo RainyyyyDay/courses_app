@@ -2,7 +2,11 @@
  * AI 请求适配层。默认使用网站 API；宿主可在加载脚本前配置 COURSES_AI_API_BASE。
  * 本地开发由 test_app.py 同源注入地址；正式部署沿用宿主配置。
  */
-const AI_REVIEW_METHODS = Object.freeze({ recall: '回忆知识', guided: '引导练习', retry: '重新作答', unclassified: '待人工分类' });
+// Suggestion options only; selecting one does not activate its review engine.
+const AI_REVIEW_METHODS = Object.freeze({
+  choice_reproduction: '选择复现', standard: '标准复习', cloze: '挖空回忆',
+  self_explain: '自述讲解', reading: '阅读标记', contrast: '对比辨析', retry: '重新作答'
+});
 
 function mistakeAiError(code, status = 0) {
   const messages = {
@@ -73,7 +77,8 @@ async function classifyMistakeWithAi(input, { signal, timeoutMs = 20000 } = {}) 
       // 不展示上游 message/detail/异常正文，以免泄露路径、凭据或内部信息。
       throw mistakeAiError(typeof data?.error === 'string' ? data.error : 'HTTP_ERROR', res.status);
     }
-    if (!data || typeof data.review_method !== 'string' || !Object.hasOwn(AI_REVIEW_METHODS, data.review_method)
+    if (!data || typeof data.review_method !== 'string'
+      || (!Object.hasOwn(AI_REVIEW_METHODS, data.review_method) && data.review_method !== 'unclassified')
       || typeof data.reason !== 'string' || !data.reason.trim() || data.reason.length > 500
       || data.needs_review !== true) throw mistakeAiError('INVALID_RESPONSE');
     return { review_method: data.review_method, reason: data.reason.trim(), needs_review: true };

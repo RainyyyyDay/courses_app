@@ -1,5 +1,7 @@
 // 真正的详情 DOM + 全部前端脚本（不启动 app.js）；fetch 全部替换，意外请求直接失败。
 const {mistakeAiListChecks}=require('./mistake-ai-list-frontend.cjs');
+const {mistakeAiModeChecks}=require('./mistake-ai-modes-frontend.cjs');
+const {mistakeAiCreateChecks}=require('./mistake-ai-create-frontend.cjs');
 function mistakeAiBrowserScenario() {
   return `
   window.addEventListener('load', async () => {
@@ -25,12 +27,12 @@ function mistakeAiBrowserScenario() {
     try {
       if (sessionStorage.getItem('ai-confirm-reload') === 'yes') {
         prepare(11); el('Toggle').click();
-        check(el('Method').value==='guided' && el('Confirmation').textContent.includes('已保存到本浏览器'), 'actual reload restores final confirmed choice');
+        check(el('Method').value==='self_explain' && el('Confirmation').textContent.includes('已保存到本浏览器'), 'actual reload restores final confirmed choice');
         check(!mistakeAiState.result && !el('Reason').textContent && !el('StudentAnswer').value, 'only final choice persisted, no fabricated AI result or input');
         check(calls.length===0, 'restore never calls backend');
-        el('Method').value='recall'; changeMistakeAiSuggestion(); confirmMistakeAiSuggestion();
+        el('Method').value='cloze'; changeMistakeAiSuggestion(); confirmMistakeAiSuggestion();
         resetMistakeAi(); toggleMistakeAi();
-        check(el('Method').value==='recall', 'restored choice can be changed and reconfirmed without AI');
+        check(el('Method').value==='cloze', 'restored choice can be changed and reconfirmed without AI');
         sessionStorage.removeItem('ai-confirm-reload');
         result.dataset.result='passed'; result.textContent='mock AI interactions and actual reload persistence passed';
         document.body.appendChild(result); return;
@@ -53,14 +55,14 @@ function mistakeAiBrowserScenario() {
       check(body.student_answer==='3' && body.correct_answer==='2' && body.error_type==='careless', 'student and reference answers are distinct');
       release(reply(suggestion)); await pending;
       check(!el('Result').hidden && el('Method').value==='retry' && el('Reason').textContent.includes('Mock：'), 'mock suggestion/reason visible');
-      el('Method').value='guided'; el('Method').dispatchEvent(new Event('change')); el('Confirm').click();
-      check(el('Confirmation').textContent.includes('引导练习') && el('Confirmation').textContent.includes('已保存到本浏览器'), 'modify and persist without save API');
-      check(localStorage.getItem('mistake-ai-method:42:11')===JSON.stringify({version:1,method:'guided'}), 'only final choice and format version stored');
+      el('Method').value='self_explain'; el('Method').dispatchEvent(new Event('change')); el('Confirm').click();
+      check(el('Confirmation').textContent.includes('自述讲解') && el('Confirmation').textContent.includes('已保存到本浏览器'), 'modify and persist without save API');
+      check(localStorage.getItem('mistake-ai-method:42:11')===JSON.stringify({version:1,method:'self_explain'}), 'only final choice and format version stored');
       const priorReason=el('Reason').textContent, priorConfirmation=el('Confirmation').textContent;
       implementation = () => reply({error:'AI_AUTH_NOT_CONFIGURED',message:'SECRET_INTERNAL_PATH'},503);
       await requestMistakeAi();
       check(el('Error').textContent.includes('尚未接入网站授权') && !el('Error').textContent.includes('SECRET'), '503 safe explanation');
-      check(el('Reason').textContent===priorReason && el('Method').value==='guided' && el('Confirmation').textContent===priorConfirmation, 'failure preserves previous suggestion/manual choice');
+      check(el('Reason').textContent===priorReason && el('Method').value==='self_explain' && el('Confirmation').textContent===priorConfirmation, 'failure preserves previous suggestion/manual choice');
       check(!el('Submit').disabled && el('Submit').textContent.includes('重试'), 'retry enabled');
       implementation = () => {throw new TypeError('SECRET_NETWORK_DETAIL');}; await requestMistakeAi();
       check(el('Error').textContent.includes('无法连接') && el('StudentAnswer').value==='3', 'network error preserves inputs');
@@ -96,12 +98,13 @@ function mistakeAiBrowserScenario() {
       release(reply(suggestion)); await samePage;
       check(el('Panel').hidden && mistakeAiState===null, 'detail load hook cancels previous request');
       prepare(11); el('Toggle').click();
-      check(el('Method').value==='guided', 'unconfirmed later suggestions do not overwrite saved choice');
+      check(el('Method').value==='self_explain', 'unconfirmed later suggestions do not overwrite saved choice');
       resetMistakeAi(); currentCourseId=43; mistakeDetailState.courseId=43; el('Toggle').click();
       check(el('Result').hidden && !mistakeAiState.confirmedMethod, 'same mistake id in different course stays isolated');
       for (const bad of ['{', JSON.stringify({version:1,method:'knowledge'}), JSON.stringify({version:2,method:'retry'})]) {
         resetMistakeAi(); localStorage.setItem('mistake-ai-method:43:11',bad); el('Toggle').click();
-        check(el('Result').hidden && !mistakeAiState.confirmedMethod, 'corrupt/unknown saved records ignored');
+        check(!mistakeAiState.confirmedMethod && (bad==='{' ? el('Result').hidden : mistakeAiState.needsReselection), 'corrupt ignored; unknown saved records prompt reselection');
+        check(localStorage.getItem('mistake-ai-method:43:11')===bad, 'unknown record bytes preserved');
       }
       prepare(11); resetMistakeAi(); el('Toggle').click();
       const get=Storage.prototype.getItem, set=Storage.prototype.setItem;
@@ -109,17 +112,19 @@ function mistakeAiBrowserScenario() {
         Storage.prototype.setItem=function(){throw new Error('quota');};
         el('Method').value='retry'; confirmMistakeAiSuggestion();
         check(el('Confirmation').textContent.includes('本地保存失败') && el('Method').value==='retry', 'failed persistence keeps current choice and reports failure');
-        check(readMistakeAiMethod(mistakeDetailState)==='guided', 'failed write leaves last saved choice intact');
+        check(readMistakeAiMethod(mistakeDetailState)==='self_explain', 'failed write leaves last saved choice intact');
         Storage.prototype.getItem=function(){throw new Error('blocked');};
         resetMistakeAi(); el('Toggle').click();
         check(el('Result').hidden, 'unavailable storage does not break opening panel');
       } finally {Storage.prototype.getItem=get; Storage.prototype.setItem=set;}
       resetMistakeAi(); el('Toggle').click();
       el('Method').value='retry'; changeMistakeAiSuggestion();
-      check(readMistakeAiMethod(mistakeDetailState)==='guided', 'unconfirmed selection does not persist');
+      check(readMistakeAiMethod(mistakeDetailState)==='self_explain', 'unconfirmed selection does not persist');
       check(document.documentElement.scrollWidth<=innerWidth+1, 'no horizontal overflow at requested viewport');
       check(!document.getElementById('bootErrorBox'), 'unexpected JavaScript error: '+document.getElementById('bootErrorBox')?.textContent);
       await (${mistakeAiListChecks.toString()})(check,el);
+      await (${mistakeAiModeChecks.toString()})(check,el,prepare);
+      await (${mistakeAiCreateChecks.toString()})(check);
       sessionStorage.setItem('ai-confirm-reload','yes'); location.reload(); return;
     } catch(err) { result.dataset.result='failed'; result.textContent=err.stack; }
     document.body.appendChild(result);

@@ -62,9 +62,9 @@ mock 成功响应：
 {"review_method":"retry","reason":"Mock：按已提供的错误类型匹配临时示例规则，未推断错误原因。","needs_review":true}
 ```
 
-映射逐项保留：knowledge_gap → recall；reasoning_gap → guided；careless → retry；其他 → unclassified。题目、学生答案、明确的 error_type 缺少任一项时不调用 Provider，返回 `unclassified` 人工兜底。correct_answer/context 不能替代上述门槛。
+确定的 mock 演示映射：knowledge_gap → cloze；reasoning_gap → self_explain；careless → retry；其他 → unclassified。题目、学生答案、明确的 error_type 缺少任一项时不调用 Provider，返回 `unclassified` 人工兜底。correct_answer/context 不能替代上述门槛。
 
-`error_type` 是调用方明确提供的证据标签，不是模型自动诊断；不要直接把主网站的 knowledge/thinking/execution 当作这些标签。`needs_review=true` 固定表示需要人工复核，不表示学生掌握程度或是否完成复习。规则版本仍为 example-1，未擅自修改教学规则。
+`error_type` 是调用方明确提供的证据标签，不是模型自动诊断；不要直接把主网站的 knowledge/thinking/execution 当作这些标签。`needs_review=true` 固定表示需要人工复核，不表示学生掌握程度或是否完成复习。规则版本为 review-modes-2，仅为可测试的演示映射，不是已确定的教学依据。
 
 输出严格检查类别白名单、非空且最多 500 UTF-16 单元的 reason 和布尔 needs_review；额外字段丢弃，返回的 needs_review 总为 true。结构/类别不合法返回 200 人工兜底；上游非法 JSON、截断和 HTTP 故障返回错误，不伪装成分类成功。前端请使用 textContent 渲染 reason。
 
@@ -131,3 +131,14 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:3002/api/ai/classify `
 ## 正常网站的本地入口
 
 启动本 mock 服务和 back 的 Node 服务后，打开 `http://127.0.0.1:3002/`（或 `/index.html`）。此处提供完整原前端并注入同源 AI 地址 `/api`，可在真实课程的错题列表/详情请求 mock；`/demo` 仅为可选独立演示。不要直接打开 file:// 页面，也不需要新增 CORS 放行。正式部署不导入此开发入口，继续使用宿主配置和真实授权依赖。启动脚本已改为打开根 HTTP 地址，具体命令见仓库根目录“启动说明.md”。
+
+
+## 七种建议模式（与最新总路线对齐）
+
+依据仓库唯一的 `docs/review-system-master-plan.md`（文件修改时间 2026-10-20 03:05:14，文档内更新日期 2026-10-19）。建议可选项为 choice_reproduction/standard/cloze/self_explain/reading/contrast/retry；七项中文分别为选择复现、标准复习、挖空回忆、自述讲解、阅读标记、对比辨析、重新作答。前六项来自模式表，retry 为本次明确追加项。
+
+API 路径、五字段请求和 `{review_method, reason, needs_review:true}` 结构保持不变；可返回七个模式 ID 或 unclassified 兜底标识。unclassified 不是复习模式，前端提示“AI 暂未给出可用建议，请人工选择”，用户须明确选七项之一后才能保存。recall/guided 已不是新响应白名单。
+
+默认 mock 只按现有明确错误类型确定返回：knowledge_gap→cloze，reasoning_gap→self_explain，careless→retry，其余或证据不足→unclassified。没有结构化题型/用途证据时，不擅自推荐选择复现、阅读等；其余模式可由用户人工选择。没有启用任何新复习引擎，也不修改排期、错题类型和复习状态。
+
+测试已更新：Python 29 项包含文档模式清单、Node/Python规则一致性、所有七种模式归一化、旧响应拒绝和真实 HTTP；前端另验证旧 localStorage 只提示重选、不自动迁移。宿主移植测试时需要同时提供上述文档fixture（与原 classification.json 一致性测试相同，运行模块不依赖文档）。

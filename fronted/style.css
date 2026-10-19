@@ -950,6 +950,9 @@ body.mistake-review-open { overflow: hidden; }
 .mistake-mode-switch { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 12px; color: #667187; }
 .mistake-mode-switch select { height: 30px; padding: 0 8px; border: 1px solid #dce1e9; border-radius: 7px; background: #fff; color: #34415a; font: inherit; }
 .mistake-mode-switch select:disabled { opacity: .55; }
+.mistake-format { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; font-size: 12px; }
+.mistake-format-confirm { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #667187; }
+.edit-choice-config > .mistake-format-confirm { flex-direction: row; }
 .mistake-choice-options { display: flex; flex-direction: column; gap: 9px; margin: 14px 0 10px; }
 .mistake-choice-option { display: flex; align-items: flex-start; gap: 10px; padding: 11px 14px; border: 1px solid #e1e6ef; border-radius: 10px; background: #fff; color: #34415a; cursor: pointer; transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease; }
 .mistake-choice-option:hover { border-color: #b8c6ea; background: #f8faff; }
@@ -1580,7 +1583,7 @@ body.mistake-edit-open { overflow: hidden; }
 
 #mistakeEditModal .tag-sheet-body { padding: 16px 16px 6px; background: #f6f7fb; }
 
-.edit-card {
+.edit-card, .mistake-create-ai {
   background: #fff;
   border: 1px solid #e6e9f2;
   border-radius: 14px;
@@ -1600,6 +1603,14 @@ body.mistake-edit-open { overflow: hidden; }
   background: #eef2ff; color: #4a6cf7; font-size: 11px;
 }
 .edit-card-body { display: grid; gap: 10px; }
+.mistake-create-ai { min-width: 0; margin-bottom: 0; }
+.mistake-create-ai summary { cursor: pointer; padding: 6px 0; font-size: 15px; color: #232a3d; }
+.mistake-create-ai fieldset { min-width: 0; border: 0; padding: 0; margin: 0; }
+.mistake-create-ai label { font-size: 13px; color: #667187; }
+.mistake-create-ai p { overflow-wrap: anywhere; white-space: pre-wrap; }
+.mistake-create-ai .modal-actions { flex-wrap: wrap; margin: 0; }
+.mistake-create-ai button { min-height: 40px; max-width: 100%; white-space: normal; }
+.mistake-create-ai [hidden], .mistake-create-ai p:empty { display: none; }
 .edit-open-answer-fields { display: grid; gap: 10px; }
 .edit-choice-config { display: grid; gap: 10px; margin-top: 4px; padding-top: 10px; border-top: 1px dashed #e5e9f1; }
 .edit-choice-config > label, .edit-choice-fields label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #667187; }

@@ -24,6 +24,7 @@ function currentResourceNodes(resourceType, resourceId) {
 
 //   resourceId   = edit 时的资源 id，upload 传 null
 async function openTagPicker(mode, resourceType, resourceId) {
+  cancelMistakeCreateAi();
   // 每次打开都新建一份独立状态，避免残留上一门课 / 上一条资源的选择与展开状态
   tagPickerState = {
     mode: mode,
@@ -86,6 +87,7 @@ async function openTagPicker(mode, resourceType, resourceId) {
     closeMistakeOcr();
     updateMistakeCreateContentClear();
     updateMistakeCreateOcrActions();
+    prepareMistakeCreateAi(tagPickerState);
   }
 
   // 名称那一行：上传和编辑时都显示，可以改名字。
@@ -212,6 +214,7 @@ function initTagPickerExpanded() {
 
 // 关闭选择器（取消时不会提交任何东西）
 function closeTagPicker() {
+  cancelMistakeCreateAi();
   const modal = document.getElementById('tagPickerModal');
   if (modal) modal.classList.remove('show');
 
@@ -259,7 +262,7 @@ function onTagSearchInput(value) {
 async function confirmTagPicker() {
   const state = tagPickerState;
   if (!state || state.saving) return;
-  if (state.resourceType === 'mistake' && state.mode !== 'edit') {
+  if (state.resourceType === 'mistake' && state.mode !== 'edit' && !state.createdMistake) {
     try { mistakeCreationFields(); } catch (err) { showToast(err.message); return; }
   }
 
@@ -286,9 +289,15 @@ async function confirmTagPicker() {
   const button = document.getElementById('tagPickerConfirm');
   state.saving = true;
   button.disabled = true;
+  if (state.aiCreate) {
+    cancelMistakeCreateAi();
+    mistakeCreateAiElement('Fields').disabled = true;
+  }
   try {
-    let saved = false;
-    if (mode === 'upload') {
+    let saved = state.createdMistake || false;
+    if (state.createdMistake) {
+      // A failed local write must never repeat the successful creation request.
+    } else if (mode === 'upload') {
       if (resourceType === 'mistake') {
         const content = (document.getElementById('mistakeCreateContent')?.value || '').trim();
         if (!file && !content) { showToast('请上传题目附件或输入题干'); return; }
@@ -309,12 +318,24 @@ async function confirmTagPicker() {
     } else {
       saved = await saveResourceTags(resourceType, resourceId, nodeIds, title);
     }
-    if (saved && tagPickerState === state) closeTagPicker();
+    if (saved && tagPickerState === state && currentCourseId === state.courseId) {
+      if (state.aiCreate) {
+        state.createdMistake = saved;
+        if (!saveCreatedMistakeAi(state, saved)) {
+          button.textContent = '重试保存建议';
+          return;
+        }
+      }
+      closeTagPicker();
+    }
   } catch (err) {
     showToast(err.message || '保存失败，请重试');
   } finally {
     state.saving = false;
-    if (tagPickerState === state) button.disabled = false;
+    if (tagPickerState === state) {
+      button.disabled = false;
+      if (state.aiCreate) mistakeCreateAiElement('Fields').disabled = false;
+    }
   }
 }
 

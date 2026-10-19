@@ -649,7 +649,7 @@ app.patch('/api/courses/:courseId/mistakes/:mistakeId', mistakeApi((req, res) =>
   const body = req.body;
   if (!body || typeof body !== 'object' || Array.isArray(body)) mistakeError(400, 'INVALID_ARGUMENT', '请求必须是 JSON 对象');
   const allowed = ['title', 'content', 'mistakeType', 'answerContent', 'explanation', 'favorite', 'expectedRevision',
-    'questionFormat', 'options', 'correctOption', 'choiceType'];
+    'questionFormat', 'options', 'correctOption', 'choiceType', 'questionFormatConfirmed'];
   if (Object.keys(body).some(key => !allowed.includes(key))) mistakeError(400, 'INVALID_ARGUMENT', '存在不支持的编辑字段');
   const changes = {};
   for (const [key, column] of [['title', 'title'], ['content', 'content'], ['answerContent', 'answer_content'], ['explanation', 'explanation']]) {
@@ -676,6 +676,17 @@ app.patch('/api/courses/:courseId/mistakes/:mistakeId', mistakeApi((req, res) =>
       correctOption: body.correctOption,
       choiceType: body.choiceType,
     }, { current: row }));
+  }
+  if (body.questionFormatConfirmed !== undefined && typeof body.questionFormatConfirmed !== 'boolean') {
+    mistakeError(400, 'INVALID_ARGUMENT', 'questionFormatConfirmed 必须是布尔值');
+  }
+  if (body.questionFormatConfirmed !== undefined || body.questionFormat !== undefined) {
+    const confirmed = body.questionFormatConfirmed ?? true;
+    if (confirmed) {
+      // Validate without rewriting unchanged fields: confirmation alone must not reset review data.
+      db.normalizeChoiceFields({}, { current: { ...row, ...changes } });
+    }
+    changes.question_format_confirmed = confirmed ? 1 : 0;
   }
   if (body.favorite !== undefined) {
     if (typeof body.favorite !== 'boolean') mistakeError(400, 'INVALID_ARGUMENT', 'favorite 必须是布尔值');
@@ -813,7 +824,8 @@ app.post('/api/courses/:id/mistakes', upload.single('file'), mistakeApi((req, re
     req.file ? req.file.mimetype : '',
     knowledgeIds,
     { mistakeType: body.mistakeType, answerContent: body.answerContent, explanation: body.explanation,
-      questionFormat: choice.question_format, optionsJson: choice.options_json,
+      questionFormat: choice.question_format, questionFormatConfirmed: body.questionFormat !== undefined,
+      optionsJson: choice.options_json,
       correctOption: choice.correct_option, choiceType: choice.choice_type }
   );
 

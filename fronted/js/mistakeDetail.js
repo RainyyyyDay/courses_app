@@ -52,6 +52,7 @@ async function renderMistakeDetailPage(mistakeId, review = false) {
   document.getElementById('mistakeDetailTitle').textContent = review ? '错题复习' : '错题详情';
   document.getElementById('mistakeDetailName').textContent = '加载中…';
   document.getElementById('mistakeDetailMeta').textContent = '';
+  document.getElementById('mistakeDetailFormat').innerHTML = '';
   document.getElementById('mistakeDetailTags').innerHTML = '';
   document.getElementById('mistakeDetailImage').style.display = 'none';
   document.getElementById('mistakeDetailImage').removeAttribute('src');
@@ -87,6 +88,7 @@ async function renderMistakeDetailPage(mistakeId, review = false) {
 }
 
 function renderMistakeDetail(mistake, review = false) {
+  document.getElementById('mistakeDetailFormat').innerHTML = review ? '' : mistakeFormatHtml(mistake);
   const aiSaved = document.getElementById('mistakeAiSavedDetail');
   if (aiSaved && typeof mistakeAiSavedHtml === 'function') aiSaved.innerHTML = mistakeAiSavedHtml(mistake.course_id, mistake.id);
   document.getElementById('mistakeDetailTitle').textContent = review ? '错题复习' : '错题详情';
@@ -221,6 +223,7 @@ function openMistakeEdit(row = mistakeDetailState?.row) {
   const editFormat = document.getElementById('mistakeEditFormat');
   const editChoiceType = document.getElementById('mistakeEditChoiceType');
   if (editFormat) editFormat.value = row.question_format || 'open';
+  document.getElementById('mistakeEditFormatConfirmed').checked = row.question_format_confirmed === 1;
   if (editChoiceType) editChoiceType.value = row.choice_type || 'single';
   setMistakeChoiceEditor('Edit', row.options_json, row.correct_option, row.choice_type);
   toggleMistakeChoiceFields('Edit');
@@ -489,6 +492,7 @@ function refreshMistakeEditDirty() {
   flag('mistakeEditFlagQuestion', (pending.questionRemoved && !!row.image_url) || !!pending.questionFile
     || value('mistakeEditContent') !== (row.content || '')
     || currentFormat !== rowFormat
+    || document.getElementById('mistakeEditFormatConfirmed').checked !== (row.question_format_confirmed === 1)
     || choiceDirty);
   flag('mistakeEditFlagAnswer', (pending.answerRemoved && !!row.answer_image_url) || !!pending.answerFile
     || value('mistakeEditAnswer') !== (row.answer_content || ''));
@@ -532,7 +536,11 @@ async function saveMistakeDetail() {
     ...choice,
     expectedRevision: state.row.review_revision
   };
+  body.questionFormatConfirmed = document.getElementById('mistakeEditFormatConfirmed').checked;
   if (!body.title) { showToast('请输入标题'); return; }
+  if (body.questionFormat !== (state.row.question_format || 'open')
+    && !await showConfirm('更改题型将重新开始本题当前复习并标记为未复习；历史评分和复习会话记录会保留。确定保存吗？', '更改题型')) return;
+  if (!mistakeEditIsCurrent(state) || state.saving) return;
   const attachmentUrl = suffix => `${API}/courses/${state.courseId}/mistakes/${state.id}/${suffix}`;
   let textSaved = false;
   const attachmentsChanged = (pending.questionRemoved && !!state.row.image_url) || !!pending.questionFile
@@ -588,6 +596,7 @@ async function saveMistakeDetail() {
       mistakeStorageSet('mistake-pending:' + state.courseId + ':' + state.id, null);
     }
     showToast('已保存');
+    refreshMistakeFormat(savedRow);
     state.saving = false;
     closeMistakeEdit();
     if (state.view.type === 'mistake' && state.view.id === state.id) {

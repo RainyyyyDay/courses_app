@@ -48,40 +48,40 @@ async function mistakeAiListChecks(check, el) {
     el('StudentAnswer').value='3';el('ErrorType').value='careless';await requestMistakeAi();
     check(saved(71).textContent.includes('暂无已保存'),'unconfirmed AI suggestion stays unsaved on card');
     check(el('Reason').scrollHeight<=el('Reason').clientHeight+1 && getComputedStyle(el('Reason')).overflowY==='visible','long reason wraps without nested scrolling');
-    el('Method').value='guided';changeMistakeAiSuggestion();el('Confirm').click();
-    check(saved(71).textContent.includes('引导练习') && saved(72).textContent.includes('暂无已保存'),'save updates only matching card');
+    el('Method').value='self_explain';changeMistakeAiSuggestion();el('Confirm').click();
+    check(saved(71).textContent.includes('自述讲解') && saved(72).textContent.includes('暂无已保存'),'save updates only matching card');
     check(!dialog.open && mistakeAiState===null && currentView===view && document.activeElement===entry,'successful save closes modal and returns to original list with focus');
     check(el('Panel').previousElementSibling.id==='mistakeAiHome' && el('Actions').previousElementSibling.id==='mistakeAiActionsHome','panel and actions returned to detail home');
     entry.click();
-    el('Method').value='recall';changeMistakeAiSuggestion();
-    check(saved(71).textContent.includes('引导练习'),'unconfirmed edit does not update card');
+    el('Method').value='cloze';changeMistakeAiSuggestion();
+    check(saved(71).textContent.includes('自述讲解'),'unconfirmed edit does not update card');
     foot.querySelector('.mistake-ai-dialog-only').click();
-    check(!dialog.open && saved(71).textContent.includes('引导练习'),'manual cancel discards unconfirmed edit');
-    entry.click();check(el('Method').value==='guided' && body.scrollTop===0,'reopen restores saved choice from top');
-    el('Method').value='recall';changeMistakeAiSuggestion();
+    check(!dialog.open && saved(71).textContent.includes('自述讲解'),'manual cancel discards unconfirmed edit');
+    entry.click();check(el('Method').value==='self_explain' && body.scrollTop===0,'reopen restores saved choice from top');
+    el('Method').value='cloze';changeMistakeAiSuggestion();
     const set=Storage.prototype.setItem;
     try {
       Storage.prototype.setItem=function(){throw Error('quota');};el('Confirm').click();
-      check(el('Confirmation').textContent.includes('本地保存失败') && el('Method').value==='recall','modal preserves failed save for retry');
+      check(el('Confirmation').textContent.includes('本地保存失败') && el('Method').value==='cloze','modal preserves failed save for retry');
       check(dialog.open && currentView===view && !el('Confirm').disabled,'failed save leaves modal open for retry');
-      check(saved(71).textContent.includes('引导练习'),'failed save leaves card unchanged');
+      check(saved(71).textContent.includes('自述讲解'),'failed save leaves card unchanged');
     } finally {Storage.prototype.setItem=set;}
-    el('Confirm').click();check(saved(71).textContent.includes('回忆知识'),'retry saves final choice');
+    el('Confirm').click();check(saved(71).textContent.includes('挖空回忆'),'retry saves final choice');
     check(!dialog.open,'successful retry closes dialog');
     check(document.getElementById('mistakeAiDialog').scrollWidth<=document.getElementById('mistakeAiDialog').clientWidth+1,'modal has no horizontal overflow');
     resetMistakeAi();check(document.activeElement===entry && !document.getElementById('mistakeAiDialog').open,'close restores focus');
     check(el('Panel').previousElementSibling.id==='mistakeAiHome','shared panel returned to detail home');
-    entry.click();check(el('Method').value==='recall' && !mistakeAiState.result,'list restores saved final choice');
+    entry.click();check(el('Method').value==='cloze' && !mistakeAiState.result,'list restores saved final choice');
     el('StudentAnswer').value='3';el('ErrorType').value='careless';
     window.fetch=()=>new Promise(resolve=>{release=resolve;});const pending=requestMistakeAi();
     resetMistakeAi();openMistakeAiFromList(72);release(new Response(JSON.stringify(suggestion)));await pending;
     check(!mistakeAiState.result && el('Result').hidden,'closing cancels late response across list mistakes');resetMistakeAi();
     const before=aiCalls;await openTotalReview();switchTotalReviewTab('mistake');
     const total=document.getElementById('totalReviewCandidates');
-    check(total.textContent.includes('回忆知识') && total.textContent.includes('暂无已保存的 AI 复习建议'),'total picker shows saved and missing names');
+    check(total.textContent.includes('挖空回忆') && total.textContent.includes('暂无已保存的 AI 复习建议'),'total picker shows saved and missing names');
     check(aiCalls===before,'total review never requests AI');
     await openTotalReviewPreview('mistake:71');
-    check(document.getElementById('totalReviewPreviewBody').textContent.includes('回忆知识'),'total preview shows saved method');
+    check(document.getElementById('totalReviewPreviewBody').textContent.includes('挖空回忆'),'total preview shows saved method');
     closeTotalReviewPreview();closeTotalReview();
     // Existing selection controls continue to operate independently of advice.
     await openTotalReview();switchTotalReviewTab('mistake');selectTotalReviewItem('mistake:71',true);
@@ -107,12 +107,12 @@ async function mistakeAiListChecks(check, el) {
     check(document.getElementById('mistakeEditModal').classList.contains('show') && document.getElementById('mistakeEditType').value==='knowledge','original list edit modal still opens with original category');
     closeMistakeEdit();
     await openMistakeDetail(71,false);
-    check(mistakeDetailState.row.id===71 && document.getElementById('mistakeAiSavedDetail').textContent.includes('回忆知识'),'original view loads detail and saved summary');
-    toggleMistakeAi();check(el('Method').value==='recall','detail panel still works after list modal reuse');resetMistakeAi();
+    check(mistakeDetailState.row.id===71 && document.getElementById('mistakeAiSavedDetail').textContent.includes('挖空回忆'),'original view loads detail and saved summary');
+    toggleMistakeAi();check(el('Method').value==='cloze','detail panel still works after list modal reuse');resetMistakeAi();
     // Actual running review uses the same detail renderer, including in review mode.
     currentView={type:'mistake',id:71};mistakeDetailState={courseId:42,id:71,row,review:true};
     showPageOnly('mistakeDetailPage');renderMistakeDetail(row,true);
-    check(document.getElementById('mistakeAiSavedDetail').textContent.includes('回忆知识'),'running mistake review shows saved method');
+    check(document.getElementById('mistakeAiSavedDetail').textContent.includes('挖空回忆'),'running mistake review shows saved method');
     localStorage.removeItem('mistake-ai-method:42:71');localStorage.removeItem('mistake-ai-method:42:72');
   } finally {
     resetMistakeAi();requestList=originalList;requestApi=originalApi;window.fetch=originalFetch;

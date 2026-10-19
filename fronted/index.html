@@ -272,6 +272,7 @@
       <div class="detail-card">
         <div class="detail-name" id="mistakeDetailName"></div>
         <div class="detail-meta" id="mistakeDetailMeta"></div>
+        <div id="mistakeDetailFormat"></div>
         <div id="mistakeAiSavedDetail"></div>
         <div class="mistake-tags" id="mistakeDetailTags"></div>
       </div>
@@ -324,9 +325,13 @@
             <p id="mistakeAiReason" class="detail-content"></p>
             <label for="mistakeAiMethod">人工复核：可修改建议</label>
             <select id="mistakeAiMethod" onchange="changeMistakeAiSuggestion()">
-              <option value="recall">回忆知识</option><option value="guided">引导练习</option>
-              <option value="retry">重新作答</option><option value="unclassified">待人工分类</option>
+              <option value="" disabled selected>请选择复习模式</option>
+              <option value="choice_reproduction">选择复现</option><option value="standard">标准复习</option>
+              <option value="cloze">挖空回忆</option><option value="self_explain">自述讲解</option>
+              <option value="reading">阅读标记</option><option value="contrast">对比辨析</option>
+              <option value="retry">重新作答</option>
             </select>
+            <p class="mistake-ai-note">这里只保存复习建议，不会启用或切换实际复习流程；待做模式尚无对应引擎。</p>
             <p class="mistake-ai-note">确认后的复习方式保存在本浏览器，刷新后重新打开 AI 面板可恢复；清除浏览器数据后会丢失，不跨浏览器同步。输入和 AI 理由不保存。如需修改原错题分类，请使用上方“编辑”。</p>
           </div>
           <span id="mistakeAiActionsHome" hidden></span>
@@ -573,11 +578,13 @@
             <textarea id="mistakeEditContent" rows="4" placeholder="题目内容" oninput="refreshMistakeEditDirty()"></textarea>
             <div class="edit-choice-config">
               <label class="mistake-create-field">题型
-                <select id="mistakeEditFormat" onchange="toggleMistakeChoiceFields('Edit');refreshMistakeEditDirty()">
+                <select id="mistakeEditFormat" onchange="markMistakeFormatSelected();toggleMistakeChoiceFields('Edit');refreshMistakeEditDirty()">
                   <option value="open">主观题 / 非选择题</option>
                   <option value="choice">选择题</option>
                 </select>
               </label>
+              <label class="mistake-format-confirm"><input type="checkbox" id="mistakeEditFormatConfirmed" onchange="refreshMistakeEditDirty()" />已确认此题型</label>
+              <small>改变题型、选项或答案会按原规则重新开始本题复习；历史评分和复习记录保留。仅确认原题型不影响复习进度。</small>
               <div id="mistakeEditChoiceFields" class="edit-choice-fields" style="display:none;">
                 <label class="mistake-create-field">选择方式
                   <select id="mistakeEditChoiceType" onchange="changeMistakeChoiceType('Edit');refreshMistakeEditDirty()">
@@ -790,6 +797,33 @@
               <textarea id="mistakeCreateExplanation" rows="2" placeholder="解析 / 错误原因" oninput="updateMistakeCreateExplanationClear()"></textarea>
             </div>
           </section>
+          <details id="mistakeCreateAiPanel" class="mistake-create-ai">
+            <summary>AI 复习建议（可选）</summary>
+            <p class="mistake-ai-note">不使用也可以直接添加错题。仅主动获取时请求 AI；本地 mock 返回演示结果。选择复习方式不会改变错题分类或实际复习流程。</p>
+            <fieldset id="mistakeCreateAiFields" class="edit-card-body">
+              <label for="mistakeCreateAiStudentAnswer">学生作答（仅获取建议时填写）</label>
+              <textarea id="mistakeCreateAiStudentAnswer" rows="2" placeholder="填写当时的实际作答，不要填参考答案"></textarea>
+              <label for="mistakeCreateAiErrorType">错误原因（仅获取建议时选择）</label>
+              <select id="mistakeCreateAiErrorType">
+                <option value="">请选择错误原因</option>
+                <option value="knowledge_gap">知识点不熟</option>
+                <option value="reasoning_gap">推理过程有误</option>
+                <option value="careless">粗心失误</option>
+                <option value="other">其他 / 暂不明确</option>
+              </select>
+              <div class="modal-actions"><button type="button" class="btn-cancel" id="mistakeCreateAiGet" onclick="requestMistakeCreateAi()">获取 AI 建议</button></div>
+              <div id="mistakeCreateAiResult" hidden>
+                <p id="mistakeCreateAiSuggested"></p>
+                <p id="mistakeCreateAiReason" class="mistake-ai-note"></p>
+                <button type="button" class="btn-cancel" id="mistakeCreateAiAdopt" onclick="adoptMistakeCreateAi()" disabled>采用建议</button>
+              </div>
+              <label for="mistakeCreateAiMethod">最终复习方式</label>
+              <select id="mistakeCreateAiMethod" onchange="changeMistakeCreateAiMethod()"><option value="">不选择</option></select>
+              <small class="mistake-ai-note">只有采用建议或手动选择后，点击底部“保存”才会在错题创建成功后保存到本浏览器。部分模式的实际复习流程尚未实现。</small>
+            </fieldset>
+            <p id="mistakeCreateAiStatus" class="mistake-ai-note" role="status"></p>
+            <p id="mistakeCreateAiError" class="mistake-inline-error" role="alert"></p>
+          </details>
         </div>
       </div>
 

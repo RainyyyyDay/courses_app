@@ -6,11 +6,11 @@
 
 与 `ai-fastapi/src/ai_mistake.py`、其 README 保持一致：只提交 `question`、`student_answer`、`error_type`、`correct_answer`、`context` 五个文字字段。题目与参考答案可以预填；学生作答和明确错误原因必须人工填写，不从现有错题类型推断。图片不上传，图片题需手工补充文字。每项上限 4000 UTF-16 单元，总 JSON 上限 16KB UTF-8。
 
-接收 `{review_method, reason, needs_review:true}`，方法仅 recall/guided/retry/unclassified。理由按纯文本展示，所有建议都要人工复核；用户可改选并确认，最终复习方式复用 mistakeStorageGet/Set 保存到本浏览器，刷新后重新打开 AI 面板恢复；输入、理由及未确认的改选仍只在内存中，离开详情后清除。失败/503/20 秒总超时不会修改原分类，保留输入和上一次建议，可手动重试，不自动重试付费请求。离开详情会取消请求，陈旧响应不会写入其他错题。
+接收 `{review_method, reason, needs_review:true}`，有效模式为 choice_reproduction/standard/cloze/self_explain/reading/contrast/retry；另接受 unclassified 兜底标识，它不是第八种模式，需人工选择。理由按纯文本展示，所有建议都要人工复核；用户可改选并确认，最终复习方式复用 mistakeStorageGet/Set 保存到本浏览器，刷新后重新打开 AI 面板恢复；输入、理由及未确认的改选仍只在内存中，离开详情后清除。失败/503/20 秒总超时不会修改原分类，保留输入和上一次建议，可手动重试，不自动重试付费请求。离开详情会取消请求，陈旧响应不会写入其他错题。
 
 ## 不能复用现有保存接口的原因
 
-现有 `PATCH /api/courses/:courseId/mistakes/:mistakeId` 的 `mistakeType` 只支持 knowledge/thinking/execution/unclassified，并有 expectedRevision 检查；不接受 review_method/reason。现有 `/mode` 只有 standard/choice_reproduction 已实现，也不能接收本模块的四个建议 ID。因此不发后端保存请求、不改数据库，也不擅自映射类别；最终复习方式仅保存在本浏览器。手动编辑原分类继续使用原有“编辑”弹窗及保存流程。
+现有 `PATCH /api/courses/:courseId/mistakes/:mistakeId` 的 `mistakeType` 只支持 knowledge/thinking/execution/unclassified，并有 expectedRevision 检查；不接受 review_method/reason。现有 `/mode` 只有 standard/choice_reproduction 已实现，不能用于直接保存本模块的七种建议；其中未实现或不适用的模式也不能直接执行。因此不发后端保存请求、不改数据库，也不擅自映射类别；最终复习方式仅保存在本浏览器。手动编辑原分类继续使用原有“编辑”弹窗及保存流程。
 
 需要大组确认/提供：
 
@@ -74,14 +74,14 @@ git diff --check
 
 HTTP 实测发现并修复两个兼容问题：断连监视在分类完成后协作退出，避免取消被 Starlette/AnyIO 消耗后错误响应挂起；应用状态标记防止新版 FastAPI 延迟展开路由时重复 register。现有错误输入与重复注册路由测试已通过。
 
-交给大组：保留 `register(app, dependencies=[Depends(真实登录), Depends(AI权限/额度)])`，默认 mock；不导入 test_app.py 或演示数据，不部署第二个开发服务。保持五字段请求、四种 review_method 和 needs_review=true。PostgreSQL 不在分类模块职责内；尚无建议保存接口，需另行确认人工选择/理由存储、资源授权、并发版本、Cookie/CSRF 与部署同源转发安排。
+交给大组：保留 `register(app, dependencies=[Depends(真实登录), Depends(AI权限/额度)])`，默认 mock；不导入 test_app.py 或演示数据，不部署第二个开发服务。保持五字段请求、七种建议模式及 unclassified 兜底标识、needs_review=true。PostgreSQL 不在分类模块职责内；尚无建议保存接口，需另行确认人工选择/理由存储、资源授权、并发版本、Cookie/CSRF 与部署同源转发安排。
 
 
 ## 最终选择的前端持久化
 
 复用 `fronted/js/mistakes.js` 已有 `mistakeStorageGet/Set`（JSON + localStorage、异常保护），不增加新的存储框架，不修改后端。列表筛选和详情位置也使用同一组工具；复习待确认操作另有 state.pending 内存降级，本功能沿用“存储失败仍可继续操作”的模式。
 
-存储键 `mistake-ai-method:<courseId>:<mistakeId>`，内容仅 `{version:1, method:"guided"}`。只允许 recall/guided/retry/unclassified；格式版本不支持、损坏 JSON 或非法方法均忽略。仅在点击确认时写入并回读验证；写入失败提示“本地保存失败，仅本页暂存”，保留本次选择以便重试。不会存题目、学生答案、上下文、AI 原建议或理由，不映射原 mistake_type，也不改变复习进度。
+存储键 `mistake-ai-method:<courseId>:<mistakeId>`，内容仅 `{version:1, method:"self_explain"}`。仅允许七种新模式；损坏 JSON 不采用，旧 ID 或未知格式版本的可识别记录保留原字节并提示重新选择，不猜测迁移。仅在点击确认时写入并回读验证；写入失败提示“本地保存失败，仅本页暂存”，保留本次选择以便重试。不会存题目、学生答案、上下文、AI 原建议或理由，不映射原 mistake_type，也不改变复习进度。
 
 关闭面板/离开详情只清理内存，不删除已确认方式。重新进入详情并打开面板后展示“本地已保存的最终选择”；不伪造新的 AI 结果，可改选后再次确认。新 AI 响应只更新当前建议；未确认前，刷新仍恢复最后一次已保存选择。数据按课程和错题隔离，并受 localStorage 来源隔离：不同协议、域名或端口不共享，不跨设备/浏览器同步，清除浏览器数据会丢失。
 
@@ -130,3 +130,69 @@ python -B -m unittest discover -s tests -v
 ```
 
 结果：14/14、1/1、28/28。HTTP 场景从正常根地址加载完整前端，运行隔离 Node 源码副本（仅测试副本调整监听端口）和实际 FastAPI mock。新建临时虚构库，不复制原 data/uploads/.env。页面执行原列表、表单、localStorage 和总复习代码，不替换 fetch；通过浏览器初始化脚本选择临时课程 API，显式阻断原3000地址。实际 POST 200 由 uvicorn 访问记录核验。两种屏幕均验证居中、长表单滚动、建议/理由、修改确认、真实刷新恢复、总复习和只读预览，并核对 mistake_type/review_status/review_revision 不变。测试随机端口避免干扰原服务，结束后清理服务和临时数据。全站完整业务回归本轮未运行。
+
+
+## 本轮七模式对齐与旧数据保护
+
+唯一文档：`D:\GitCourcesWeb\courses_app\docs\review-system-master-plan.md`，修改时间 2026-10-20 03:05:14。完整阅读后对照：文档有六种模式；实际 registry 只有 choice_reproduction/standard 实现，cloze/self_explain/reading 为占位，contrast 尚未注册。按本轮用户要求在六项建议清单追加 retry；不更改 registry 或实际引擎。
+
+| 模式 ID | 中文 | 适用与判分（文档） | 当前实际流程 |
+| --- | --- | --- | --- |
+| choice_reproduction | 选择复现 | 完整结构化选择题；客观判分 | 已实现 |
+| standard | 标准复习 | 其余错题；回忆/重做后自评 | 已实现 |
+| cloze | 挖空回忆 | 记忆型；规则与语义等价 | 下一步/占位 |
+| self_explain | 自述讲解 | 理解型；量规、自评/AI | 待做/占位 |
+| reading | 阅读标记 | 只想多看；曝光/一句话总结 | 待做/占位 |
+| contrast | 对比辨析 | 易混概念；对比要点（路线描述为自述变体） | 待做、未注册 |
+| retry | 重新作答 | 本次追加的建议选项 | 不新增引擎 |
+
+mock 精确映射 knowledge_gap→cloze、reasoning_gap→self_explain、careless→retry，其他/证据不足→unclassified。响应结构不变。unclassified 显示“AI 暂未给出可用建议，请人工选择”，下拉回到空占位、确认按钮禁用，明确选择七项之一后才能保存。
+
+所有新确认只写稳定 ID。原 version:1/retry 直接恢复；recall、guided、unclassified 和未知版本不可靠映射，列表/总复习/弹窗显示重新选择提示，原记录不被读取、取消、生成建议等操作覆盖。仅用户明确确认有效新模式时替换。写入失败保留旧记录和当前选择，可重试；成功仍关闭列表弹窗并即时更新卡片。没有新数据库、保存接口、复习引擎或排期改动。
+
+验收覆盖：七项 ID/中文/选项一致，七种合法响应与本地恢复、unclassified 人工选择、旧数据原字节保护与明确重选、失败重试、列表/总复习一致、桌面/手机及真实 HTTP 三阶段刷新（新保存恢复→旧记录刷新提示）。HTTP 夹具补复制同步新增的 ocr 源码模块，避免临时Node启动缺模块；不启动OCR服务、不调用OCR。正式后端业务没有变更。
+
+人工验证：重启本地 FastAPI 后打开固定 HTTP 地址，Ctrl+F5，进入任一错题 AI 面板；确认七项中文选项。选择“其他/尚不明确”应看到人工选择提示；选“对比辨析”等模式并确认，弹窗关闭、卡片更新、刷新及总复习显示同一名称。旧记录应提示重新选择，取消不覆盖原值。模式仅是本地建议，不代表对应复习方式可实际运行。
+
+
+本轮最终实测结果：前端/代理/正常首页真实 HTTP 16/16，Node AI mock 18/18（合并命令合计 34/34）；Python 29/29；全部无跳过。JavaScript 语法、git diff --check 通过。首次 HTTP 因测试副本漏复制新 OCR 模块失败，补齐夹具后复测通过，不隐去该失败。全站完整业务回归未运行。
+
+本轮修改清单：
+
+- 前端：fronted/index.html、fronted/js/ai.js、fronted/js/mistakeAi.js。
+- mock 规则：ai-fastapi/src/ai_mistake.py、ai-service/config/classification.json（保持原有Node/Python规则一致性测试）。
+- 测试：ai-fastapi/tests/test_core.py、ai-fastapi/tests/test_local_app.py、ai-service/test/service.test.js、tests/mistake-ai.cjs、tests/mistake-ai-frontend.cjs、tests/mistake-ai-list-frontend.cjs、tests/mistake-ai-http.cjs，新增 tests/mistake-ai-modes-frontend.cjs。
+- 说明：ai-fastapi/README.md、ai-service/README.md、tests/README-mistake-ai.md。
+
+未修改总路线文档、实际模式注册表、数据库、样式和API地址配置；没有重置、暂存、提交Git或读取.env，没有真实模型调用。
+
+## 添加错题：可选 AI 复习建议（2026-10-20）
+
+仍依据唯一的 `docs/review-system-master-plan.md`（文件修改时间 2026-10-20 03:05:14，文内更新日期 2026-10-19）：六种模式加用户要求的 retry。添加弹窗底部使用原生 details，默认收起；最终选择默认“不选择”，七项中文选项从已有 AI_REVIEW_METHODS 生成。unclassified 只显示人工选择提示，不能采用为模式。不使用 AI 或不选择时，原创建请求不变。
+
+获取建议复用 classifyMistakeWithAi、五字段契约、错误提示及超时/取消。题干、参考答案、解析来自原表单；学生作答与明确错误原因只为 AI 填写，不推断原 mistake_type、不写入创建请求。返回建议不会预选最终方式；必须主动“采用建议”或手动选择。关闭丢弃草稿，迟到响应不污染新弹窗。
+
+上传/手动创建沿用原接口，只把原先丢弃的响应记录返回给确认流程。创建成功后严格核对响应 course_id 与打开时课程一致，使用响应真实 id 保存；公用 saveMistakeAiMethod 继续通过 mistakeStorageSet 写入、mistakeStorageGet 回读验证，不添加另一套存储。成功后关闭、更新现有卡片中文摘要；刷新、详情及总复习沿用原读取逻辑。创建失败不写建议。创建成功而本地保存失败时保留弹窗、选择和已创建记录，底部改为“重试保存建议”，重试不会再次创建；也可改选“不选择”完成退出。响应编号无效时不猜测关联，提示从列表检查。建议不写数据库、不切换实际模式/进度。
+
+本轮修改：fronted/index.html、fronted/style.css、fronted/js/mistakeAi.js、fronted/js/tagPicker.js、fronted/js/mistakes.js、fronted/js/manualEntry.js；新增 tests/mistake-ai-create-frontend.cjs，接入 tests/mistake-ai-frontend.cjs，扩展 tests/mistake-ai-http.cjs，以及本说明。之前已有的其他未提交修改保留。
+
+执行：
+
+```powershell
+# 项目根目录
+node --test tests/mistake-ai.cjs tests/ai-proxy.cjs tests/mistake-ai-http.cjs ai-service/test/service.test.js
+# Python mock 测试
+cd ai-fastapi
+$env:PYTHONPATH = (Resolve-Path ..\.local-ai-deps).Path
+python -B -m unittest discover -s tests -v
+```
+
+实测：Node 34/34、Python 29/29，无跳过；新增创建场景嵌入原两项真实浏览器测试（1280×960、390×844）。真实 HTTP 测试从正常首页调用实际 FastAPI mock，并通过隔离 Node 服务创建虚构错题，核验返回真实编号、本地保存、卡片即时显示、实际刷新、总复习与预览一致。测试只新建临时测试库，不复制或连接原数据库；结束清理。原列表查看/编辑/删除入口、原分类校验及复习选择的既有 AI 回归继续通过；全站完整业务回归未运行。JavaScript 语法与差异空白检查另行执行。
+
+人工验收（保持同一浏览器及地址，以免 localStorage 来源隔离）：
+
+1. 启动原 Node 后端和本地 FastAPI mock，打开 `http://127.0.0.1:3002/`，进入课程→错题→添加错题。
+2. 不展开 AI，照常填名称、分类、题干并保存：只新增错题，无保存建议。
+3. 再次添加，展开“AI 复习建议（可选）”，填写学生作答及错误原因，点击获取。应看到 Mock 理由，最终方式仍是“不选择”。
+4. 点“采用建议”或手动改为“对比辨析”等，再点底部保存。进入对应分类，卡片应立即显示最终中文方式；刷新、卡片 AI 面板、顶部总复习及预览应一致。
+5. 获取后不采用、不选择就保存，应没有已保存建议；直接关闭再打开应清空草稿。窄屏检查折叠、换行、内部滚动和固定底部按钮。真实手机触摸/软键盘与浏览器禁止本地存储的体验仍建议人工检查。

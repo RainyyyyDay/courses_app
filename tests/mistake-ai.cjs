@@ -47,11 +47,18 @@ test('adapter validates whitelist, UTF-16 fields and UTF-8 body before fetching'
   assert.equal(calls,0);
 });
 test('adapter enforces method/reason/manual-review output contract', async () => {
-  for(const data of [null,{...output,review_method:'knowledge'},{...output,review_method:['retry']},
+  for(const data of [null,{...output,review_method:'knowledge'},{...output,review_method:'recall'},
+    {...output,review_method:'guided'},{...output,review_method:['retry']},
     {...output,reason:''},{...output,reason:'x'.repeat(501)},{...output,needs_review:false}]) {
     await assert.rejects(adapter(async()=>reply(data))(),{code:'INVALID_RESPONSE'});
   }
   await assert.rejects(adapter(async()=>new Response('not json'))(),{code:'INVALID_RESPONSE'});
+});
+
+test('adapter accepts seven documented modes plus unclassified sentinel', async()=>{
+  for(const method of ['choice_reproduction','standard','cloze','self_explain','reading','contrast','retry','unclassified']){
+    assert.equal((await adapter(async()=>reply({...output,review_method:method}))()).review_method,method);
+  }
 });
 test('HTTP errors use safe messages including 503/401/403/429/504 and allow retry', async () => {
   for(const [status,code,pattern] of [[503,'AI_AUTH_NOT_CONFIGURED',/尚未接入网站授权/],

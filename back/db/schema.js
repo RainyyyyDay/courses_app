@@ -8,7 +8,7 @@
 const { db } = require('./connection');
 
 // ===== 当前程序支持的数据库版本 =====
-const CURRENT_DB_VERSION = 17;
+const CURRENT_DB_VERSION = 18;
 
 // 判断某张表是否已经存在
 function tableExists(name) {
@@ -279,6 +279,18 @@ function migratePlanScheduleSnapshot() {
     const exists = db.prepare('PRAGMA table_info(review_plans)').all().some((c) => c.name === 'schedule_json');
     if (!exists) db.exec('ALTER TABLE review_plans ADD COLUMN schedule_json TEXT');
     setUserVersion(16);
+    db.exec('COMMIT');
+  } catch (err) { db.exec('ROLLBACK'); throw err; }
+}
+
+// ===== v17 → v18：显式题型确认；存量全部待确认，不推断历史选择 =====
+function migrateQuestionFormatConfirmation() {
+  if (getUserVersion() !== 17) return;
+  db.exec('BEGIN');
+  try {
+    const exists = db.prepare('PRAGMA table_info(mistakes)').all().some(column => column.name === 'question_format_confirmed');
+    if (!exists) db.exec('ALTER TABLE mistakes ADD COLUMN question_format_confirmed INTEGER NOT NULL DEFAULT 0 CHECK(question_format_confirmed IN (0,1))');
+    setUserVersion(18);
     db.exec('COMMIT');
   } catch (err) { db.exec('ROLLBACK'); throw err; }
 }
@@ -557,6 +569,7 @@ migrateReviewScheduling();
 migrateReviewResults();
 migratePlanScheduleSnapshot();
 migrateReviewModes();
+migrateQuestionFormatConfirmation();
 
 // ===== 建表：Phase 0 的基础结构（version 1）=====
 // 每一张“子表”都用 course_id 指向 courses(id)，

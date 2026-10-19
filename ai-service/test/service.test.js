@@ -37,7 +37,7 @@ test('health and mock end-to-end classification', async t => {
   const health = await request(undefined, { method: 'GET', body: undefined }, '/health');
   assert.equal(health.status, 200);
   assert.equal(health.body.provider, 'mock');
-  for (const [error_type, method] of [['knowledge_gap', 'recall'], ['reasoning_gap', 'guided'], ['careless', 'retry'], ['unknown', 'unclassified']]) {
+  for (const [error_type, method] of [['knowledge_gap', 'cloze'], ['reasoning_gap', 'self_explain'], ['careless', 'retry'], ['unknown', 'unclassified']]) {
     const result = await request({ ...full, error_type });
     assert.equal(result.status, 200);
     assert.equal(result.headers.get('x-ai-provider'), 'mock');
