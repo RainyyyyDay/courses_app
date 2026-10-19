@@ -155,8 +155,7 @@
       <input type="file" id="mistakeFile" style="display:none" onchange="uploadMistake()" />
       <!-- 上传 / 手动输入：只在「错题」大页出现；进了四个分类的详情页会由 renderMistakeCategories() 隐藏 -->
       <div class="entry-btns" id="mistakeEntryBtns">
-        <button class="upload-btn" onclick="document.getElementById('mistakeFile').click()">＋ 上传文件</button>
-        <button class="upload-btn upload-btn-plain" onclick="openManualModal('mistake')">＋ 手动输入</button>
+        <button class="upload-btn" onclick="openMistakeCreate()">＋ 添加错题</button>
       </div>
       <div id="mistakeHomeReview" class="mistake-home-review" style="display:none;">
         <div class="mistake-home-review-copy"><strong>错题复习</strong><p>选择复习分类，可快速全选或进入分类筛选题目。</p></div>
@@ -541,11 +540,7 @@
                   <div class="choice-option-list" id="mistakeEditOptionsList"></div>
                   <button type="button" class="choice-add-option" onclick="addMistakeChoiceOption('Edit')">＋ 添加选项</button>
                 </div>
-                <div class="choice-answer-field">
-                  <div class="choice-answer-label">正确答案</div>
-                  <div id="mistakeEditAnswerOptions" class="choice-answer-options"></div>
-                </div>
-                <small>系统自动用 A/B/C… 编号；正确答案只能从已添加的选项里选。</small>
+                <small>系统自动用 A/B/C… 编号；正确答案在下方「答案」卡片里选择。</small>
               </div>
             </div>
           </div>
@@ -556,18 +551,25 @@
             <span class="edit-card-icon">✅</span>
             <div class="edit-card-titles">
               <b>答案</b>
-              <small>可填写答案文字或上传答案附件；填写后方可进入复习</small>
+              <small id="mistakeEditAnswerHint">可填写答案文字或上传答案附件；填写后方可进入复习</small>
             </div>
             <span class="edit-flag" id="mistakeEditFlagAnswer">已改</span>
           </div>
           <div class="edit-card-body">
-            <div class="edit-file-preview" id="mistakeEditAnswerFile" style="display:none;"></div>
-            <div class="edit-file-actions">
-              <button type="button" class="edit-btn edit-btn-danger" id="mistakeEditAnswerRemove" style="display:none;" onclick="removeMistakeEditAnswerFile()"><span class="edit-btn-icon">🗑</span>删除原答案</button>
-              <button type="button" class="edit-btn" id="mistakeEditAnswerUploadBtn" onclick="document.getElementById('mistakeEditAnswerUpload').click()"><span class="edit-btn-icon">⬆</span><span id="mistakeEditAnswerUploadLabel">上传新内容</span></button>
+            <div id="mistakeEditChoiceAnswerField" class="choice-answer-field" style="display:none;">
+              <div class="choice-answer-label">正确答案</div>
+              <div id="mistakeEditAnswerOptions" class="choice-answer-options"></div>
+              <small>只能从已添加的选项里选；多选题可多选。</small>
             </div>
-            <input type="file" id="mistakeEditAnswerUpload" style="display:none" onchange="chooseMistakeEditAnswerFile(this)" />
-            <textarea id="mistakeEditAnswer" rows="4" placeholder="参考答案" oninput="refreshMistakeEditDirty()"></textarea>
+            <div id="mistakeEditOpenAnswerFields" class="edit-open-answer-fields">
+              <div class="edit-file-preview" id="mistakeEditAnswerFile" style="display:none;"></div>
+              <div class="edit-file-actions">
+                <button type="button" class="edit-btn edit-btn-danger" id="mistakeEditAnswerRemove" style="display:none;" onclick="removeMistakeEditAnswerFile()"><span class="edit-btn-icon">🗑</span>删除原答案</button>
+                <button type="button" class="edit-btn" id="mistakeEditAnswerUploadBtn" onclick="document.getElementById('mistakeEditAnswerUpload').click()"><span class="edit-btn-icon">⬆</span><span id="mistakeEditAnswerUploadLabel">上传新内容</span></button>
+              </div>
+              <input type="file" id="mistakeEditAnswerUpload" style="display:none" onchange="chooseMistakeEditAnswerFile(this)" />
+              <textarea id="mistakeEditAnswer" rows="4" placeholder="参考答案" oninput="refreshMistakeEditDirty()"></textarea>
+            </div>
           </div>
         </section>
 
@@ -652,43 +654,66 @@
         <div id="tagPickerMistakeFields" class="mistake-create-cards" style="display:none;">
           <section class="edit-card">
             <div class="edit-card-head">
-              <span class="edit-card-icon">📄</span>
-              <div class="edit-card-titles"><b>题目</b><small id="mistakeCreateQuestionHint">确认题目附件或正文，再选择题型</small></div>
+              <span class="edit-card-icon">🧩</span>
+              <div class="edit-card-titles"><b>题型</b><small>先选题型，再填写题干、选项和答案</small></div>
             </div>
             <div class="edit-card-body">
-              <div id="mistakeCreateFileSummary" class="mistake-create-file" style="display:none;"></div>
               <label class="mistake-create-field">题型
                 <select id="mistakeCreateFormat" onchange="toggleMistakeChoiceFields('Create')">
                   <option value="open">主观题 / 非选择题</option>
                   <option value="choice">选择题</option>
                 </select>
               </label>
-              <div id="mistakeCreateChoiceFields" class="edit-choice-fields" style="display:none;">
-                <label class="mistake-create-field">选择方式
-                  <select id="mistakeCreateChoiceType" onchange="changeMistakeChoiceType('Create')">
-                    <option value="single">单选题</option>
-                    <option value="multiple">多选题</option>
-                  </select>
-                </label>
-                <div class="choice-option-editor">
-                  <div class="choice-option-list" id="mistakeCreateOptionsList"></div>
-                  <button type="button" class="choice-add-option" onclick="addMistakeChoiceOption('Create')">＋ 添加选项</button>
-                </div>
-                <div class="choice-answer-field">
-                  <div class="choice-answer-label">正确答案</div>
-                  <div id="mistakeCreateAnswerOptions" class="choice-answer-options"></div>
-                </div>
-                <small>系统自动用 A/B/C… 编号；正确答案只能从已添加的选项里选。</small>
+            </div>
+          </section>
+          <section class="edit-card">
+            <div class="edit-card-head">
+              <span class="edit-card-icon">📄</span>
+              <div class="edit-card-titles"><b id="mistakeCreateQuestionTitle">题目</b><small id="mistakeCreateQuestionHint">可上传题目附件，也可直接录入题目内容</small></div>
+            </div>
+            <div class="edit-card-body">
+              <div id="mistakeCreateFileSummary" class="mistake-create-file" style="display:none;"></div>
+              <div class="edit-file-actions">
+                <button type="button" class="edit-btn" onclick="document.getElementById('mistakeCreateQuestionUpload').click()"><span class="edit-btn-icon">⬆</span>上传题目附件</button>
+                <button type="button" class="edit-btn edit-btn-danger" id="mistakeCreateQuestionRemove" style="display:none;" onclick="clearMistakeCreateFile()"><span class="edit-btn-icon">🗑</span>移除附件</button>
               </div>
+              <input type="file" id="mistakeCreateQuestionUpload" style="display:none" onchange="chooseMistakeCreateFile(this)" />
+              <textarea id="mistakeCreateContent" rows="4" placeholder="题目 / 题干内容（也可以只上传附件）"></textarea>
+            </div>
+          </section>
+          <section id="mistakeCreateChoiceFields" class="edit-card" style="display:none;">
+            <div class="edit-card-head">
+              <span class="edit-card-icon">🔤</span>
+              <div class="edit-card-titles"><b>选项</b><small>系统自动编号；点加号继续追加</small></div>
+            </div>
+            <div class="edit-card-body">
+              <label class="mistake-create-field">选择方式
+                <select id="mistakeCreateChoiceType" onchange="changeMistakeChoiceType('Create')">
+                  <option value="single">单选题</option>
+                  <option value="multiple">多选题</option>
+                </select>
+              </label>
+              <div class="choice-option-editor">
+                <div class="choice-option-list" id="mistakeCreateOptionsList"></div>
+                <button type="button" class="choice-add-option" onclick="addMistakeChoiceOption('Create')">＋ 添加选项</button>
+              </div>
+              <small>系统自动用 A/B/C… 编号；正确答案在下方「答案」卡片里选择。</small>
             </div>
           </section>
           <section class="edit-card">
             <div class="edit-card-head">
               <span class="edit-card-icon">✅</span>
-              <div class="edit-card-titles"><b>答案</b><small>可后补；补齐后才能复习</small></div>
+              <div class="edit-card-titles"><b>答案</b><small id="mistakeCreateAnswerHint">可后补；补齐后才能复习</small></div>
             </div>
             <div class="edit-card-body">
-              <textarea id="mistakeCreateAnswer" rows="3" placeholder="参考答案"></textarea>
+              <div id="mistakeCreateChoiceAnswerField" class="choice-answer-field" style="display:none;">
+                <div class="choice-answer-label">正确答案</div>
+                <div id="mistakeCreateAnswerOptions" class="choice-answer-options"></div>
+                <small>只能从已添加的选项里选；多选题可多选。</small>
+              </div>
+              <div id="mistakeCreateOpenAnswerFields" class="edit-open-answer-fields">
+                <textarea id="mistakeCreateAnswer" rows="3" placeholder="参考答案"></textarea>
+              </div>
             </div>
           </section>
           <section class="edit-card">

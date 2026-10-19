@@ -11,7 +11,7 @@ function mistakeCreateBrowserScenario() {
       await openTagPicker('upload', 'mistake', null);
       await waitUntil(() => document.getElementById('tagPickerModal').classList.contains('show')
         && !document.getElementById('tagPickerTree').textContent.includes('加载中'), 'mistake create modal');
-      check(document.querySelectorAll('#tagPickerMistakeFields .edit-card').length === 3, 'create modal uses question/answer/explanation cards');
+      check(document.querySelectorAll('#tagPickerMistakeFields .edit-card').length === 5, 'create modal uses type/stem/options/answer/explanation cards');
       check(document.getElementById('tagPickerNameHeading').style.display === 'flex'
         && document.getElementById('tagPickerMistakeTypeField').style.display === 'flex'
         && document.getElementById('tagPickerNameHeading').textContent.includes('名称与分类'), 'name and category share one card');
@@ -19,12 +19,16 @@ function mistakeCreateBrowserScenario() {
       check(typePlaceholder && typePlaceholder.hidden && typePlaceholder.disabled
         && document.querySelectorAll('#mistakeCreateType option:not([hidden])').length === 4,
         'select placeholder is hidden from the dropdown options');
-      check(document.getElementById('tagPickerTitle').textContent === '上传错题', 'create modal title');
+      check(document.getElementById('tagPickerTitle').textContent === '添加错题', 'create modal title');
       check(document.getElementById('mistakeCreateFileSummary').textContent.includes('错题截图.png'), 'create file summary');
       check(document.getElementById('tagPickerTagHeading').style.display === 'flex', 'create tag heading');
       check(document.getElementById('tagPickerBody').classList.contains('mistake-create-body'), 'create card background');
       document.getElementById('mistakeCreateFormat').value = 'choice';
       toggleMistakeChoiceFields('Create');
+      check(document.getElementById('mistakeCreateQuestionTitle').textContent === '题干', 'choice mode renames the question card to stem');
+      check(document.getElementById('mistakeCreateChoiceAnswerField').style.display === 'grid'
+        && document.getElementById('mistakeCreateOpenAnswerFields').style.display === 'none',
+        'choice answer selector replaces the open answer textarea');
       document.getElementById('mistakeCreateChoiceType').value = 'multiple';
       changeMistakeChoiceType('Create');
       addMistakeChoiceOption('Create');
@@ -50,7 +54,10 @@ function mistakeCreateBrowserScenario() {
       const payload = mistakeChoiceFields('Create');
       check(payload.choiceType === 'multiple' && payload.options.length === 4
         && JSON.stringify(payload.correctOption) === JSON.stringify(['A', 'C']), 'multiple choice payload is normalized');
-      if (location.hash === '#mistakeCreateOnly') await new Promise(resolve => setTimeout(resolve, 400));
+      if (location.hash === '#mistakeCreateOnly') {
+        await new Promise(resolve => setTimeout(resolve, 400));
+        document.getElementById('mistakeCreateFormat').closest('.edit-card').scrollIntoView({ block: 'start' });
+      }
       if (location.hash !== '#mistakeCreateOnly') closeTagPicker();
     }
   `;

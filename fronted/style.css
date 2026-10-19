@@ -1544,6 +1544,7 @@ body.mistake-edit-open { overflow: hidden; }
   background: #eef2ff; color: #4a6cf7; font-size: 11px;
 }
 .edit-card-body { display: grid; gap: 10px; }
+.edit-open-answer-fields { display: grid; gap: 10px; }
 .edit-choice-config { display: grid; gap: 10px; margin-top: 4px; padding-top: 10px; border-top: 1px dashed #e5e9f1; }
 .edit-choice-config > label, .edit-choice-fields label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #667187; }
 .edit-choice-fields { display: grid; gap: 10px; }

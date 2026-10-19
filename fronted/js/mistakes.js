@@ -52,7 +52,22 @@ function parseMistakeCorrectIds(choiceType, raw) {
 function toggleMistakeChoiceFields(prefix) {
   const format = document.getElementById(`mistake${prefix}Format`);
   const box = document.getElementById(`mistake${prefix}ChoiceFields`);
-  if (format && box) box.style.display = format.value === 'choice' ? 'grid' : 'none';
+  const choice = format?.value === 'choice';
+  if (box) box.style.display = choice ? (prefix === 'Create' ? 'block' : 'grid') : 'none';
+  const choiceAnswer = document.getElementById(`mistake${prefix}ChoiceAnswerField`);
+  if (choiceAnswer) choiceAnswer.style.display = choice ? 'grid' : 'none';
+  const openAnswer = document.getElementById(`mistake${prefix}OpenAnswerFields`);
+  if (openAnswer) openAnswer.style.display = choice ? 'none' : 'grid';
+  const answerHint = document.getElementById(`mistake${prefix}AnswerHint`);
+  if (answerHint) answerHint.textContent = choice
+    ? '从选项中选择正确答案；多选题可多选'
+    : (prefix === 'Edit' ? '可填写答案文字或上传答案附件；填写后方可进入复习' : '可后补；补齐后才能复习');
+  const questionTitle = document.getElementById(`mistake${prefix}QuestionTitle`);
+  if (questionTitle) questionTitle.textContent = choice ? '题干' : '题目';
+  const questionHint = document.getElementById(`mistake${prefix}QuestionHint`);
+  if (questionHint) questionHint.textContent = choice
+    ? '可上传题干附件，也可直接录入题干'
+    : '可上传题目附件，也可直接录入题目内容';
 }
 function readMistakeChoiceOptionValues(prefix) {
   return [...document.querySelectorAll(`#mistake${prefix}OptionsList .choice-option-input`)].map(input => input.value);
@@ -364,14 +379,58 @@ async function uploadMistake() {
   input.value = '';
   await openTagPicker('upload', 'mistake', null);
 }
-async function doUploadMistake(file, knowledgeIds, title) {
+function openMistakeCreate() {
+  pendingUploadFile = null;
+  pendingManual = null;
+  return openTagPicker('upload', 'mistake', null);
+}
+function renderMistakeCreateFileSummary() {
+  const summary = document.getElementById('mistakeCreateFileSummary');
+  const remove = document.getElementById('mistakeCreateQuestionRemove');
+  if (!summary) return;
+  if (!pendingUploadFile) {
+    summary.style.display = 'none';
+    summary.innerHTML = '';
+    if (remove) remove.style.display = 'none';
+    return;
+  }
+  summary.innerHTML = `<span class="mistake-create-file-icon">📎</span><div><strong>${escapeHtml(pendingUploadFile.name)}</strong><small>${escapeHtml(pendingUploadFile.type || '附件')} · 保存后上传</small></div>`;
+  summary.style.display = 'flex';
+  if (remove) remove.style.display = 'inline-flex';
+}
+function chooseMistakeCreateFile(input) {
+  const file = input.files?.[0] || null;
+  pendingUploadFile = file;
+  if (file) {
+    const nameInput = document.getElementById('tagPickerName');
+    const extChip = document.getElementById('tagPickerNameExt');
+    const nameTip = document.getElementById('tagPickerNameTip');
+    const parts = splitNameExt(file.name || '');
+    if (nameInput && !nameInput.value.trim()) nameInput.value = parts.base;
+    if (extChip) {
+      extChip.textContent = parts.ext || '';
+      extChip.style.display = parts.ext ? 'inline-block' : 'none';
+    }
+    if (nameTip) nameTip.style.display = parts.ext ? 'block' : 'none';
+  }
+  renderMistakeCreateFileSummary();
+}
+function clearMistakeCreateFile() {
+  pendingUploadFile = null;
+  const input = document.getElementById('mistakeCreateQuestionUpload');
+  if (input) input.value = '';
+  const extChip = document.getElementById('tagPickerNameExt');
+  if (extChip) { extChip.textContent = ''; extChip.style.display = 'none'; }
+  const nameTip = document.getElementById('tagPickerNameTip');
+  if (nameTip) nameTip.style.display = 'none';
+  renderMistakeCreateFileSummary();
+}
+async function doCreateMistake(file, knowledgeIds, title, content) {
   const options = mistakeCreationFields();
-  const uploadBtn = document.querySelector('#pane-mistakes .upload-btn');
-  const originalText = uploadBtn.textContent;
-  uploadBtn.textContent = '上传中…'; uploadBtn.disabled = true;
   const fd = new FormData();
-  fd.append('file', file);
+  if (file) fd.append('file', file);
   if (title) fd.append('title', title);
+  fd.append('content', content || '');
   fd.append('knowledgeIds', JSON.stringify(knowledgeIds));
   for (const [key, value] of Object.entries(options)) {
     fd.append(key, key === 'options' || (key === 'correctOption' && Array.isArray(value))
@@ -379,9 +438,15 @@ async function doUploadMistake(file, knowledgeIds, title) {
   }
   try {
     await requestApi(`${API}/courses/${currentCourseId}/mistakes`, { method: 'POST', body: fd });
-    showToast('上传成功');
+    showToast(file ? '上传成功' : '已添加错题');
     await loadMistakes();
     return true;
-  } catch (err) { showToast(err.message); return false; }
-  finally { uploadBtn.textContent = originalText; uploadBtn.disabled = false; }
+  } catch (err) {
+    showToast(err.message || '保存失败，请重试');
+    return false;
+  }
+}
+async function doUploadMistake(file, knowledgeIds, title) {
+  const content = document.getElementById('mistakeCreateContent')?.value || '';
+  return doCreateMistake(file, knowledgeIds, title, content);
 }
