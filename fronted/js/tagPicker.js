@@ -83,6 +83,9 @@ async function openTagPicker(mode, resourceType, resourceId) {
     const createUpload = document.getElementById('mistakeCreateQuestionUpload');
     if (createUpload) createUpload.value = '';
     renderMistakeCreateFileSummary();
+    closeMistakeOcr();
+    updateMistakeCreateContentClear();
+    updateMistakeCreateOcrActions();
   }
 
   // 名称那一行：上传和编辑时都显示，可以改名字。

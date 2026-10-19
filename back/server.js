@@ -9,6 +9,7 @@ const fs = require('fs');
 // 这里负责处理接口。
 const db = require('./db/index.js');
 const aiService = require('./ai/service');
+const ocrService = require('./ocr/service');
 const { createAiProxy } = require('./aiProxy.js');
 
 const app = express();
@@ -1022,6 +1023,26 @@ app.post('/api/ai/evaluate-answer', aiApi(async (req, res) => {
 app.post('/api/ai/recommend-mode', aiApi(async (req, res) => {
   res.json(await aiService.recommendMode(req.body));
 }));
+
+// ===== OCR：只返回识别文本，文件临时保存后删除；确认写入由错题编辑流程负责 =====
+app.post('/api/ocr', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ code: 'INVALID_ARGUMENT', message: '请上传要识别的文件' });
+  if (req.file.size > 20 * 1024 * 1024) {
+    fs.rm(req.file.path, { force: true }, () => {});
+    return res.status(413).json({ code: 'FILE_TOO_LARGE', message: 'OCR 文件不能超过 20MB' });
+  }
+  try {
+    res.json(await ocrService.recognize(req.file));
+  } catch (err) {
+    if (!err.status) console.error('OCR 接口失败', err);
+    res.status(err.status || 500).json({
+      code: err.code || 'OCR_INTERNAL_ERROR',
+      message: err.status ? err.message : 'OCR 操作失败',
+    });
+  } finally {
+    fs.rm(req.file.path, { force: true }, () => {});
+  }
+});
 
 app.listen(3000, () => {
   console.log('后端已启动，地址：http://localhost:3000');

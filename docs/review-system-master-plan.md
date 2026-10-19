@@ -30,6 +30,7 @@
   - `/api/ai/cloze/evaluate`
   - `/api/ai/evaluate-answer`
   - `/api/ai/recommend-mode`
+- OCR 摄入第一版：错题题干附件可“识别文字”，识别结果先进入校对面板，用户明确点“替换/追加题干、填入选项、填入答案”后才写入字段；当前默认 mock，PaddleOCR 服务样板在 `ocr-service/`，尚未接真实模型。
 - 排期快照仍只在用户点“应用新排期”时切换；同一天只提前复习一部分内容时，日历保留完整日排期。
 
 ## 2. 已经对齐的原则

@@ -670,15 +670,29 @@
             <div class="edit-card-head">
               <span class="edit-card-icon">📄</span>
               <div class="edit-card-titles"><b id="mistakeCreateQuestionTitle">题目</b><small id="mistakeCreateQuestionHint">可上传题目附件，也可直接录入题目内容</small></div>
+              <button type="button" class="edit-mini-btn" id="mistakeCreateContentClear" style="display:none;" onclick="clearMistakeCreateContent()">清空</button>
             </div>
             <div class="edit-card-body">
               <div id="mistakeCreateFileSummary" class="mistake-create-file" style="display:none;"></div>
               <div class="edit-file-actions">
                 <button type="button" class="edit-btn" onclick="document.getElementById('mistakeCreateQuestionUpload').click()"><span class="edit-btn-icon">⬆</span>上传题目附件</button>
+                <button type="button" class="edit-btn" id="mistakeCreateOcrBtn" style="display:none;" onclick="recognizeMistakeCreateFile()">识别文字</button>
                 <button type="button" class="edit-btn edit-btn-danger" id="mistakeCreateQuestionRemove" style="display:none;" onclick="clearMistakeCreateFile()"><span class="edit-btn-icon">🗑</span>移除附件</button>
               </div>
               <input type="file" id="mistakeCreateQuestionUpload" style="display:none" onchange="chooseMistakeCreateFile(this)" />
-              <textarea id="mistakeCreateContent" rows="4" placeholder="题目 / 题干内容（也可以只上传附件）"></textarea>
+              <textarea id="mistakeCreateContent" rows="4" placeholder="题目 / 题干内容（也可以只上传附件）" oninput="updateMistakeCreateContentClear()"></textarea>
+              <section id="mistakeCreateOcrPanel" class="mistake-ocr-panel" style="display:none;">
+                <div class="mistake-ocr-head"><b>识别结果</b><span>请先人工校对，再填入对应字段</span></div>
+                <textarea id="mistakeCreateOcrText" rows="6"></textarea>
+                <div class="mistake-ocr-actions">
+                  <button type="button" onclick="applyMistakeOcr('question','replace')">替换题干</button>
+                  <button type="button" onclick="applyMistakeOcr('question','append')">追加题干</button>
+                  <button type="button" id="mistakeCreateOcrToOptions" onclick="applyMistakeOcr('options')">填入选项</button>
+                  <button type="button" id="mistakeCreateOcrToAnswer" onclick="applyMistakeOcr('answer')">填入答案</button>
+                  <button type="button" class="btn-cancel" onclick="closeMistakeOcr()">放弃</button>
+                </div>
+                <small id="mistakeCreateOcrMeta"></small>
+              </section>
             </div>
           </section>
           <section id="mistakeCreateChoiceFields" class="edit-card" style="display:none;">
@@ -704,6 +718,7 @@
             <div class="edit-card-head">
               <span class="edit-card-icon">✅</span>
               <div class="edit-card-titles"><b>答案</b><small id="mistakeCreateAnswerHint">可后补；补齐后才能复习</small></div>
+              <button type="button" class="edit-mini-btn" id="mistakeCreateAnswerClear" style="display:none;" onclick="clearMistakeCreateAnswer()">清空</button>
             </div>
             <div class="edit-card-body">
               <div id="mistakeCreateChoiceAnswerField" class="choice-answer-field" style="display:none;">
@@ -712,7 +727,7 @@
                 <small>只能从已添加的选项里选；多选题可多选。</small>
               </div>
               <div id="mistakeCreateOpenAnswerFields" class="edit-open-answer-fields">
-                <textarea id="mistakeCreateAnswer" rows="3" placeholder="参考答案"></textarea>
+                <textarea id="mistakeCreateAnswer" rows="3" placeholder="参考答案" oninput="updateMistakeCreateAnswerClear()"></textarea>
               </div>
             </div>
           </section>
@@ -720,9 +735,10 @@
             <div class="edit-card-head">
               <span class="edit-card-icon">💡</span>
               <div class="edit-card-titles"><b>解析 / 错因</b><small>选填：解析或错误原因</small></div>
+              <button type="button" class="edit-mini-btn" id="mistakeCreateExplanationClear" style="display:none;" onclick="clearMistakeCreateExplanation()">清空</button>
             </div>
             <div class="edit-card-body">
-              <textarea id="mistakeCreateExplanation" rows="2" placeholder="解析 / 错误原因"></textarea>
+              <textarea id="mistakeCreateExplanation" rows="2" placeholder="解析 / 错误原因" oninput="updateMistakeCreateExplanationClear()"></textarea>
             </div>
           </section>
         </div>

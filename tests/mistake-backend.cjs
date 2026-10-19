@@ -491,6 +491,15 @@ async function testMistakeApi({ base, course, child, other, restart }) {
   assert.equal(recommended.needsReview, true);
   await request('POST', '/ai/cloze', { text: 'x', blankCount: 0 }, 400);
   await request('POST', '/ai/cloze/evaluate', { attemptId: 'missing', answers: {} }, 404);
+  const ocrForm = new FormData();
+  ocrForm.set('file', new Blob(['1+1=?\nA. 1\nB. 2\n答案：B'], { type: 'text/plain' }), 'ocr.txt');
+  const ocrResponse = await fetch(base + '/ocr', { method: 'POST', body: ocrForm });
+  assert.equal(ocrResponse.status, 200);
+  const ocr = await ocrResponse.json();
+  assert.equal(ocr.provider, 'mock');
+  assert.ok(ocr.text.includes('答案：B') && ocr.text.includes('A. 1'));
+  const noOcrFile = await fetch(base + '/ocr', { method: 'POST' });
+  assert.equal(noOcrFile.status, 400);
   console.log('PASS mistake API: four types/create/multipart/edit/type transitions/filter/tags, generic mastered review/repeat/restart/idempotency/version/history/reset/missing content, original flows, course isolation, legacy CRUD');
 }
 

@@ -1,0 +1,11 @@
+services:
+  ocr:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    volumes:
+      - paddle-models:/root/.paddleocr
+
+volumes:
+  paddle-models:

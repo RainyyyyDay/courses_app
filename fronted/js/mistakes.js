@@ -68,6 +68,7 @@ function toggleMistakeChoiceFields(prefix) {
   if (questionHint) questionHint.textContent = choice
     ? '可上传题干附件，也可直接录入题干'
     : '可上传题目附件，也可直接录入题目内容';
+  if (prefix === 'Create') updateMistakeCreateOcrActions();
 }
 function readMistakeChoiceOptionValues(prefix) {
   return [...document.querySelectorAll(`#mistake${prefix}OptionsList .choice-option-input`)].map(input => input.value);
@@ -149,6 +150,7 @@ function changeMistakeChoiceType(prefix) {
 }
 function syncMistakeChoiceAnswer(prefix) {
   renderMistakeChoiceAnswerOptions(prefix, readMistakeChoiceAnswerIds(prefix));
+  if (prefix === 'Create') updateMistakeCreateAnswerClear();
   if (prefix === 'Edit') refreshMistakeEditDirty();
 }
 function mistakeChoiceFields(prefix) {
@@ -387,16 +389,19 @@ function openMistakeCreate() {
 function renderMistakeCreateFileSummary() {
   const summary = document.getElementById('mistakeCreateFileSummary');
   const remove = document.getElementById('mistakeCreateQuestionRemove');
+  const ocr = document.getElementById('mistakeCreateOcrBtn');
   if (!summary) return;
   if (!pendingUploadFile) {
     summary.style.display = 'none';
     summary.innerHTML = '';
     if (remove) remove.style.display = 'none';
+    if (ocr) ocr.style.display = 'none';
     return;
   }
   summary.innerHTML = `<span class="mistake-create-file-icon">📎</span><div><strong>${escapeHtml(pendingUploadFile.name)}</strong><small>${escapeHtml(pendingUploadFile.type || '附件')} · 保存后上传</small></div>`;
   summary.style.display = 'flex';
   if (remove) remove.style.display = 'inline-flex';
+  if (ocr) ocr.style.display = 'inline-flex';
 }
 function chooseMistakeCreateFile(input) {
   const file = input.files?.[0] || null;
@@ -423,7 +428,139 @@ function clearMistakeCreateFile() {
   if (extChip) { extChip.textContent = ''; extChip.style.display = 'none'; }
   const nameTip = document.getElementById('tagPickerNameTip');
   if (nameTip) nameTip.style.display = 'none';
+  closeMistakeOcr();
   renderMistakeCreateFileSummary();
+}
+function updateMistakeCreateContentClear() {
+  const button = document.getElementById('mistakeCreateContentClear');
+  const content = document.getElementById('mistakeCreateContent');
+  if (button) button.style.display = content?.value.trim() ? 'inline-flex' : 'none';
+}
+function clearMistakeCreateContent() {
+  const content = document.getElementById('mistakeCreateContent');
+  if (content) content.value = '';
+  updateMistakeCreateContentClear();
+}
+function updateMistakeCreateAnswerClear() {
+  const button = document.getElementById('mistakeCreateAnswerClear');
+  const choice = document.getElementById('mistakeCreateFormat')?.value === 'choice';
+  const hasAnswer = choice
+    ? !!document.querySelector('#mistakeCreateAnswerOptions input:checked')
+    : !!document.getElementById('mistakeCreateAnswer')?.value.trim();
+  if (button) button.style.display = hasAnswer ? 'inline-flex' : 'none';
+}
+function clearMistakeCreateAnswer() {
+  const choice = document.getElementById('mistakeCreateFormat')?.value === 'choice';
+  if (choice) {
+    document.querySelectorAll('#mistakeCreateAnswerOptions input:checked').forEach(input => { input.checked = false; });
+  } else {
+    const answer = document.getElementById('mistakeCreateAnswer');
+    if (answer) answer.value = '';
+  }
+  updateMistakeCreateAnswerClear();
+}
+function updateMistakeCreateExplanationClear() {
+  const button = document.getElementById('mistakeCreateExplanationClear');
+  const hasText = !!document.getElementById('mistakeCreateExplanation')?.value.trim();
+  if (button) button.style.display = hasText ? 'inline-flex' : 'none';
+}
+function clearMistakeCreateExplanation() {
+  const explanation = document.getElementById('mistakeCreateExplanation');
+  if (explanation) explanation.value = '';
+  updateMistakeCreateExplanationClear();
+}
+function updateMistakeCreateOcrActions() {
+  const choice = document.getElementById('mistakeCreateFormat')?.value === 'choice';
+  const toOptions = document.getElementById('mistakeCreateOcrToOptions');
+  const toAnswer = document.getElementById('mistakeCreateOcrToAnswer');
+  if (toOptions) toOptions.style.display = choice ? 'inline-flex' : 'none';
+  if (toAnswer) toAnswer.style.display = 'inline-flex';
+  updateMistakeCreateContentClear();
+  updateMistakeCreateAnswerClear();
+  updateMistakeCreateExplanationClear();
+}
+function closeMistakeOcr() {
+  const panel = document.getElementById('mistakeCreateOcrPanel');
+  const text = document.getElementById('mistakeCreateOcrText');
+  const meta = document.getElementById('mistakeCreateOcrMeta');
+  if (panel) panel.style.display = 'none';
+  if (text) text.value = '';
+  if (meta) meta.textContent = '';
+}
+async function recognizeMistakeCreateFile() {
+  if (!pendingUploadFile) { showToast('请先选择题目附件'); return; }
+  const button = document.getElementById('mistakeCreateOcrBtn');
+  if (button?.disabled) return;
+  const original = button ? button.textContent : '';
+  if (button) { button.disabled = true; button.textContent = '识别中…'; }
+  try {
+    const fd = new FormData();
+    fd.append('file', pendingUploadFile);
+    const response = await requestApi(`${API}/ocr`, { method: 'POST', body: fd });
+    const result = await response.json();
+    const text = document.getElementById('mistakeCreateOcrText');
+    const panel = document.getElementById('mistakeCreateOcrPanel');
+    const meta = document.getElementById('mistakeCreateOcrMeta');
+    if (text) text.value = result.text || '';
+    if (panel) panel.style.display = 'grid';
+    if (meta) {
+      const parts = [];
+      if (result.provider) parts.push(`识别来源：${result.provider}`);
+      if (Number.isFinite(result.confidence)) parts.push(`置信度 ${Math.round(result.confidence * 100)}%`);
+      if (result.warnings?.length) parts.push(result.warnings.join('；'));
+      meta.textContent = parts.join(' · ');
+    }
+    updateMistakeCreateOcrActions();
+    showToast('识别完成，请核对后再填入');
+  } catch (err) {
+    showToast(err.message);
+  } finally {
+    if (button) { button.disabled = false; button.textContent = original; }
+  }
+}
+function applyMistakeOcr(target, mode = 'replace') {
+  const text = (document.getElementById('mistakeCreateOcrText')?.value || '').trim();
+  if (!text) { showToast('识别结果为空'); return; }
+  const format = document.getElementById('mistakeCreateFormat')?.value || 'open';
+  if (target === 'question') {
+    const content = document.getElementById('mistakeCreateContent');
+    if (!content) return;
+    content.value = mode === 'append' && content.value.trim() ? `${content.value.trim()}\n\n${text}` : text;
+    updateMistakeCreateContentClear();
+    showToast(mode === 'append' ? '已追加到题干' : '已替换题干');
+    return;
+  }
+  if (target === 'options') {
+    if (format !== 'choice') return;
+    const values = [];
+    for (const line of text.split('\n')) {
+      const match = line.match(/^\s*([A-Za-z])\s*[.、:：)]\s*(.+)$/);
+      if (match) values.push(match[2].trim());
+    }
+    if (values.length < 2) { showToast('没有识别到 A./B./C. 形式的选项行，请手动校对'); return; }
+    renderMistakeChoiceOptionRows('Create', values, []);
+    showToast('已填入选项，请核对编号和内容');
+    return;
+  }
+  if (target === 'answer') {
+    if (format === 'choice') {
+      const match = text.match(/(?:正确答案|答案)\s*[：:]\s*([A-Z](?:\s*[,，、]\s*[A-Z])*)/i);
+      if (!match) { showToast('没有识别到“答案：A”形式的字母'); return; }
+      const ids = [...new Set((match[1].toUpperCase().match(/[A-Z]/g) || []))];
+      const letters = choiceLetters(readMistakeChoiceOptionValues('Create').length);
+      const valid = ids.filter(id => letters.includes(id));
+      if (!valid.length) { showToast('答案字母不在当前选项中，请先填入选项'); return; }
+      const type = document.getElementById('mistakeCreateChoiceType')?.value || 'single';
+      renderMistakeChoiceAnswerOptions('Create', type === 'single' ? valid.slice(0, 1) : valid);
+      updateMistakeCreateAnswerClear();
+      showToast('已填入正确答案，请核对');
+    } else {
+      const answer = document.getElementById('mistakeCreateAnswer');
+      if (answer) answer.value = text;
+      updateMistakeCreateAnswerClear();
+      showToast('已填入答案');
+    }
+  }
 }
 async function doCreateMistake(file, knowledgeIds, title, content) {
   const options = mistakeCreationFields();

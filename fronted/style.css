@@ -1364,6 +1364,16 @@ body.tag-picker-open { overflow: hidden; }
 .mistake-create-file-icon { flex-shrink: 0; font-size: 18px; line-height: 1.3; }
 .mistake-create-file strong { display: block; font-size: 13px; }
 .mistake-create-file small { display: block; margin-top: 3px; color: #8a93a5; font-size: 12px; }
+.mistake-ocr-panel { display: grid; gap: 10px; padding: 12px; border: 1px solid #d7e0ff; border-radius: 12px; background: #f7f9ff; }
+.mistake-ocr-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.mistake-ocr-head b { font-size: 13px; color: #34415a; }
+.mistake-ocr-head span { font-size: 11px; color: #8a93a5; }
+#mistakeCreateOcrText { width: 100%; min-height: 140px; resize: vertical; font: 13px/1.6 ui-monospace, Consolas, monospace; }
+.mistake-ocr-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.mistake-ocr-actions button { padding: 7px 10px; border: 1px solid #dce1e9; border-radius: 8px; background: #fff; color: #4a5a78; font-size: 12px; cursor: pointer; }
+.mistake-ocr-actions button:hover { border-color: #8fa8ff; color: #4a6cf7; background: #f1f5ff; }
+.mistake-ocr-actions .btn-cancel { background: #f3f4f8; color: #6b7488; }
+#mistakeCreateOcrMeta { color: #8a93a5; font-size: 11px; line-height: 1.5; }
 #tagPickerModal .tag-sheet-section-title, #mistakeEditModal .tag-sheet-section-title { margin: 0; font-size: 13px; font-weight: 600; color: #5b6478; }
 
 /* ---------- 底部按钮：看得清、点得准 ---------- */
