@@ -42,6 +42,7 @@ function getMistakeReview(id) {
     else if (progress.stage === 'answer') allowedActions = ['judge'];
   }
   const choiceType = mistake.choice_type === 'multiple' ? 'multiple' : 'single';
+  if(!blockedReasons.length && ['question','answer'].includes(progress.stage))allowedActions.push('restart');
   const correctIds = correctOptionIds(choiceType, mistake.correct_option);
   const selectedRaw = progress.selected_option || null;
   const selectedOption = choiceType === 'multiple'
@@ -60,6 +61,9 @@ function getMistakeReview(id) {
     mistakeId: id, courseId: mistake.course_id, mistakeType: mistake.mistake_type,
     reviewStatus: mistake.review_status, reviewRevision: mistake.review_revision,
     stage: progress.stage, recall: progress.recall, round: progress.round, version: progress.version,
+    firstAnswer: progress.first_answer || null, answerRevealed: !!progress.answer_revealed,
+    startedAt: progress.started_at || null,
+    durationMs:progress.duration_ms || 0,
     updatedAt: progress.updated_at,
     mode: { id: mode.id, name: mode.name, description: mode.description, source: mode.source,
       availableModes: mode.availableModes.map(({ id, name, description }) => ({ id, name, description })) },
@@ -75,13 +79,19 @@ function getMistakeReview(id) {
 // 白名单 + 严格类型：避免 truthy 字符串把 false 当作 true，也拒绝混用不同类型的判断。
 function validateOperation(body, startOnly = false) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) fail(400, 'INVALID_ARGUMENT', '请求必须是 JSON 对象');
-  const actions = startOnly ? ['start'] : ['recall', 'reveal_answer', 'judge', 'choose'];
+  const actions = startOnly ? ['start','restart'] : ['recall', 'reveal_answer', 'judge', 'choose','restart'];
   if (!actions.includes(body.action)) fail(400, 'INVALID_ARGUMENT', 'action 不合法');
   if (typeof body.requestId !== 'string' || !body.requestId.trim() || body.requestId.length > 100) {
     fail(400, 'INVALID_ARGUMENT', 'requestId 必须是 1 到 100 字符的非空字符串');
   }
   if (!Number.isSafeInteger(body.expectedVersion) || body.expectedVersion < 0) fail(400, 'INVALID_ARGUMENT', 'expectedVersion 必须是非负整数');
   const allowed = ['action', 'requestId', 'expectedVersion'];
+  if (['recall','reveal_answer'].includes(body.action)) {
+    allowed.push('firstAnswer');
+    if (typeof body.firstAnswer !== 'string' || !body.firstAnswer.trim() || body.firstAnswer.length>12000) {
+      fail(400,'INVALID_ARGUMENT','请先提交首次作答；不记得时也请明确填写“不记得”');
+    }
+  }
   if (body.durationMs !== undefined) {
     allowed.push('durationMs');
     if (!Number.isInteger(body.durationMs) || body.durationMs < 0 || body.durationMs > 86400000) {
@@ -147,7 +157,10 @@ function applyMistakeReview(id, body, startOnly = false, planItemId = null, sess
     let result = null;
     let selectedOption = progress.selected_option || null;
     let choiceCorrect = progress.choice_correct;
-    if (operation.action === 'start') {
+    let firstAnswer=progress.first_answer || null, answerRevealed=!!progress.answer_revealed;
+    let startedAt=progress.started_at || null;
+    if (operation.action === 'start' || operation.action==='restart') {
+      firstAnswer=null;answerRevealed=false;startedAt=new Date().toISOString();
       stage = 'question'; recall = null; round += 1; selectedOption = null; choiceCorrect = null;
     } else if (operation.action === 'choose') {
       if (!isChoice) fail(409, 'INVALID_REVIEW_STEP', '当前不是选择题复现模式');
@@ -168,14 +181,18 @@ function applyMistakeReview(id, body, startOnly = false, planItemId = null, sess
       }
       choiceCorrect = selectedIds.length === correctIds.length && selectedIds.every(id => correctIds.includes(id)) ? 1 : 0;
       selectedOption = choiceType === 'single' ? selectedIds[0] : JSON.stringify(selectedIds);
+      firstAnswer=selectedOption;
+      answerRevealed=true; // Correct answer is returned only after this objective submission is scored.
       status = choiceCorrect ? 'reviewed' : 'unreviewed';
       result = choiceCorrect ? 'correct' : 'incorrect';
       stage = 'completed';
     } else if (operation.action === 'recall') {
+      firstAnswer=operation.firstAnswer;answerRevealed=true;
       recall = operation.recall;
       stage = recall === 'forgotten' ? 'completed' : 'answer';
       if (recall === 'forgotten') { status = 'unreviewed'; result = 'forgotten'; }
     } else if (operation.action === 'reveal_answer') {
+      firstAnswer=operation.firstAnswer;answerRevealed=true;
       stage = 'answer';
     } else {
       if (isChoice) fail(409, 'INVALID_REVIEW_STEP', '选择题复现请直接提交选项');
@@ -202,6 +219,7 @@ function applyMistakeReview(id, body, startOnly = false, planItemId = null, sess
       if(stage==='completed') completeSessionItem(sessionItem,round,mistake.review_revision,status==='reviewed' ? 'passed' : 'failed');
     }
     const now = new Date().toISOString();
+    const durationMs=['start','restart'].includes(operation.action)?0:(operation.durationMs || Math.max(1,Math.min(86400000,Date.now()-Date.parse(startedAt || now))));
     db.prepare(`INSERT INTO mistake_review_progress
       (mistake_id, stage, recall, round, version, review_revision, selected_option, choice_correct, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -210,6 +228,10 @@ function applyMistakeReview(id, body, startOnly = false, planItemId = null, sess
         selected_option=excluded.selected_option, choice_correct=excluded.choice_correct,
         updated_at=excluded.updated_at`)
       .run(id, stage, recall, round, progress.version + 1, mistake.review_revision, selectedOption, choiceCorrect, now);
+    if (db.prepare('PRAGMA table_info(mistake_review_progress)').all().some(c=>c.name==='first_answer')) {
+      db.prepare('UPDATE mistake_review_progress SET first_answer=?,answer_revealed=?,started_at=?,duration_ms=? WHERE mistake_id=?')
+        .run(firstAnswer,answerRevealed?1:0,startedAt,durationMs,id);
+    }
     db.prepare('UPDATE mistakes SET review_status = ? WHERE id = ?').run(status, id);
     // 把这次判断折算成 4 档评分，交给备考总复习的排期引擎。
     // 知识类的「清楚/模糊」区分 Good / Hard；答错或不记得记 Again。
@@ -218,12 +240,14 @@ function applyMistakeReview(id, body, startOnly = false, planItemId = null, sess
         courseId: mistake.course_id,
         type: 'mistake',
         id,
-        grade: status === 'reviewed' ? (recall === 'vague' ? 2 : 3) : 1,
+        grade: status === 'reviewed' ? (!isChoice && (answerRevealed || recall === 'vague') ? 2 : 3) : 1,
         sessionId: sessionItem ? sessionItem.session_id : null,
         sessionItemId,
         mistakeType: mistake.mistake_type,
         modeId: mode.id,
-        durationMs: operation.durationMs || 0,
+        durationMs,
+        firstAnswer,answerRevealed,
+        evidence:{judgedBeforeReveal:isChoice},
       });
     }
     const response = getMistakeReview(id);

@@ -20,7 +20,7 @@ async function fixture(run,{legacy=true}={}){
     const env={...process.env,NODE_PATH:path.join(root,'back/node_modules'),AI_PROVIDER:'mock',AI_ENABLE_REAL:'false'};
     delete env.NODE_OPTIONS;delete env.NPM_CONFIG_NODE_OPTIONS;
     const schemaPath=path.join(back,'db/schema.js'),schema=fs.readFileSync(schemaPath,'utf8');
-    if(legacy)fs.writeFileSync(schemaPath,schema.replace('CURRENT_DB_VERSION = 18','CURRENT_DB_VERSION = 17').replace('migrateQuestionFormatConfirmation();',''));
+    if(legacy)fs.writeFileSync(schemaPath,schema.replace('CURRENT_DB_VERSION = 20','CURRENT_DB_VERSION = 17').replace('migrateQuestionFormatConfirmation();','').replace('migrateReviewEvidence();','').replace('migrateReviewArtifacts();',''));
     const seed=spawnSync(process.execPath,['-e',`
       const d=require('./db/index.js');const c=d.createCourse('题型隔离测试');
       if(${legacy}){
@@ -29,7 +29,7 @@ async function fixture(run,{legacy=true}={}){
         d.applyMistakeReview(b.id,{action:'start',requestId:'choice-in-progress',expectedVersion:0},true);
         d.createMistake(c.id,'旧损坏选择题','','1+1=?','',[],{mistakeType:'knowledge',questionFormat:'choice'});
         let p=d.getMistakeReview(a.id);
-        for(const step of [{action:'start'},{action:'recall',recall:'clear'},{action:'judge',correct:true}])p=d.applyMistakeReview(a.id,{...step,requestId:step.action,expectedVersion:p.version},step.action==='start');
+        for(const step of [{action:'start'},{action:'recall',recall:'clear'},{action:'judge',correct:true}])p=d.applyMistakeReview(a.id,{...step,...(['recall','reveal_answer'].includes(step.action)?{firstAnswer:'测试首次作答'}:{}),requestId:step.action,expectedVersion:p.version},step.action==='start');
         d.createReviewSession(c.id,{requestId:'format-session',sourceType:'total',selectedItems:[{type:'mistake',id:a.id}]});
       }
       console.log(JSON.stringify({courseId:c.id}));d.db.close();
@@ -67,8 +67,9 @@ async function fixture(run,{legacy=true}={}){
 
 test('v17 migration and HTTP confirmation protect review/history; actual format edits retain history',async()=>fixture(async({ids,api,read,snapshot,before,restart})=>{
   const prefix='/courses/'+ids.courseId+'/mistakes',get=id=>api('GET','/mistakes/'+id),patch=(id,body,status)=>api('PATCH',prefix+'/'+id,body,status);
-  assert.equal(read(db=>db.prepare('PRAGMA user_version').get().user_version),18);
-  assert.deepEqual(snapshot(),before,'migration preserves every protected row');
+  assert.equal(read(db=>db.prepare('PRAGMA user_version').get().user_version),20);
+  const migrated=snapshot();
+  for(const [table,rows]of Object.entries(before))assert.deepEqual(migrated[table].map(row=>Object.fromEntries(Object.keys(rows[0]||{}).map(key=>[key,row[key]]))),rows.map(row=>({...row})),'migration preserves existing columns: '+table);
   for(const row of await api('GET',prefix))assert.equal(row.question_format_confirmed,0,'all legacy formats pending, including structured choices');
   const original=await get(1),protectedBefore=snapshot();
   const confirmed=await patch(1,{questionFormatConfirmed:true,expectedRevision:original.review_revision});
@@ -176,3 +177,4 @@ for(const [name,run] of [['materials/notes',testMaterialReviewMigration],['revie
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'courses-format-migrations-'));
   try{run(path.join(root,'back'),temp);}finally{fs.rmSync(temp,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
 });
+module.exports={fixture};

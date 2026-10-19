@@ -23,7 +23,7 @@ function testReviewPlanMigrations(source,temp) {
     const fixture=path.join(temp,'plan-migration-'+version); fs.mkdirSync(fixture);
     fs.cpSync(path.join(source,'db'),path.join(fixture,'db'),{recursive:true});
     const schema=fs.readFileSync(path.join(source,'db/schema.js'),'utf8');
-    const oldSchema=schema.replace('CURRENT_DB_VERSION = 18','CURRENT_DB_VERSION = 11').replace('if (getUserVersion() === 11)','if (false)').replace('migrateReviewSessions();','').replace('migrateReviewScheduling();','').replace('migrateReviewResults();','').replace('migratePlanScheduleSnapshot();','').replace('migrateReviewModes();','');
+    const oldSchema=schema.replace('CURRENT_DB_VERSION = 20','CURRENT_DB_VERSION = 11').replace('if (getUserVersion() === 11)','if (false)').replace('migrateReviewSessions();','').replace('migrateReviewScheduling();','').replace('migrateReviewResults();','').replace('migratePlanScheduleSnapshot();','').replace('migrateReviewModes();','');
     assert.notEqual(oldSchema,schema);
     fs.writeFileSync(path.join(fixture,'db/schema.js'),oldSchema);
     const script=`
@@ -49,7 +49,7 @@ function testReviewPlanMigrations(source,temp) {
         d.exec('DROP TABLE idx_review_plans_course');
       }
       require('./db/schema.js');
-      assert.equal(d.prepare('PRAGMA user_version').get().user_version,18,'single startup reaches v18');
+      assert.equal(d.prepare('PRAGMA user_version').get().user_version,20,'single startup reaches v20');
       for(const s of snapshots) assert.deepEqual(d.prepare('SELECT '+s.columns+' FROM '+s.name+' ORDER BY rowid').all(),s.rows);
       const p=store.createReviewPlan(c.id,{name:'plan',startDate:'2026-10-16',examDate:'2026-10-28',selectedItems:[{type:'material',id:m.id}]});
       const before=JSON.stringify(store.getReviewPlan(c.id,p.id));
@@ -67,6 +67,7 @@ function testReviewPlanMigrations(source,temp) {
 
 async function testReviewPlanApi({base,temp}) {
   async function api(method,url,body,status=method==='POST' && !/\/review(?:\/events)?(?:\?|$)/.test(url) ? 201 : 200) {
+    if(body&&['recall','reveal_answer'].includes(body.action)&&body.firstAnswer===undefined)body={...body,firstAnswer:'测试首次作答'};
     const response=await fetch(base+url,{method,...(body===undefined?{}:{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})});
     const data=await response.json();assert.equal(response.status,status,JSON.stringify(data));return data;
   }

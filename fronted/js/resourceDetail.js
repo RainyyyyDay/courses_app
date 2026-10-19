@@ -42,6 +42,7 @@ async function renderResourceDetailPage(resourceType, resourceId) {
     if (!isCurrent()) return;
     if (row.course_id !== courseId) throw new Error('这条内容不属于当前课程');
     renderResourceDetail(resourceType, row);
+    if(typeof mountReviewPreparation==='function')mountReviewPreparation(document.getElementById('resourceDetailTags'),resourceType,row);
   } catch (err) {
     if (!isCurrent()) return;
     console.warn('加载资源详情失败:', err.message);

@@ -17,7 +17,7 @@ async function requestApi(url, options) {
   }
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error((data && data.message) || `服务器返回 HTTP ${res.status}`);
+    throw Object.assign(new Error((data && data.message) || `服务器返回 HTTP ${res.status}`),{status:res.status,code:data?.code});
   }
   return res;
 }

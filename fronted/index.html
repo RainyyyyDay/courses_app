@@ -273,6 +273,7 @@
         <div class="detail-name" id="mistakeDetailName"></div>
         <div class="detail-meta" id="mistakeDetailMeta"></div>
         <div id="mistakeDetailFormat"></div>
+        <div id="mistakeDetailPreparation"></div>
         <div id="mistakeAiSavedDetail"></div>
         <div class="mistake-tags" id="mistakeDetailTags"></div>
       </div>
@@ -1005,6 +1006,7 @@
   <script src="js/noteReview.js"></script>
   <script src="js/mistakeDetail.js"></script>
   <script src="js/mistakeAi.js"></script>
+  <script src="js/reviewWorkbench.js"></script>
   <dialog id="mistakeAiDialog" aria-labelledby="mistakeAiDialogTitle" oncancel="event.preventDefault();resetMistakeAi()" onclick="if(event.target===this)resetMistakeAi()">
     <header class="mistake-ai-dialog-head"><div><h2 id="mistakeAiDialogTitle" tabindex="-1">AI 复习建议</h2><p id="mistakeAiDialogQuestionTitle" class="mistake-ai-note"></p></div><button type="button" class="tag-sheet-close" onclick="resetMistakeAi()" aria-label="关闭 AI 复习建议">×</button></header>
     <div id="mistakeAiDialogBody" class="tag-sheet-body"></div>

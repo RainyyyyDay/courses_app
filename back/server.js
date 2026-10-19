@@ -1016,6 +1016,24 @@ function aiApi(handler) {
   };
 }
 
+const reviewScope=req=>({courseId:mistakeCourse(req.params.courseId),type:req.params.itemType,id:positiveId(req.params.itemId)});
+app.post('/api/ai/review-draft',aiApi(async(req,res)=>res.json(await aiService.createReviewDraft(req.body))));
+app.get('/api/courses/:courseId/review-items/:itemType/:itemId/materials/:modeId',mistakeApi((req,res)=>{
+  const s=reviewScope(req);res.json(db.getReviewMaterial(s.courseId,s.type,s.id,req.params.modeId,req.query.view==='practice'));
+}));
+app.put('/api/courses/:courseId/review-items/:itemType/:itemId/materials/:modeId',mistakeApi((req,res)=>{
+  const s=reviewScope(req);res.json(db.saveReviewMaterial(s.courseId,s.type,s.id,req.params.modeId,req.body));
+}));
+app.post('/api/courses/:courseId/review-items/:itemType/:itemId/attempts',mistakeApi((req,res)=>{
+  const s=reviewScope(req);res.json(db.startReviewAttempt(s.courseId,s.type,s.id,req.body));
+}));
+app.get('/api/courses/:courseId/review-items/:itemType/:itemId/attempts/:attemptId',mistakeApi((req,res)=>{
+  const s=reviewScope(req);res.json(db.getReviewAttempt(s.courseId,s.type,s.id,req.params.attemptId));
+}));
+app.post('/api/courses/:courseId/review-items/:itemType/:itemId/attempts/:attemptId/events',mistakeApi((req,res)=>{
+  const s=reviewScope(req);res.json(db.applyReviewAttempt(s.courseId,s.type,s.id,req.params.attemptId,req.body));
+}));
+
 app.get('/api/ai/health', aiApi((req, res) => {
   res.json(aiService.health());
 }));

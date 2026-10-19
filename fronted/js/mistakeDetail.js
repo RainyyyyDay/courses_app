@@ -53,6 +53,7 @@ async function renderMistakeDetailPage(mistakeId, review = false) {
   document.getElementById('mistakeDetailName').textContent = '加载中…';
   document.getElementById('mistakeDetailMeta').textContent = '';
   document.getElementById('mistakeDetailFormat').innerHTML = '';
+  document.getElementById('mistakeDetailPreparation').innerHTML = '';
   document.getElementById('mistakeDetailTags').innerHTML = '';
   document.getElementById('mistakeDetailImage').style.display = 'none';
   document.getElementById('mistakeDetailImage').removeAttribute('src');
@@ -89,6 +90,8 @@ async function renderMistakeDetailPage(mistakeId, review = false) {
 
 function renderMistakeDetail(mistake, review = false) {
   document.getElementById('mistakeDetailFormat').innerHTML = review ? '' : mistakeFormatHtml(mistake);
+  document.getElementById('mistakeDetailPreparation').innerHTML='';
+  if(!review && typeof mountReviewPreparation==='function')mountReviewPreparation(document.getElementById('mistakeDetailPreparation'),'mistake',mistake);
   const aiSaved = document.getElementById('mistakeAiSavedDetail');
   if (aiSaved && typeof mistakeAiSavedHtml === 'function') aiSaved.innerHTML = mistakeAiSavedHtml(mistake.course_id, mistake.id);
   document.getElementById('mistakeDetailTitle').textContent = review ? '错题复习' : '错题详情';
@@ -679,6 +682,8 @@ function mistakeChoiceHtml(p) {
 
 function renderMistakeReview(state) {
   const p = state.progress;
+  const typedAnswer=document.getElementById('mistakeFirstAnswer')?.value || state.firstAnswerDraft || '';
+  state.firstAnswerDraft=typedAnswer;
   const panel = document.getElementById('mistakeReviewPanel');
   const pending = mistakeStorageGet(mistakePendingKey(state)) || state.pending;
   const reasons = { missing_answer: '请先补充参考答案', missing_question: '请先补充题目文字或附件',
@@ -738,7 +743,10 @@ function renderMistakeReview(state) {
     ? `<label class="mistake-mode-switch"><span>复习模式</span><select onchange="changeMistakeReviewMode(this.value)" ${mistakeReviewBusy ? 'disabled' : ''}>${p.mode.availableModes.map(mode =>
       `<option value="${escapeHtml(mode.id)}" ${mode.id === p.mode.id ? 'selected' : ''}>${escapeHtml(mode.name)}</option>`).join('')}</select></label>`
     : '';
-  panel.innerHTML = `${modeSwitch}<p>${escapeHtml(message)}</p>${isChoice && p.choice ? mistakeChoiceHtml(p) : ''}${answerBlock}
+  const firstAnswerInput=!isChoice && p.stage==='question'
+    ? `<label>首次作答（不会被看答案后的修改覆盖）<textarea id="mistakeFirstAnswer" rows="4" oninput="mistakeDetailState.firstAnswerDraft=this.value">${escapeHtml(typedAnswer)}</textarea></label>`
+    : p.firstAnswer ? `<p>首次作答：${escapeHtml(p.firstAnswer)}${p.answerRevealed && !isChoice ? ' · 已看答案，本轮最高 Hard' : ''}</p>` : '';
+  panel.innerHTML = `${modeSwitch}<p>${escapeHtml(message)}</p>${firstAnswerInput}${isChoice && p.choice ? mistakeChoiceHtml(p) : ''}${answerBlock}
     <div class="mistake-review-actions">${pending ? '<span>有一次操作待确认，请先重试。</span><button onclick="retryMistakeReview()">重试上次操作</button>' : actions}</div>
     <div id="mistakeReviewError" class="mistake-inline-error" role="alert"></div>`;
   if (mistakeReviewBusy) panel.querySelectorAll('button').forEach(b => { b.disabled = true; });
@@ -759,13 +767,19 @@ async function submitMistakeReview(action, key, value, extra = {}) {
   if (typeof mistakeQueueCurrent === 'function' && mistakeQueueCurrent(state)
     && (state.progress.mistakeType !== mistakeQueueTypeFor(state.id) || !state.progress.reviewable)) return;
   if (mistakeStorageGet(mistakePendingKey(state)) || state.pending) return;
-  if (action === 'start' && typeof mistakeQueueCurrent === 'function' && mistakeQueueCurrent(state)) {
+  if (['start','restart'].includes(action) && typeof mistakeQueueCurrent === 'function' && mistakeQueueCurrent(state)) {
     mistakeQueue.rounds[state.id] = state.progress.round + 1;
     saveMistakeQueue();
   }
   const requestId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2);
   const body = { action, requestId, expectedVersion: state.progress.version };
   if (key) body[key] = value;
+  if (['recall','reveal_answer'].includes(action)) {
+    body.firstAnswer=(document.getElementById('mistakeFirstAnswer')?.value || state.firstAnswerDraft || '').trim();
+    if (!body.firstAnswer) {showToast('请先填写首次作答；不会可填写“不记得”');return;}
+  }
+  if (['start','restart'].includes(action)) state.firstAnswerDraft='';
+  if (state.progress.startedAt) body.durationMs=Math.max(1,Math.min(86400000,Date.now()-Date.parse(state.progress.startedAt)));
   Object.assign(body, extra);
   const pending = { body, start: action === 'start', planItemId:state.planItemId,sessionItemId:state.sessionItemId };
   mistakeStorageSet(mistakePendingKey(state), pending);
