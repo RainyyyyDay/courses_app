@@ -60,6 +60,10 @@ async function openTagPicker(mode, resourceType, resourceId) {
   if (tagBlock) tagBlock.classList.toggle('mistake-create-card', isMistakeCreate);
   const tagHeading = document.getElementById('tagPickerTagHeading');
   if (tagHeading) tagHeading.style.display = isMistakeCreate ? 'flex' : 'none';
+  const nameHeading = document.getElementById('tagPickerNameHeading');
+  if (nameHeading) nameHeading.style.display = isMistakeCreate ? 'flex' : 'none';
+  const mistakeTypeField = document.getElementById('tagPickerMistakeTypeField');
+  if (mistakeTypeField) mistakeTypeField.style.display = isMistakeCreate ? 'flex' : 'none';
 
   const mistakeFields = document.getElementById('tagPickerMistakeFields');
   mistakeFields.style.display = resourceType === 'mistake' && mode !== 'edit' ? 'grid' : 'none';
@@ -82,7 +86,7 @@ async function openTagPicker(mode, resourceType, resourceId) {
   const nameInput = document.getElementById('tagPickerName');
   const extChip = document.getElementById('tagPickerNameExt');
   const nameTip = document.getElementById('tagPickerNameTip');
-  if (nameRow) nameRow.classList.toggle('mistake-create-card', isMistakeCreate && mode === 'upload');
+  if (nameRow) nameRow.classList.toggle('mistake-create-card', isMistakeCreate && (mode === 'upload' || mode === 'manual'));
 
   const fileSummary = document.getElementById('mistakeCreateFileSummary');
   if (fileSummary) {
@@ -108,6 +112,8 @@ async function openTagPicker(mode, resourceType, resourceId) {
     const parts = splitNameExt(pendingUploadFile.name || '');
     nameBase = parts.base;
     nameExt = parts.ext;
+  } else if (isMistakeCreate && mode === 'manual' && pendingManual) {
+    nameBase = pendingManual.title || '';
   } else if (mode === 'edit') {
     const row = currentResourceRow(resourceType, resourceId);
     const title = row ? (row.title || '') : '';
@@ -123,7 +129,7 @@ async function openTagPicker(mode, resourceType, resourceId) {
     }
   }
 
-  if (mode === 'upload' || mode === 'edit') {
+  if (mode === 'upload' || mode === 'edit' || (isMistakeCreate && mode === 'manual')) {
     nameRow.style.display = 'block';
     nameInput.value = nameBase;
     extChip.textContent = nameExt;
@@ -272,6 +278,9 @@ async function confirmTagPicker() {
   if (mode === 'edit' && !title) {
     showToast('请输入名称');
     return;
+  }
+  if (mode === 'manual' && resourceType === 'mistake' && manual && title) {
+    manual.title = title;
   }
 
   const button = document.getElementById('tagPickerConfirm');

@@ -33,7 +33,13 @@ function mistakeListBrowserScenario(data) {
       const view = currentView;
       for (const id of [first.id,second.id]) {
         const buttons = [...card(id).querySelectorAll('.mistake-actions button')];
-        check(buttons.map(button => button.textContent.trim()).join('|') === '☆|查看|编辑|删除', 'ordinary actions are star/view/edit/delete');
+        check(buttons.map(button => button.textContent.trim()).join('|') === '☆|编辑|删除', 'ordinary actions are star/edit/delete');
+        for (const button of buttons) {
+          const rect = button.getBoundingClientRect();
+          const center = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          check(rect.width >= 34 && rect.height >= 32 && getComputedStyle(button).cursor === 'pointer'
+            && (center === button || button.contains(center)), 'action button has a real clickable hit area');
+        }
         check(!card(id).querySelector('[onclick*="true)"]') && !card(id).textContent.includes('开始复习'), 'no single review action on cards');
         check(star(id).getAttribute('aria-pressed') === 'false' && !star(id).classList.contains('is-favorite'), 'empty star unselected');
       }
@@ -50,7 +56,7 @@ function mistakeListBrowserScenario(data) {
         compareStyles(card(first.id),reference,['display','flexDirection','padding','borderRadius','alignItems'],'row ' + kind);
         compareStyles(card(first.id).querySelector('.mistake-actions'),reference.querySelector('.mistake-actions'),['display','gap','alignItems'],'actions ' + kind);
         compareStyles(star(first.id),reference.querySelector('.reading-favorite'),['fontSize','padding','marginLeft','color','borderRadius','minWidth'],'star ' + kind);
-        compareStyles(card(first.id).querySelector('.mistake-actions button:nth-child(2)'),reference.querySelector('.mistake-actions button:nth-child(2)'),['fontSize','padding','marginLeft','backgroundColor'],'view ' + kind);
+        compareStyles(card(first.id).querySelector('.mistake-actions button:nth-child(2)'),reference.querySelector('.mistake-actions button:nth-child(2)'),['fontSize','padding','marginLeft','backgroundColor'],'edit ' + kind);
         const controls = document.querySelector('#' + kind + 'BrowseFilters .reading-browse-controls');
         compareStyles(search,controls.querySelector('input'),['fontSize','padding','borderRadius','flex'],'search ' + kind);
         compareStyles(favorites,controls.querySelector('input[type=checkbox]'),['width','height'],'favorite filter ' + kind);
@@ -88,11 +94,11 @@ function mistakeListBrowserScenario(data) {
       check(currentMistakes.length === 0 && favorites.checked, 'unfavorite removes row from favorite results');
       favorites.click();
       await waitUntil(() => currentMistakes.length === 2 && !document.querySelector('#mistakeList .loading-tip'), 'uncheck favorites restores matching list');
-      card(first.id).querySelector('.mistake-actions button:nth-child(2)').click();
-      await waitUntil(() => currentView.type === 'mistake' && mistakeDetailState?.row?.id === first.id, 'view button opens detail');
+      card(first.id).querySelector('.info').click();
+      await waitUntil(() => currentView.type === 'mistake' && mistakeDetailState?.row?.id === first.id, 'card click opens detail');
       check(!mistakeDetailState.review && document.getElementById('mistakeReviewToolbar').style.display === 'none', 'ordinary detail has no direct review entry');
       await backFromDetail(); await loadMistakes();
-      card(first.id).querySelector('.mistake-actions button:nth-child(3)').click();
+      card(first.id).querySelector('.mistake-actions button:nth-child(2)').click();
       await waitUntil(() => mistakeEditPending?.id === first.id, 'edit button opens existing dialog');
       check(currentView.type === 'course', 'edit stays on list');
       document.getElementById('mistakeEditTitle').value = '统一列表第一题已编辑';
@@ -119,12 +125,12 @@ function mistakeListBrowserScenario(data) {
         && document.getElementById('mistakeCompleteTitle').textContent.includes('恭喜')
         && mistakeConfettiLayerState() === 'lib', 'perfect round celebrates with canvas-confetti');
       await backFromDetail(); await openMistakeCategory('knowledge'); await clearMistakeFilters();
-      card(second.id).querySelector('.mistake-actions button:nth-child(4)').click();
+      card(second.id).querySelector('.mistake-actions button:nth-child(3)').click();
       await waitUntil(() => document.getElementById('confirmModal').classList.contains('show'), 'delete opens existing confirmation');
       closeConfirm(false);
       await new Promise(resolve => setTimeout(resolve,50));
       check(card(second.id), 'cancel delete retains item');
-      card(second.id).querySelector('.mistake-actions button:nth-child(4)').click();
+      card(second.id).querySelector('.mistake-actions button:nth-child(3)').click();
       await waitUntil(() => document.getElementById('confirmModal').classList.contains('show'), 'delete confirmation again');
       closeConfirm(true);
       await waitUntil(() => !currentMistakes.some(item => item.id === second.id) && !document.querySelector('#mistakeList .loading-tip'), 'delete updates list');

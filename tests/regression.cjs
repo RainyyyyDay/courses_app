@@ -209,6 +209,12 @@ async function testBrowser(data) {
           document.body.appendChild(result);
           return;
         }
+        if (location.hash === '#choiceEditOnly') {
+          result.dataset.result = 'passed';
+          result.textContent = 'choice edit preview ready';
+          document.body.appendChild(result);
+          return;
+        }
         ${mistakeCreateBrowserScenario()}
         if (location.hash === '#mistakeCreateOnly') {
           result.dataset.result = 'passed';
@@ -294,7 +300,8 @@ async function testBrowser(data) {
   try {
     const previewHash = process.env.COURSES_TEST_CHOICE_ONLY === '1' ? '#choiceOnly'
       : process.env.COURSES_TEST_TOTAL_COMPLETE_ONLY === '1' ? '#totalCompleteOnly'
-        : process.env.COURSES_TEST_MISTAKE_CREATE_ONLY === '1' ? '#mistakeCreateOnly' : '';
+        : process.env.COURSES_TEST_MISTAKE_CREATE_ONLY === '1' ? '#mistakeCreateOnly'
+          : process.env.COURSES_TEST_CHOICE_EDIT_ONLY === '1' ? '#choiceEditOnly' : '';
     const url = `http://127.0.0.1:${staticServer.address().port}/${previewHash}`;
     const html=await runBrowser({chrome,profile:path.join(temp,'chrome-profile'),url,viewport,
       screenshot:process.env.COURSES_TEST_SCREENSHOT,noSandbox:!!process.env.COURSES_TEST_NO_SANDBOX});

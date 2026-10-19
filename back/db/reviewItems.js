@@ -242,7 +242,7 @@ function getReviewPlanSchedule(courseId, planId) {
     snapshot = { days: liveStructure, generatedAt: null, applied: false };
     db.prepare('UPDATE review_plans SET schedule_json=? WHERE id=?').run(JSON.stringify(snapshot), plan.id);
   }
-  const hasNewSchedule = structureKey(snapshot.days) !== structureKey(liveStructure);
+  const structureChanged = structureKey(snapshot.days) !== structureKey(liveStructure);
   // 采纳新排期后，只把「采纳之后」的会话算作这一版的完成记录：
   // 之前的提前复习不在这版排期里显示绿勾。
   // 只有用户主动「应用新排期」之后的快照才以生成时间为界；初始快照保留历史完成状态。
@@ -386,7 +386,10 @@ function getReviewPlanSchedule(courseId, planId) {
   }
   // 未来日期已完成 = 提前完成，也应该提示有新排期可应用。
   const hasEarlyDone = days.some(day => day.date > today && day.state === 'done');
-  return { ...base, ...result, days, hasNewSchedule: hasNewSchedule || hasEarlyDone };
+  // 今天按计划全部通过属于正常执行；记忆状态变化导致的未来估算差异不应再要求用户“应用新排期”。
+  // 只有提前完成未来日期，或今天没有全部通过时，才把结构差异呈现为待应用的新排期。
+  const todayDone = days.some(day => day.date === today && day.state === 'done');
+  return { ...base, ...result, days, hasNewSchedule: hasEarlyDone || (!todayDone && structureChanged) };
 }
 
 // 采纳当前记忆状态算出的新排期（替换快照）。

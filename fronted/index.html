@@ -613,13 +613,25 @@
       <div class="tag-sheet-body" id="tagPickerBody">
         <!-- 上传 / 编辑时显示：名字随便改，但文件后缀固定，不能改 -->
         <div class="tag-picker-name" id="tagPickerNameRow" style="display:none;">
-          <label for="tagPickerName">名称</label>
-          <div class="name-field">
-            <input id="tagPickerName" placeholder="给这条内容起个名字"
-                   onkeydown="if(event.key==='Enter'){event.preventDefault();confirmTagPicker();}" />
-            <span class="name-ext" id="tagPickerNameExt"></span>
+          <div id="tagPickerNameHeading" class="edit-card-head" style="display:none;">
+            <span class="edit-card-icon">🏷️</span>
+            <div class="edit-card-titles"><b>名称与分类</b><small>列表显示的标题；分类决定它归属哪一类。文件后缀由附件决定，不可修改</small></div>
           </div>
-          <div class="name-tip" id="tagPickerNameTip">后缀由文件决定，不能修改</div>
+          <div class="tag-picker-name-fields">
+            <div class="tag-picker-name-field">
+              <label class="tag-picker-name-label" for="tagPickerName">名称</label>
+              <div class="name-field">
+                <input id="tagPickerName" aria-label="名称" placeholder="给这条内容起个名字"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();confirmTagPicker();}" />
+                <span class="name-ext" id="tagPickerNameExt"></span>
+              </div>
+              <div class="name-tip" id="tagPickerNameTip">后缀由文件决定，不能修改</div>
+            </div>
+            <label class="tag-picker-category" id="tagPickerMistakeTypeField" style="display:none;">
+              <span class="tag-picker-category-label">分类</span>
+              <select id="mistakeCreateType" aria-label="分类"><option value="" disabled hidden>请选择类型</option><option value="knowledge">知识类</option><option value="thinking">思维类</option><option value="execution">执行类</option><option value="unclassified">待分类</option></select>
+            </label>
+          </div>
         </div>
         <section id="tagPickerTagBlock" class="tag-picker-tag-block">
           <div id="tagPickerTagHeading" class="edit-card-head" style="display:none;">
@@ -668,17 +680,6 @@
                 </div>
                 <small>系统自动用 A/B/C… 编号；正确答案只能从已添加的选项里选。</small>
               </div>
-            </div>
-          </section>
-          <section class="edit-card">
-            <div class="edit-card-head">
-              <span class="edit-card-icon">🏷️</span>
-              <div class="edit-card-titles"><b>分类</b><small>决定它进入知识类、思维类、执行类还是待分类</small></div>
-            </div>
-            <div class="edit-card-body">
-              <label class="mistake-create-field">错题类型（必选）
-                <select id="mistakeCreateType"><option value="">请选择类型</option><option value="knowledge">知识类</option><option value="thinking">思维类</option><option value="execution">执行类</option><option value="unclassified">待分类</option></select>
-              </label>
             </div>
           </section>
           <section class="edit-card">

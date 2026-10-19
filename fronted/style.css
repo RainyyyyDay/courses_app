@@ -86,9 +86,26 @@ body {
 .item-row .meta { font-size: 12px; color: #999; }
 .item-row button {
   border: none; background: none; cursor: pointer;
-  font-size: 13px; margin-left: 8px;
+  font-size: 13px; margin-left: 4px;
+  min-height: 34px; padding: 7px 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 7px; line-height: 1;
+  transition: background .15s ease, color .15s ease;
 }
+.item-row button:hover { background: #f0f4ff; color: #4a6cf7; }
+.item-row button:active { background: #e6ecff; }
 .item-row a { font-size: 13px; margin-left: 8px; text-decoration: none; }
+.item-row.card-openable {
+  cursor: pointer;
+  transition: box-shadow .18s ease, transform .18s ease;
+}
+.item-row.card-openable:hover {
+  box-shadow: 0 6px 18px rgba(21, 30, 60, .08);
+}
+.item-row.card-openable:focus-visible {
+  outline: 2px solid #4a6cf7;
+  outline-offset: 2px;
+}
 
 .upload-btn {
   width: 100%; padding: 12px;
@@ -283,7 +300,14 @@ body {
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px 4px;
 }
+.mistake-actions button { position: relative; z-index: 3; pointer-events: auto; margin-left: 0; }
+.mistake-actions .reading-favorite { padding: 0; }
 
 /* 标签 chip 基础样式（列表里是静态的，选择器里带一个 × ） */
 .tag-chip {
@@ -1191,6 +1215,30 @@ body.tag-picker-open { overflow: hidden; }
 /* ---------- 名称 / 搜索框 ---------- */
 #tagPickerModal .tag-picker-name { margin-bottom: 14px; }
 #tagPickerModal .tag-picker-name input { padding: 10px 12px; font-size: 15px; margin-bottom: 0; }
+#tagPickerModal .tag-picker-name-fields { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 10px 12px; }
+#tagPickerModal .tag-picker-name-field { flex: 1 1 220px; min-width: 0; }
+#tagPickerModal .tag-picker-category {
+  flex: 0 1 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 140px;
+  font-size: 12px;
+  color: #7a86a8;
+}
+#tagPickerModal .tag-picker-category select {
+  width: 100%;
+  box-sizing: border-box;
+  height: 42px;
+  padding: 0 10px;
+  border: 1px solid #dce1e9;
+  border-radius: 9px;
+  background: #fcfdff;
+  color: #34415a;
+  font: inherit;
+  font-size: 14px;
+}
+#tagPickerModal .tag-picker-name.mistake-create-card #tagPickerNameHeading { margin-bottom: 10px; }
 
 #tagPickerModal .tag-picker-search { margin-bottom: 12px; }
 #tagPickerModal .tag-picker-search input {
@@ -1515,7 +1563,7 @@ body.mistake-edit-open { overflow: hidden; }
 .choice-answer-label { font-size: 12px; color: #667187; }
 .choice-answer-options { display: flex; flex-wrap: wrap; gap: 8px; min-height: 30px; }
 #tagPickerModal .choice-answer-option,
-#mistakeEditModal .choice-answer-option { display: inline-flex; flex-direction: row; align-items: center; flex: 0 0 auto; width: auto; gap: 6px; padding: 6px 10px; border: 1px solid #dce1e9; border-radius: 8px; background: #fff; color: #34415a; font-size: 13px; cursor: pointer; }
+#mistakeEditModal .choice-answer-option { display: inline-flex; flex-direction: row; align-items: center; justify-content: center; flex: 0 0 auto; box-sizing: border-box; width: max-content; min-width: max-content; gap: 6px; padding: 6px 10px; border: 1px solid #dce1e9; border-radius: 8px; background: #fff; color: #34415a; font-size: 13px; cursor: pointer; }
 .choice-answer-option:has(input:checked) { border-color: #8fa8ff; background: #f1f5ff; }
 .choice-answer-option input { flex: 0 0 auto; width: 15px; height: 15px; margin: 0; accent-color: #4a6cf7; }
 .edit-choice-fields textarea, .edit-choice-fields input { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid #dce1e9; border-radius: 7px; font: inherit; font-size: 13px; }
@@ -1944,4 +1992,35 @@ body.plan-modal-open { overflow: hidden; }
   .edit-card-row input, .edit-card-row select { flex: 1 1 auto; }
   .edit-tag-row { min-height: 44px; }
   #mistakeEditModal input.edit-tag-check { width: 19px; height: 19px; }
+}
+
+/* 错题上传：名称/后缀/分类同一行，字段标签交给卡片标题说明，避免重复图标和黑框。 */
+#tagPickerModal .tag-picker-name.mistake-create-card .tag-picker-name-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(150px, .8fr);
+  align-items: start;
+  gap: 10px 12px;
+}
+#tagPickerModal .tag-picker-name.mistake-create-card .tag-picker-name-field,
+#tagPickerModal .tag-picker-name.mistake-create-card .tag-picker-category {
+  flex: none;
+  min-width: 0;
+}
+#tagPickerModal .tag-picker-name.mistake-create-card .tag-picker-name-label,
+#tagPickerModal .tag-picker-name.mistake-create-card .tag-picker-category-label {
+  display: none;
+}
+#tagPickerModal .tag-picker-name.mistake-create-card label::before {
+  content: none;
+  margin: 0;
+}
+#tagPickerModal .tag-picker-category select:focus,
+#tagPickerModal .tag-picker-name input:focus {
+  outline: 0;
+  border-color: #4a6cf7;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(74, 108, 247, .12);
+}
+@media(max-width:540px) {
+  #tagPickerModal .tag-picker-name.mistake-create-card .tag-picker-name-fields { grid-template-columns: 1fr; }
 }

@@ -21,7 +21,10 @@ async function loadNotes() {
     if (typeof renderNoteReviewResume === 'function') renderNoteReviewResume();
     if (rows.length === 0) return box.innerHTML = '<div class="empty">暂无笔记</div>';
     box.innerHTML = rows.map(r => `
-      <div class="item-row" data-note-id="${r.id}">
+      <div class="item-row card-openable" data-note-id="${r.id}" role="link" tabindex="0"
+        aria-label="查看笔记：${escapeHtml(r.title)}"
+        onclick="openReadingCard(event,'note',${r.id})"
+        onkeydown="openReadingCardKey(event,'note',${r.id})">
         <div class="info">
           <div class="title">${escapeHtml(r.title)}</div>
           <span class="material-review-badge">${r.review_status === 'reviewed' ? '已复习' : '未复习'}</span>
@@ -31,9 +34,8 @@ async function loadNotes() {
         </div>
         <div class="mistake-actions">
           ${readingFavoriteButton('notes',r)}
-          <button onclick="event.stopPropagation();openResourceDetail('note', ${r.id})">查看</button>
-          <button onclick="openTagPicker('edit', 'note', ${r.id})">编辑</button>
-          <button onclick="delItem('notes', ${r.id}, loadNotes)">删除</button>
+          <button onclick="event.stopPropagation();openTagPicker('edit', 'note', ${r.id})">编辑</button>
+          <button onclick="event.stopPropagation();delItem('notes', ${r.id}, loadNotes)">删除</button>
         </div>
       </div>
     `).join('');

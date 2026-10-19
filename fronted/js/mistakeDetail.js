@@ -113,8 +113,10 @@ function renderMistakeDetail(mistake, review = false) {
     document.getElementById('mistakeEditContent').value = mistake.content || '';
     document.getElementById('mistakeEditAnswer').value = mistake.answer_content || '';
     document.getElementById('mistakeEditExplanation').value = mistake.explanation || '';
-    document.getElementById('mistakeEditFormat').value = mistake.question_format || 'open';
-    document.getElementById('mistakeEditChoiceType').value = mistake.choice_type || 'single';
+    const editFormat = document.getElementById('mistakeEditFormat');
+    const editChoiceType = document.getElementById('mistakeEditChoiceType');
+    if (editFormat) editFormat.value = mistake.question_format || 'open';
+    if (editChoiceType) editChoiceType.value = mistake.choice_type || 'single';
     setMistakeChoiceEditor('Edit', mistake.options_json, mistake.correct_option, mistake.choice_type);
     toggleMistakeChoiceFields('Edit');
   }
@@ -213,8 +215,10 @@ function openMistakeEdit(row = mistakeDetailState?.row) {
   document.getElementById('mistakeEditContent').value = row.content || '';
   document.getElementById('mistakeEditAnswer').value = row.answer_content || '';
   document.getElementById('mistakeEditExplanation').value = row.explanation || '';
-  document.getElementById('mistakeEditFormat').value = row.question_format || 'open';
-  document.getElementById('mistakeEditChoiceType').value = row.choice_type || 'single';
+  const editFormat = document.getElementById('mistakeEditFormat');
+  const editChoiceType = document.getElementById('mistakeEditChoiceType');
+  if (editFormat) editFormat.value = row.question_format || 'open';
+  if (editChoiceType) editChoiceType.value = row.choice_type || 'single';
   setMistakeChoiceEditor('Edit', row.options_json, row.correct_option, row.choice_type);
   toggleMistakeChoiceFields('Edit');
   document.getElementById('mistakeEditQuestionUpload').value = '';

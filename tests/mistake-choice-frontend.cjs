@@ -48,6 +48,15 @@ function mistakeChoiceBrowserScenario() {
           && document.getElementById('mistakeEditChoiceType').value === 'single'
           && [...document.querySelectorAll('#mistakeEditOptionsList .choice-option-input')].map(input => input.value).join('|') === '1|2|3'
           && document.querySelector('#mistakeEditAnswerOptions input:checked')?.value === 'B', 'choice fields restored');
+        const answerCard = document.querySelector('#mistakeEditAnswerOptions .choice-answer-option');
+        const answerLetter = answerCard?.querySelector('span');
+        const cardRect = answerCard?.getBoundingClientRect(), letterRect = answerLetter?.getBoundingClientRect();
+        check(cardRect && letterRect && letterRect.left >= cardRect.left && letterRect.right <= cardRect.right + 1,
+          'answer letter stays inside its choice card ' + JSON.stringify({ card: cardRect, letter: letterRect }));
+        if (location.hash === '#choiceEditOnly') {
+          await new Promise(resolve => setTimeout(resolve, 400));
+          document.getElementById('mistakeEditChoiceFields').scrollIntoView({ block: 'center' });
+        } else {
         closeMistakeEdit();
         const multi = await (await requestApi(API + '/courses/' + course.id + '/mistakes', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -76,8 +85,14 @@ function mistakeChoiceBrowserScenario() {
         await waitUntil(() => mistakeEditPending && document.getElementById('mistakeEditModal').classList.contains('show'), 'multiple choice edit opens');
         check(document.getElementById('mistakeEditChoiceType').value === 'multiple'
           && [...document.querySelectorAll('#mistakeEditAnswerOptions input:checked')].map(input => input.value).join(',') === 'A,C', 'multiple choice edit restores selection');
+      const multiCard = document.querySelector('#mistakeEditAnswerOptions .choice-answer-option');
+      const multiLetter = multiCard?.querySelector('span');
+      const multiCardRect = multiCard?.getBoundingClientRect(), multiLetterRect = multiLetter?.getBoundingClientRect();
+      check(multiCardRect && multiLetterRect && multiLetterRect.left >= multiCardRect.left
+        && multiLetterRect.right <= multiCardRect.right + 1, 'multiple answer letter stays inside its choice card');
         closeMistakeEdit();
         await loadCourses();
+        }
       }
     }
   `;

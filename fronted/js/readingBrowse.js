@@ -48,6 +48,16 @@ function readingFavoriteButton(kind,row) {
   const pending = readingFavoritePending.has(`${currentCourseId}:${kind}:${row.id}`);
   return `<button class="reading-favorite ${row.favorite ? 'is-favorite' : ''}" data-reading-favorite="${row.id}" aria-label="${row.favorite ? '取消收藏' : '收藏'}" aria-pressed="${!!row.favorite}" ${pending ? 'disabled' : ''} onclick="event.stopPropagation();toggleReadingFavorite('${kind}',${row.id},${!row.favorite},this)">${row.favorite ? '★' : '☆'}</button>`;
 }
+function openReadingCard(event, kind, id) {
+  if (event.target.closest('a,button,input,label')) return;
+  openResourceDetail(kind, id);
+}
+function openReadingCardKey(event, kind, id) {
+  if (event.target.closest('a,button,input,label')) return;
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  openResourceDetail(kind, id);
+}
 async function toggleReadingFavorite(kind,id,favorite,button) {
   const courseId = currentCourseId, key = `${courseId}:${kind}:${id}`;
   if (readingFavoritePending.has(key)) return;

@@ -198,6 +198,15 @@ async function testReviewPlanApi({base,temp}) {
     assert.equal(mergedDay.sessionItems.length,1,'session still records only the reviewed mistake');
     assert.equal(mergedDay.state,'partial','one passed item does not mark the whole day done');
     assert.ok((await api('GET',prefix+'/'+mergePlan.id)).scheduleStats.total>=mergeDay.items.length,'progress uses the full day schedule');
+    // 按当天计划完成任务：记忆状态变化不应要求用户再应用一份新排期。
+    const onTimePlan=await api('POST',prefix,{...body,name:'on-time',examDate:spanExam,
+      selectedItems:[{type:'material',id:m.id}]},201);
+    const onTimeItem=(await api('GET',prefix+'/'+onTimePlan.id+'/items')).find(item=>item.scheduled_date===today);
+    assert.ok(onTimeItem,'on-time plan has a task today');
+    await api('PATCH',`${c}/materials/${m.id}/review?planItemId=${onTimeItem.id}`,{reviewStatus:'reviewed'});
+    const onTimeSchedule=await api('GET',prefix+'/'+onTimePlan.id+'/schedule');
+    assert.equal(onTimeSchedule.days.find(day=>day.date===today)?.state,'done');
+    assert.equal(onTimeSchedule.hasNewSchedule,false,'on-time completion does not request a new schedule');
     const empty=await api('POST',prefix,{...body,selectedItems:[{type:'material',id:m.id}]},201);
     await api('DELETE','/materials/'+m.id);
     const skipped=await api('GET',prefix+'/'+empty.id);assert.equal(skipped.skipped,1);assert.equal(skipped.completed,0);assert.equal(skipped.completionRate,0);

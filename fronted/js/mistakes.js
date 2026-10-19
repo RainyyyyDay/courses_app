@@ -224,7 +224,8 @@ async function loadMistakes() {
     }
     if (!rows.length) { box.innerHTML = '<div class="empty">暂无符合条件的错题</div>'; return; }
     box.innerHTML = rows.map(r => `
-      <div class="item-row ${selecting ? 'mistake-selectable' : ''}" data-mistake-id="${r.id}" ${selecting ? `onclick="toggleMistakeCard(event, ${r.id})"` : 'onclick="openMistakeCard(event, ' + r.id + ')"'}>
+      <div class="item-row ${selecting ? 'mistake-selectable' : 'card-openable'}" data-mistake-id="${r.id}"
+        ${selecting ? `onclick="toggleMistakeCard(event, ${r.id})"` : `role="link" tabindex="0" aria-label="查看错题：${escapeHtml(r.title)}" onclick="openMistakeCard(event, ${r.id})" onkeydown="openMistakeCardKey(event, ${r.id})"`}>
         <div class="info">
           <div${selecting ? ' class="mistake-title-row"' : ''}>
             <div class="title">${escapeHtml(r.title)}</div>
@@ -239,9 +240,8 @@ async function loadMistakes() {
         </div>
         <div class="mistake-actions" ${selecting ? 'style="display:none;"' : ''}>
           <button class="reading-favorite ${r.favorite ? 'is-favorite' : ''}" data-mistake-favorite="${r.id}" aria-label="${r.favorite ? '取消收藏' : '收藏'}" aria-pressed="${!!r.favorite}" ${mistakeFavoritePending.has(currentCourseId + ':' + r.id) ? 'disabled' : ''} onclick="event.stopPropagation();toggleMistakeFavorite(${r.id}, ${!r.favorite}, this)">${r.favorite ? '★' : '☆'}</button>
-          <button onclick="event.stopPropagation();openMistakeDetail(${r.id})">查看</button>
           <button onclick="event.stopPropagation();editMistakeFromList(${r.id})">编辑</button>
-          <button onclick="delItem('mistakes', ${r.id}, loadMistakes)">删除</button>
+          <button onclick="event.stopPropagation();delItem('mistakes', ${r.id}, loadMistakes)">删除</button>
         </div>
       </div>`).join('');
   } catch (err) {
@@ -331,6 +331,12 @@ async function toggleMistakeFavorite(id, favorite, button) {
 // 点白色卡片 = 打开这道题的详情（点里面的按钮、链接、勾选框不算）
 function openMistakeCard(event, id) {
   if (event.target.closest('a,button,input,label')) return;
+  openMistakeDetail(id);
+}
+function openMistakeCardKey(event, id) {
+  if (event.target.closest('a,button,input,label')) return;
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
   openMistakeDetail(id);
 }
 

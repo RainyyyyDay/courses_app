@@ -37,7 +37,7 @@ function mistakeEditBrowserScenario(data) {
     document.getElementById('pane-mistakes').appendChild(spacer);
     window.scrollTo(0,450); const scrollBefore = window.scrollY;
     check(scrollBefore > 0, 'fixture has nonzero list scroll');
-    document.querySelector('[data-mistake-id="' + row.id + '"] .mistake-actions button:nth-child(3)').click();
+    document.querySelector('[data-mistake-id="' + row.id + '"] .mistake-actions button:nth-child(2)').click();
     await waitUntil(() => document.querySelector('#mistakeEditTagTree .edit-tag-name'), 'list edit loaded tree');
     await new Promise(resolve => setTimeout(resolve,350));
     // 无界面浏览器的虚拟计时器可能先于合成动画推进；在量布局前完成已有打开动画。
