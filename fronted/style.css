@@ -934,6 +934,52 @@ body.mistake-review-open { overflow: hidden; }
 .mistake-tag-filter summary, #mistakeEditor summary { cursor: pointer; padding: 8px 0; }
 .mistake-filter-tag { display: inline-flex; align-items: center; gap: 5px; margin: 6px 12px 6px 0; font-size: 13px; }
 .mistake-inline-error { color: #b42318; white-space: pre-wrap; }
+.mistake-ai-panel { margin-top: 16px; padding-top: 12px; border-top: 1px solid #e3e3e3; }
+.mistake-ai-panel[hidden], #mistakeAiResult[hidden] { display: none; }
+.mistake-ai-note { color: #667085; font-size: 13px; line-height: 1.7; }
+.mistake-ai-panel fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.mistake-ai-panel label { display: block; margin: 12px 0 6px; font-size: 14px; }
+.mistake-ai-panel textarea, .mistake-ai-panel select { display: block; box-sizing: border-box; width: 100%; max-width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; background: #fff; font: inherit; }
+.mistake-ai-panel textarea { resize: vertical; }
+.mistake-ai-panel p { overflow-wrap: anywhere; }
+.mistake-ai-panel > .mistake-ai-note { margin: 0 0 16px; }
+.mistake-ai-panel .edit-card label { margin: 14px 0 6px; font-size: 13px; color: #5b6478; }
+.mistake-ai-panel .edit-card textarea, .mistake-ai-panel .edit-card select { border-color: #dbe0ea; border-radius: 9px; background: #fcfdff; font-size: 14px; padding: 10px 12px; }
+.mistake-ai-panel .edit-card :is(textarea,select):focus { outline: 2px solid #b9c8ff; outline-offset: 1px; background: #fff; }
+#mistakeAiDialog #mistakeAiTitle, #mistakeAiPanel .mistake-ai-dialog-only { display: none; }
+#mistakeAiResult > p { margin: 10px 0; }
+#mistakeAiReason { max-height: none; overflow: visible; }
+#mistakeAiActions { font-size: 13px; line-height: 1.5; }
+#mistakeAiActions .modal-actions { margin-top: 10px; flex-wrap: wrap; }
+#mistakeAiActions button { min-height: 40px; }
+#mistakeAiConfirmation:empty { display: none; }
+#mistakeAiConfirmation:not(:empty) { margin: 8px 0; overflow-wrap: anywhere; }
+#mistakeAiStatus:empty, #mistakeAiError:empty { display: none; }
+#mistakeAiStatus:not(:empty), #mistakeAiError:not(:empty) { margin: 10px 0; }
+
+.mistake-ai-saved { display: block; margin-top: 6px; color: #526477; font-size: 13px; overflow-wrap: anywhere; }
+#mistakeList .mistake-actions { flex-wrap: wrap; gap: 6px; max-width: 340px; justify-content: flex-end; }
+#mistakeList .info { min-width: 0; }
+.mistake-actions .mistake-ai-entry { color: #2456a6; font-weight: 600; }
+#mistakeAiDialog { position: fixed; inset: 0; margin: auto; box-sizing: border-box; width: min(680px, calc(100% - 32px)); max-height: calc(100vh - 32px); max-height: min(88dvh, 860px); overflow: hidden; padding: 0; border: 0; border-radius: 12px; }
+#mistakeAiDialog[open] { display: flex; flex-direction: column; }
+#mistakeAiDialogBody { background: #f6f7fb; }
+#mistakeAiDialog::backdrop { background: rgba(17,25,40,.45); }
+.mistake-ai-dialog-head { display: flex; flex: 0 0 auto; align-items: center; gap: 16px; padding: 18px 24px; border-bottom: 1px solid #eef0f5; justify-content: space-between; }
+.mistake-ai-dialog-head > div { min-width: 0; }
+#mistakeAiDialogQuestionTitle { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 3px; overflow-wrap: anywhere; }
+.mistake-ai-dialog-head h2 { font-size: 17px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+.mistake-ai-dialog-head button { flex: 0 0 auto; min-width: 44px; min-height: 44px; }
+#mistakeAiDialog .mistake-ai-panel { border-top: 0; margin-top: 0; }
+@media (max-width: 640px) {
+  #mistakeList .item-row { flex-wrap: wrap; }
+  #mistakeList .item-row > .info { flex-basis: 100%; }
+  #mistakeList .mistake-actions { max-width: 100%; width: 100%; justify-content: flex-start; }
+  #mistakeAiDialog { width: calc(100% - 20px); max-height: calc(100dvh - 20px); }
+  .mistake-ai-dialog-head { padding: 14px 16px; }
+  #mistakeAiDialogFoot .modal-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #mistakeAiDialogFoot .btn-confirm { grid-column: 1 / -1; }
+}
 .mistake-state { display: inline-block; border-radius: 4px; background: #f1f3f5; padding: 3px 7px; margin: 5px 6px 5px 0; font-size: 12px; }
 .mistake-state-reviewed { color: #28743c; background: #eaf6ed; }
 @media (max-width: 600px) { #pane-mistakes .item-row.mistake-selectable { align-items: flex-start; flex-direction: column; gap: 10px; } }
@@ -1130,7 +1176,7 @@ body.tag-picker-open { overflow: hidden; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-#tagPickerModal .tag-sheet-close, #mistakeEditModal .tag-sheet-close {
+#tagPickerModal .tag-sheet-close, #mistakeEditModal .tag-sheet-close, #mistakeAiDialog .tag-sheet-close {
   flex: 0 0 auto;
   width: 34px; height: 34px;
   display: flex; align-items: center; justify-content: center;
@@ -1140,10 +1186,10 @@ body.tag-picker-open { overflow: hidden; }
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
-#tagPickerModal .tag-sheet-close:hover, #mistakeEditModal .tag-sheet-close:hover { background: #e8eaf1; color: #232a3d; }
+#tagPickerModal .tag-sheet-close:hover, #mistakeEditModal .tag-sheet-close:hover, #mistakeAiDialog .tag-sheet-close:hover { background: #e8eaf1; color: #232a3d; }
 
 /* ---------- 中间：唯一的滚动区 ---------- */
-#tagPickerModal .tag-sheet-body, #mistakeEditModal .tag-sheet-body {
+#tagPickerModal .tag-sheet-body, #mistakeEditModal .tag-sheet-body, #mistakeAiDialog .tag-sheet-body {
   flex: 1 1 auto;
   min-height: 0;                          /* ★ 关键：不加这句，flex 子项按内容撑高，永远不出现滚动条 */
   overflow-y: auto;
@@ -1154,7 +1200,7 @@ body.tag-picker-open { overflow: hidden; }
 }
 
 /* ---------- 底部：固定不动（已选标签 + 按钮） ---------- */
-#tagPickerModal .tag-sheet-foot, #mistakeEditModal .tag-sheet-foot {
+#tagPickerModal .tag-sheet-foot, #mistakeEditModal .tag-sheet-foot, #mistakeAiDialog .tag-sheet-foot {
   flex: 0 0 auto;
   padding: 12px 20px 16px;
   border-top: 1px solid #eef0f5;
@@ -1230,21 +1276,90 @@ body.tag-picker-open { overflow: hidden; }
   border: 1px solid #eef0f5;
   border-radius: 12px;
 }
-#tagPickerModal .tag-sheet-section-title, #mistakeEditModal .tag-sheet-section-title { margin: 0; font-size: 13px; font-weight: 600; color: #5b6478; }
+/* 错题新建/上传：沿用编辑错题的卡片 + 图标设计，但只作用于错题创建弹窗。 */
+#tagPickerModal .tag-sheet-body.mistake-create-body { background: #f6f7fb; }
+#tagPickerModal .mistake-create-cards { display: grid; gap: 14px; margin-top: 14px; }
+#tagPickerModal .mistake-create-cards .edit-card { margin-bottom: 0; }
+#tagPickerModal .tag-picker-name.mistake-create-card,
+#tagPickerModal .tag-picker-tag-block.mistake-create-card {
+  background: #fff;
+  border: 1px solid #e6e9f2;
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 2px rgba(21, 30, 60, .04);
+}
+#tagPickerModal .tag-picker-name.mistake-create-card label::before {
+  content: '📝';
+  margin-right: 6px;
+}
+#tagPickerModal .tag-picker-tag-block.mistake-create-card .tag-picker-search { margin-bottom: 12px; }
+#tagPickerModal .tag-picker-tag-block.mistake-create-card .tag-picker-tree {
+  padding: 2px 0 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+#tagPickerModal .mistake-create-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #667187;
+}
+#tagPickerModal .mistake-create-cards input:not([type="file"]):not([type="checkbox"]):not([type="radio"]),
+#tagPickerModal .mistake-create-cards select,
+#tagPickerModal .mistake-create-cards textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid #dbe0ea;
+  border-radius: 9px;
+  background: #fcfdff;
+  font: inherit;
+  font-size: 14px;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+#tagPickerModal .mistake-create-cards textarea { resize: vertical; }
+#tagPickerModal .mistake-create-cards input:focus,
+#tagPickerModal .mistake-create-cards select:focus,
+#tagPickerModal .mistake-create-cards textarea:focus {
+  outline: none;
+  background: #fff;
+  border-color: #4a6cf7;
+  box-shadow: 0 0 0 3px rgba(74, 108, 247, .12);
+}
+.mistake-create-file {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e5e9f1;
+  border-radius: 10px;
+  background: #f8faff;
+  color: #49566f;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.mistake-create-file-icon { flex-shrink: 0; font-size: 18px; line-height: 1.3; }
+.mistake-create-file strong { display: block; font-size: 13px; }
+.mistake-create-file small { display: block; margin-top: 3px; color: #8a93a5; font-size: 12px; }
+#tagPickerModal .tag-sheet-section-title, #mistakeEditModal .tag-sheet-section-title, #mistakeAiPanel .tag-sheet-section-title { margin: 0; font-size: 13px; font-weight: 600; color: #5b6478; }
 
 /* ---------- 底部按钮：看得清、点得准 ---------- */
-#tagPickerModal .modal-actions button, #mistakeEditModal .modal-actions button {
+#tagPickerModal .modal-actions button, #mistakeEditModal .modal-actions button, #mistakeAiActions .modal-actions button {
   padding: 10px 18px;
   border-radius: 10px;
   font-size: 15px;
   font-weight: 500;
   transition: background 0.15s ease, filter 0.15s ease;
 }
-#tagPickerModal .btn-cancel, #mistakeEditModal .btn-cancel { background: #f3f4f8; color: #4a5268; }
-#tagPickerModal .btn-cancel:hover, #mistakeEditModal .btn-cancel:hover { background: #e8eaf1; }
-#tagPickerModal .btn-confirm, #mistakeEditModal .btn-confirm { background: #4a6cf7; color: #fff; }
-#tagPickerModal .btn-confirm:hover, #mistakeEditModal .btn-confirm:hover { filter: brightness(1.06); }
-#tagPickerModal .btn-confirm:disabled, #mistakeEditModal .btn-confirm:disabled { opacity: 0.6; cursor: wait; }
+#tagPickerModal .btn-cancel, #mistakeEditModal .btn-cancel, #mistakeAiActions .btn-cancel { background: #f3f4f8; color: #4a5268; }
+#tagPickerModal .btn-cancel:hover, #mistakeEditModal .btn-cancel:hover, #mistakeAiActions .btn-cancel:hover { background: #e8eaf1; }
+#tagPickerModal .btn-confirm, #mistakeEditModal .btn-confirm, #mistakeAiActions .btn-confirm { background: #4a6cf7; color: #fff; }
+#tagPickerModal .btn-confirm:hover, #mistakeEditModal .btn-confirm:hover, #mistakeAiActions .btn-confirm:hover { filter: brightness(1.06); }
+#tagPickerModal .btn-confirm:disabled, #mistakeEditModal .btn-confirm:disabled, #mistakeAiActions .btn-confirm:disabled { opacity: 0.6; cursor: wait; }
 
 /* ---------- 窄屏：从底部升起的抽屉 ---------- */
 @media (max-width: 640px) {
@@ -1263,8 +1378,8 @@ body.tag-picker-open { overflow: hidden; }
   #tagPickerModal .tag-sheet-grip, #mistakeEditModal .tag-sheet-grip { display: block; }
 
   #tagPickerModal .tag-sheet-head, #mistakeEditModal .tag-sheet-head { padding: 6px 12px 12px 16px; }
-  #tagPickerModal .tag-sheet-body, #mistakeEditModal .tag-sheet-body { padding: 14px 16px 12px; }
-  #tagPickerModal .tag-sheet-foot, #mistakeEditModal .tag-sheet-foot { padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px)); }
+  #tagPickerModal .tag-sheet-body, #mistakeEditModal .tag-sheet-body, #mistakeAiDialog .tag-sheet-body { padding: 14px 16px 12px; }
+  #tagPickerModal .tag-sheet-foot, #mistakeEditModal .tag-sheet-foot, #mistakeAiDialog .tag-sheet-foot { padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px)); }
 
   /* 手指点得准：整行 44px 高，勾选框和箭头一起放大 */
   #tagPickerModal .tag-row { min-height: 44px; }
@@ -1274,7 +1389,7 @@ body.tag-picker-open { overflow: hidden; }
 
   /* 按钮并排铺满一行，角落里的按钮不再难点 */
   #tagPickerModal .modal-actions, #mistakeEditModal .modal-actions { gap: 12px; }
-  #tagPickerModal .modal-actions button, #mistakeEditModal .modal-actions button { flex: 1 1 0; padding: 12px 16px; }
+  #tagPickerModal .modal-actions button, #mistakeEditModal .modal-actions button, #mistakeAiActions .modal-actions button { flex: 1 1 0; padding: 12px 16px; }
 }
 
 /* 尊重系统的"减少动态效果"设置 */

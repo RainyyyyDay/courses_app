@@ -8,7 +8,7 @@
 
 其余文件供开发验收：`requirements.txt`、本说明、`test_app.py` 和 `tests/`。`tests/test_core.py` 有一个源规则一致性测试会读取同仓库的 `ai-service/config/classification.json`；这个路径只存在于测试，运行模块不依赖它。单独交付完整测试目录时可一起提供原规则 JSON 作为审查依据，或在宿主项目中调整这一个测试的 fixture 路径。
 
-## 安装依赖由大组决定，本轮没有安装
+## 依赖与本地验收环境
 
 - 宿主已有 FastAPI 时，合并 `requirements.txt`，不要另建应用/服务器。
 - HTTP 路由需要 FastAPI（它会带入 Starlette 等传递依赖）。
@@ -16,7 +16,7 @@
 - uvicorn 仅用于本地独立联调，宿主已有 ASGI 服务器时无需额外增加。
 - 测试使用 Python unittest 标准库，不需要 pytest。
 
-requirements 中的版本范围尚未经过完整依赖安装/锁定验收。当前已检查的 Windows Python 为 3.14.6，已有 httpx 0.28.1、Pydantic 2.13.4、AnyIO 4.14.1，缺 FastAPI/Starlette/uvicorn。不能把核心测试通过等同于 FastAPI 路由验收通过。
+2026-10-20 已将依赖安装到仓库专用且被 Git 忽略的 `.local-ai-deps/`，未修改系统 Python 包。实测 Python 3.14.6、FastAPI 0.148.0、Starlette 1.9.0、uvicorn 0.54.0、httpx 0.28.1、AnyIO 4.15.1、Pydantic 2.14.1。requirements 仍是兼容范围，大组应合并自身依赖锁并复测。
 
 ## 在主应用中注册
 
@@ -92,21 +92,22 @@ mock 成功响应：
 
 每个注册应用创建一个执行器，进程内全局默认每分钟 30 次、同时两个 Provider。超时或客户端取消会取消任务；若 Provider 吞掉取消，仍占容量直到真正结束，避免抛弃任务无限增长。实际部署应按 worker 数和实例数计算总并发，并由大组提供共享配额。取消不保证真实上游不计费。本版本不记录原始请求、响应、异常或 Key；大组平台日志仍需配置脱敏。
 
-## 本地测试（不安装依赖、不调用真实模型）
+## 本地测试（不调用真实模型）
 
 PowerShell：
 
 ```powershell
 Set-Location D:\GitCourcesWeb\courses_app\ai-fastapi
+$env:PYTHONPATH = "D:\GitCourcesWeb\courses_app\.local-ai-deps"
 python -B -m unittest discover -s tests -v
 ```
 
 核心与 httpx.MockTransport 测试不访问真实模型；缺 FastAPI 时 5 项路由测试明确跳过，不能算通过。测试用假 Key，不加载 .env、不访问数据库。test_app.py 默认被 unittest discover 排除（discover 范围只含 tests/）。
 
-待宿主已有 FastAPI/uvicorn 后，独立联调入口：
+独立联调入口（先设置上面的 PYTHONPATH；首次安装命令见 `../tests/README-mistake-ai.md`）：
 
 ```powershell
-python -B -m uvicorn test_app:app --host 127.0.0.1 --port 3002
+python -B -m uvicorn test_app:app --host 127.0.0.1 --port 3002 --no-proxy-headers
 ```
 
 该入口固定使用 Config()，忽略进程中的模型开关和 Key，仅为回环开发请求放行；它不是登录系统，不能用于公网部署、反向代理或隧道公开。另一个终端可发送虚构题目：
@@ -118,8 +119,15 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:3002/api/ai/classify `
   -Body ([System.Text.Encoding]::UTF8.GetBytes($sample))
 ```
 
+浏览器打开 `http://127.0.0.1:3002/demo`：现有错题详情界面预填虚构题目，点击“获取 AI 建议”即可真实联调。演示页不加载 app.js、不请求课程 API、不启动 Node/SQLite；仅用于 AI 面板操作。它与分类路由同源，无需 CORS。拒绝异源 Origin、非回环客户端、伪造 Host 和转发头。根页面保留正常网站入口，完整课程功能仍需要原有后端。
+
 完成后 Ctrl+C。主应用只导入 ai_mistake.py 并调用 register，不导入 test_app.py，不再运行第二个 uvicorn。
 
 ## 当前验收边界
 
-已通过的测试：20 项核心/配置/输入输出/规则一致性/取消/并发/假上游测试；缺少 FastAPI，5 项 HTTP 路由测试跳过。未安装依赖，未运行 uvicorn 或真实模型。主网站鉴权/额度、FastAPI 及 Python 版本组合、真实部署生命周期和模型可用性需由大组环境完成验收。
+已通过 Python 28/28：20 项核心/假上游、5 项原有路由、3 项本地服务测试；本地测试包含真实 uvicorn TCP、原前端适配层四种映射、桌面/手机浏览器实际 POST、建议展示与仅页面确认。前端与代理 13/13 通过。修复了实际运行暴露的断连监视取消退出和新版 FastAPI 重复注册保护问题，契约与分类规则不变。未读取 .env、未连接数据库、未调用真实模型。主网站鉴权/额度、PostgreSQL、真实部署生命周期和模型可用性仍需大组环境验收。
+
+
+## 正常网站的本地入口
+
+启动本 mock 服务和 back 的 Node 服务后，打开 `http://127.0.0.1:3002/`（或 `/index.html`）。此处提供完整原前端并注入同源 AI 地址 `/api`，可在真实课程的错题列表/详情请求 mock；`/demo` 仅为可选独立演示。不要直接打开 file:// 页面，也不需要新增 CORS 放行。正式部署不导入此开发入口，继续使用宿主配置和真实授权依赖。启动脚本已改为打开根 HTTP 地址，具体命令见仓库根目录“启动说明.md”。

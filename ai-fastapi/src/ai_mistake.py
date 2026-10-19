@@ -249,7 +249,10 @@ async def _read_body(request):
 
 async def _with_disconnect(request, classifier, body):
     async def watch():
-        while not await request.is_disconnected():
+        # Starlette's is_disconnected uses a cancellation scope; on some
+        # Python/AnyIO combinations it can consume task cancellation. Also
+        # stop cooperatively once classification completes (including errors).
+        while not work.done() and not await request.is_disconnected():
             await asyncio.sleep(0.05)
     work = asyncio.create_task(classifier.classify(body))
     disconnected = asyncio.create_task(watch())
@@ -274,7 +277,8 @@ def register(app, *, dependencies=None, config=None):
     from fastapi import APIRouter, Depends, HTTPException, Request
     from fastapi.responses import JSONResponse
     from fastapi.routing import APIRoute
-    if any(getattr(route, "path", None) == PATH for route in app.routes):
+    if (getattr(app.state, "_ai_mistake_registered", False) or
+            any(getattr(route, "path", None) == PATH for route in app.routes)):
         raise ValueError("AI route already registered")
     config = Config.from_env() if config is None else config
     classifier = Classifier(config)
@@ -313,4 +317,6 @@ def register(app, *, dependencies=None, config=None):
         return JSONResponse(result, headers={"X-AI-Result-Source": source})
 
     app.include_router(router)
+    # Newer FastAPI may retain included routers rather than flatten app.routes.
+    app.state._ai_mistake_registered = True
     return router

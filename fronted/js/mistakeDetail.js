@@ -42,6 +42,7 @@ async function renderMistakeDetailPage(mistakeId, review = false) {
     planItemId: mistakeQueue?.planContext?.items?.[mistakeId] || null,
     sessionItemId:mistakeQueue?.sessionItems?.[mistakeId] || null };
   mistakeDetailState = state;
+  if (typeof resetMistakeAi === 'function') resetMistakeAi();
   showPageOnly('mistakeDetailPage');
   const detailBody = document.getElementById('mistakeDetailBody');
   if (detailBody) detailBody.style.display = 'block';
@@ -85,6 +86,8 @@ async function renderMistakeDetailPage(mistakeId, review = false) {
 }
 
 function renderMistakeDetail(mistake, review = false) {
+  const aiSaved = document.getElementById('mistakeAiSavedDetail');
+  if (aiSaved && typeof mistakeAiSavedHtml === 'function') aiSaved.innerHTML = mistakeAiSavedHtml(mistake.course_id, mistake.id);
   document.getElementById('mistakeDetailTitle').textContent = review ? '错题复习' : '错题详情';
   document.getElementById('mistakeDetailName').textContent = mistake.title || '（无标题）';
   document.getElementById('mistakeDetailMeta').textContent =

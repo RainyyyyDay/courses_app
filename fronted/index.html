@@ -273,6 +273,7 @@
       <div class="detail-card">
         <div class="detail-name" id="mistakeDetailName"></div>
         <div class="detail-meta" id="mistakeDetailMeta"></div>
+        <div id="mistakeAiSavedDetail"></div>
         <div class="mistake-tags" id="mistakeDetailTags"></div>
       </div>
       <div class="detail-section-title" id="mistakeDetailSectionTitle">错题图片</div>
@@ -291,7 +292,55 @@
         <h2>解析 / 错误原因</h2><div id="mistakeExplanationText" class="detail-content"></div>
         <div class="mistake-toolbar">
           <button type="button" onclick="openMistakeEdit()">编辑</button>
+          <button id="mistakeAiToggle" type="button" aria-expanded="false" aria-controls="mistakeAiPanel" onclick="toggleMistakeAi()">AI 分类</button>
         </div>
+        <span id="mistakeAiHome" hidden></span>
+        <section id="mistakeAiPanel" class="mistake-ai-panel" aria-labelledby="mistakeAiTitle" hidden>
+          <h2 id="mistakeAiTitle">AI 分类 · 复习方式建议</h2>
+          <p class="mistake-ai-note">当前为演示规则，结果需人工复核，不会自动修改原错题分类。只发送下方文字，不上传附件；请勿填写个人敏感信息。</p>
+          <form id="mistakeAiForm" class="edit-card" onsubmit="event.preventDefault();requestMistakeAi()">
+            <h3 class="tag-sheet-section-title">题目信息</h3>
+            <fieldset id="mistakeAiInputs">
+              <label for="mistakeAiQuestion">题目文字（必填；图片题请补充文字）</label>
+              <textarea id="mistakeAiQuestion" maxlength="4000" required rows="3"></textarea>
+              <label for="mistakeAiStudentAnswer">学生作答（必填，不是参考答案）</label>
+              <textarea id="mistakeAiStudentAnswer" maxlength="4000" required rows="2"></textarea>
+              <label for="mistakeAiErrorType">已明确的错误原因（必选，不由 AI 推断）</label>
+              <select id="mistakeAiErrorType" required>
+                <option value="">请选择已明确的原因</option>
+                <option value="knowledge_gap">知识缺漏</option><option value="reasoning_gap">推理障碍</option>
+                <option value="careless">粗心失误</option><option value="other">其他 / 尚不明确</option>
+              </select>
+              <label for="mistakeAiCorrectAnswer">参考答案（可选）</label>
+              <textarea id="mistakeAiCorrectAnswer" maxlength="4000" rows="2"></textarea>
+              <label for="mistakeAiContext">补充说明（可选）</label>
+              <textarea id="mistakeAiContext" maxlength="4000" rows="2"></textarea>
+            </fieldset>
+          </form>
+          <p id="mistakeAiStatus" role="status" aria-live="polite"></p>
+          <p id="mistakeAiError" class="mistake-inline-error" role="alert"></p>
+          <div id="mistakeAiResult" class="edit-card" hidden>
+            <h3 class="tag-sheet-section-title">AI 建议结果</h3>
+            <p id="mistakeAiSuggested"></p>
+            <p id="mistakeAiReason" class="detail-content"></p>
+            <label for="mistakeAiMethod">人工复核：可修改建议</label>
+            <select id="mistakeAiMethod" onchange="changeMistakeAiSuggestion()">
+              <option value="recall">回忆知识</option><option value="guided">引导练习</option>
+              <option value="retry">重新作答</option><option value="unclassified">待人工分类</option>
+            </select>
+            <p class="mistake-ai-note">确认后的复习方式保存在本浏览器，刷新后重新打开 AI 面板可恢复；清除浏览器数据后会丢失，不跨浏览器同步。输入和 AI 理由不保存。如需修改原错题分类，请使用上方“编辑”。</p>
+          </div>
+          <span id="mistakeAiActionsHome" hidden></span>
+          <div id="mistakeAiActions">
+            <p class="mistake-ai-note">确认操作 · 仅保存复习方式到本浏览器</p>
+            <p id="mistakeAiConfirmation" role="status"></p>
+            <div class="modal-actions">
+              <button type="button" class="btn-cancel mistake-ai-dialog-only" onclick="resetMistakeAi()">取消</button>
+              <button id="mistakeAiSubmit" type="submit" form="mistakeAiForm" class="btn-cancel">获取 AI 建议</button>
+              <button id="mistakeAiConfirm" type="button" class="btn-confirm" onclick="confirmMistakeAiSuggestion()" disabled>确认并保存到本浏览器</button>
+            </div>
+          </div>
+        </section>
       </div>
       </div><!-- mistakeDetailBody -->
     </div>
@@ -789,6 +838,12 @@
   <script src="js/materialReview.js"></script>
   <script src="js/noteReview.js"></script>
   <script src="js/mistakeDetail.js"></script>
+  <script src="js/mistakeAi.js"></script>
+  <dialog id="mistakeAiDialog" aria-labelledby="mistakeAiDialogTitle" oncancel="event.preventDefault();resetMistakeAi()" onclick="if(event.target===this)resetMistakeAi()">
+    <header class="mistake-ai-dialog-head"><div><h2 id="mistakeAiDialogTitle" tabindex="-1">AI 复习建议</h2><p id="mistakeAiDialogQuestionTitle" class="mistake-ai-note"></p></div><button type="button" class="tag-sheet-close" onclick="resetMistakeAi()" aria-label="关闭 AI 复习建议">×</button></header>
+    <div id="mistakeAiDialogBody" class="tag-sheet-body"></div>
+    <footer id="mistakeAiDialogFoot" class="tag-sheet-foot"></footer>
+  </dialog>
   <script src="js/mistakeQueue.js"></script>
   <script src="js/courseSearch.js"></script>
   <script src="js/reviewPicker.js"></script>

@@ -193,7 +193,7 @@ function renderTotalReview() {
   const list=document.getElementById('totalReviewCandidates'),scroll=s.filters[s.tab].scroll,focused=document.activeElement?.dataset.totalChoice;
   list.innerHTML=s.loading ? '<p class="loading-tip">加载中…</p>' : rows.length ? rows.map(row=>{
     const key=row.type+':'+row.id;
-    return reviewPickerCard(row,s.ids.has(key),s.busy,'data-total-choice','selectTotalReviewItem','openTotalReviewPreview');
+    return reviewPickerCard(row,s.ids.has(key),s.busy,'data-total-choice','selectTotalReviewItem','openTotalReviewPreview',s.courseId);
   }).join('') : '<p class="empty">暂无匹配内容</p>';
   list.scrollTop=scroll;
   if(focused)list.querySelector(`[data-total-choice="${focused}"]`)?.focus({preventScroll:true});

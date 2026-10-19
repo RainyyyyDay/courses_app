@@ -102,12 +102,14 @@ async function loadMistakes() {
             : `<span class="material-review-badge">${mistakeStatusText(r.review_status)}</span>`}
           <div class="meta">${!r.image_url ? '手动输入' : (isImageFile(r.file_type, r.image_url) ? '图片' : '文件')} · ${escapeHtml(r.created_at || '')}</div>
           ${r.content ? `<div class="row-content">${escapeHtml(r.content)}</div>` : ''}
+          ${typeof mistakeAiSavedHtml === 'function' ? mistakeAiSavedHtml(courseId, r.id) : ''}
           ${selecting ? '' : `<div class="mistake-tags">${nodeChipsHtml(r)}</div>`}
           ${selecting && mistakeCannotReview(r) ? `<button type="button" class="mistake-inline-error mistake-repair" title="点击补齐内容" onclick="event.stopPropagation();${typeof mistakeReviewPicker !== 'undefined' && mistakeReviewPicker ? 'openMistakeReviewRepair' : 'openMistakeDetail'}(${r.id})">⚠️${mistakeCannotReview(r)}，暂不能勾选，请补齐内容。</button>` : ''}
         </div>
         <div class="mistake-actions" ${selecting ? 'style="display:none;"' : ''}>
           <button class="reading-favorite ${r.favorite ? 'is-favorite' : ''}" data-mistake-favorite="${r.id}" aria-label="${r.favorite ? '取消收藏' : '收藏'}" aria-pressed="${!!r.favorite}" ${mistakeFavoritePending.has(currentCourseId + ':' + r.id) ? 'disabled' : ''} onclick="event.stopPropagation();toggleMistakeFavorite(${r.id}, ${!r.favorite}, this)">${r.favorite ? '★' : '☆'}</button>
           <button onclick="event.stopPropagation();openMistakeDetail(${r.id})">查看</button>
+          <button type="button" class="mistake-ai-entry" onclick="event.stopPropagation();openMistakeAiFromList(${r.id},this)">AI 复习建议</button>
           <button onclick="event.stopPropagation();editMistakeFromList(${r.id})">编辑</button>
           <button onclick="delItem('mistakes', ${r.id}, loadMistakes)">删除</button>
         </div>
