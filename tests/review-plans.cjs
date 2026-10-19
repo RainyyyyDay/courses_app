@@ -23,7 +23,7 @@ function testReviewPlanMigrations(source,temp) {
     const fixture=path.join(temp,'plan-migration-'+version); fs.mkdirSync(fixture);
     fs.cpSync(path.join(source,'db'),path.join(fixture,'db'),{recursive:true});
     const schema=fs.readFileSync(path.join(source,'db/schema.js'),'utf8');
-    const oldSchema=schema.replace('CURRENT_DB_VERSION = 16','CURRENT_DB_VERSION = 11').replace('if (getUserVersion() === 11)','if (false)').replace('migrateReviewSessions();','').replace('migrateReviewScheduling();','').replace('migrateReviewResults();','').replace('migratePlanScheduleSnapshot();','');
+    const oldSchema=schema.replace('CURRENT_DB_VERSION = 17','CURRENT_DB_VERSION = 11').replace('if (getUserVersion() === 11)','if (false)').replace('migrateReviewSessions();','').replace('migrateReviewScheduling();','').replace('migrateReviewResults();','').replace('migratePlanScheduleSnapshot();','').replace('migrateReviewModes();','');
     assert.notEqual(oldSchema,schema);
     fs.writeFileSync(path.join(fixture,'db/schema.js'),oldSchema);
     const script=`
@@ -33,7 +33,9 @@ function testReviewPlanMigrations(source,temp) {
       const m=store.createMaterial(c.id,'old material','/uploads/m.pdf','application/pdf',[],'original body');
       store.setMaterialReviewStatus(m.id,c.id,'reviewed'); store.setMaterialFavorite(m.id,c.id,true);
       const w=store.createMistake(c.id,'old mistake','','question','',[],{mistakeType:'knowledge',answerContent:'answer'});
-      store.applyMistakeReview(w.id,{action:'start',requestId:'old-start',expectedVersion:0},true);
+      // 旧版本还没有 v17 的选择题列；直接写旧步骤表，模拟历史数据。
+      d.prepare('INSERT INTO mistake_review_progress (mistake_id,stage,recall,round,version,review_revision,updated_at) VALUES (?,?,?,?,?,?,?)')
+        .run(w.id,'question',null,1,1,1,new Date().toISOString());
       if (${version}===10) { d.exec('ALTER TABLE mistakes DROP COLUMN answer_image_url; ALTER TABLE mistakes DROP COLUMN answer_file_type; PRAGMA user_version=10'); }
       const tables=d.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
       const snapshots=tables.map(({name})=>({name,columns:d.prepare('PRAGMA table_info('+name+')').all().map(c=>c.name).join(','),rows:d.prepare('SELECT * FROM '+name+' ORDER BY rowid').all()}));
@@ -47,7 +49,7 @@ function testReviewPlanMigrations(source,temp) {
         d.exec('DROP TABLE idx_review_plans_course');
       }
       require('./db/schema.js');
-      assert.equal(d.prepare('PRAGMA user_version').get().user_version,16,'single startup reaches v16');
+      assert.equal(d.prepare('PRAGMA user_version').get().user_version,17,'single startup reaches v17');
       for(const s of snapshots) assert.deepEqual(d.prepare('SELECT '+s.columns+' FROM '+s.name+' ORDER BY rowid').all(),s.rows);
       const p=store.createReviewPlan(c.id,{name:'plan',startDate:'2026-10-16',examDate:'2026-10-28',selectedItems:[{type:'material',id:m.id}]});
       const before=JSON.stringify(store.getReviewPlan(c.id,p.id));
@@ -172,6 +174,30 @@ async function testReviewPlanApi({base,temp}) {
     }
     const appliedFuture=await api('POST',prefix+'/'+futurePlan.id+'/schedule/apply',undefined,200);
     assert.equal(appliedFuture.hasNewSchedule,false,'apply survives future completed tasks');
+    // 回归：同一天已有完整排期，只提前复习其中一道错题时，会话不能把其他资料从日历里挤掉。
+    const mergePlan=await api('POST',prefix,{...body,name:'merge-day',examDate:spanExam,
+      selectedItems:[{type:'material',id:m.id},{type:'material',id:m2.id},{type:'mistake',id:w.id}]},201);
+    const mergeSchedule=await api('GET',prefix+'/'+mergePlan.id+'/schedule');
+    const mergeDay=mergeSchedule.days.find(day=>day.date>today && day.items.length>=2 && day.items.some(item=>item.type==='mistake'));
+    assert.ok(mergeDay,'merge-day fixture has a multi-item mistake day');
+    const mergeSession=await api('POST',c+'/review-sessions',{requestId:'merge-day-session',sourceType:'plan',
+      sourceId:mergePlan.id,scheduledDate:mergeDay.date,selectedItems:[{type:'mistake',id:w.id}]},201);
+    const mergeSessionDetail=await api('GET',c+'/review-sessions/'+mergeSession.id);
+    const mergeSessionItem=mergeSessionDetail.items.find(item=>item.item_type==='mistake');
+    const mergeBefore=await api('GET',c+'/mistakes/'+w.id+'/review?sessionItemId='+mergeSessionItem.id);
+    const mergeStarted=await api('POST',c+'/mistakes/'+w.id+'/review?sessionItemId='+mergeSessionItem.id,
+      {action:'start',requestId:'merge-start',expectedVersion:mergeBefore.version});
+    await api('POST',c+'/mistakes/'+w.id+'/review/events?sessionItemId='+mergeSessionItem.id,
+      {action:'recall',recall:'clear',requestId:'merge-recall',expectedVersion:mergeStarted.version});
+    const mergeRecalled=await api('GET',c+'/mistakes/'+w.id+'/review?sessionItemId='+mergeSessionItem.id);
+    await api('POST',c+'/mistakes/'+w.id+'/review/events?sessionItemId='+mergeSessionItem.id,
+      {action:'judge',correct:true,requestId:'merge-judge',expectedVersion:mergeRecalled.version});
+    const afterMerge=await api('GET',prefix+'/'+mergePlan.id+'/schedule');
+    const mergedDay=afterMerge.days.find(day=>day.date===mergeDay.date);
+    assert.equal(mergedDay.items.length,mergeDay.items.length,'partial session keeps the full day schedule');
+    assert.equal(mergedDay.sessionItems.length,1,'session still records only the reviewed mistake');
+    assert.equal(mergedDay.state,'partial','one passed item does not mark the whole day done');
+    assert.ok((await api('GET',prefix+'/'+mergePlan.id)).scheduleStats.total>=mergeDay.items.length,'progress uses the full day schedule');
     const empty=await api('POST',prefix,{...body,selectedItems:[{type:'material',id:m.id}]},201);
     await api('DELETE','/materials/'+m.id);
     const skipped=await api('GET',prefix+'/'+empty.id);assert.equal(skipped.skipped,1);assert.equal(skipped.completed,0);assert.equal(skipped.completionRate,0);

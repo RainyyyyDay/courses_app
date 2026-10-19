@@ -125,7 +125,11 @@ function mistakeQueueCurrent(state = mistakeDetailState) {
     && mistakeQueue.ids[mistakeQueue.index] === state.id;
 }
 function mistakeCannotReview(row) {
-  if (!String(row.answer_content || '').trim() && !row.answer_image_url) return '缺少参考答案';
+  if (row.question_format === 'choice') {
+    let options = [];
+    try { options = JSON.parse(row.options_json || '[]'); } catch { options = []; }
+    if (!row.choice_ready || !Array.isArray(options) || options.length < 2) return '选择题缺少选项或正确选项';
+  } else if (!String(row.answer_content || '').trim() && !row.answer_image_url) return '缺少参考答案';
   if (!String(row.content || '').trim() && !row.image_url && !String(row.ocr_text || '').trim()) return '缺少题目内容';
   return '';
 }
@@ -493,9 +497,39 @@ async function startMistakeCompleteConfetti(perfect) {
   bindMistakeCssConfetti(css);
   mistakeConfettiLayer = 'css';
 }
+let reviewCompleteState = null;
+function reviewCompleteSummary(session) {
+  const counts = { mistake: 0, note: 0, material: 0 };
+  for (const item of session?.items || []) {
+    if (Object.hasOwn(counts, item.item_type)) counts[item.item_type] += 1;
+  }
+  const parts = [];
+  if (counts.mistake) parts.push(`${counts.mistake} 道错题`);
+  if (counts.note) parts.push(`${counts.note} 篇笔记`);
+  if (counts.material) parts.push(`${counts.material} 份资料`);
+  return parts.join('、');
+}
+async function openReviewCompleteModal(session) {
+  const box = document.getElementById('mistakeCompleteModal');
+  if (!box || !session) return;
+  reviewCompleteState = { type: 'total', session };
+  const summary = reviewCompleteSummary(session);
+  const perfect = Number(session.total) > 0 && session.passed === session.total;
+  document.getElementById('mistakeCompleteTitle').textContent = perfect
+    ? `恭喜你！你成功复习了 ${summary || '所有所选题'}`
+    : '本轮总复习完成';
+  document.getElementById('mistakeCompleteText').textContent = perfect
+    ? `本轮共 ${session.total} 项，全部通过。`
+    : `本轮共 ${session.total} 项${summary ? `：${summary}` : ''}。通过 ${session.passed || 0} 项，未通过 ${session.failed || 0} 项，跳过 ${session.skipped || 0} 项。`;
+  box.classList.add('show');
+  document.body.classList.add('mistake-review-open');
+  document.getElementById('mistakeCompleteTitle').focus();
+  await startMistakeCompleteConfetti(perfect);
+}
 async function openMistakeCompleteModal() {
   const box = document.getElementById('mistakeCompleteModal');
   if (!box) return;
+  reviewCompleteState = { type: 'mistake' };
   const score = await mistakeQueueRoundScore();
   const perfect = !!score && score.correct === score.total;
   document.getElementById('mistakeCompleteTitle').textContent = perfect ? '恭喜你！你成功复习了所有所选题' : '本轮复习完成';
@@ -507,12 +541,34 @@ async function openMistakeCompleteModal() {
   document.getElementById('mistakeCompleteTitle').focus();
   await startMistakeCompleteConfetti(perfect);
 }
-function closeMistakeCompleteModal() {
+function closeReviewCompleteModal() {
   const box = document.getElementById('mistakeCompleteModal');
   if (!box || !box.classList.contains('show')) return;
   box.classList.remove('show');
   document.body.classList.remove('mistake-review-open');
   stopMistakeCompleteConfetti();
+}
+function closeMistakeCompleteModal() { closeReviewCompleteModal(); }
+async function cancelReviewComplete() {
+  const state = reviewCompleteState;
+  closeReviewCompleteModal();
+  reviewCompleteState = null;
+  if (state?.type === 'mistake') return cancelMistakeComplete();
+  if (typeof backToReviewPlans === 'function') return backToReviewPlans();
+}
+async function replayReviewComplete() {
+  const state = reviewCompleteState;
+  closeReviewCompleteModal();
+  reviewCompleteState = null;
+  if (state?.type === 'mistake') return replayMistakeQueue();
+  if (state?.session && typeof repeatReviewRecord === 'function') return repeatReviewRecord(state.session.id);
+}
+async function startNewReviewComplete() {
+  const state = reviewCompleteState;
+  closeReviewCompleteModal();
+  reviewCompleteState = null;
+  if (state?.type === 'mistake') return startNewMistakeReview();
+  if (typeof openTotalReview === 'function') return openTotalReview();
 }
 async function cancelMistakeComplete() {
   closeMistakeCompleteModal();

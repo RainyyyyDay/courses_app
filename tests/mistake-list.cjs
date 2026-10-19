@@ -100,7 +100,7 @@ function mistakeListBrowserScenario(data) {
       // 复习入口只在「错题」大页：分类详情页没有任何复习按钮，从大页开始复习会打开四分类选择弹窗。
       check(!document.querySelector('#mistakeSelectionHeader button'), 'category page has no review entry');
       await openMistakeCategory(null);
-      check(document.getElementById('mistakeHomeReview').style.display === 'flex', 'home keeps the review entry');
+      check(document.getElementById('mistakeHomeReview').style.display === 'none', 'standalone mistake review entry removed');
       document.getElementById('mistakeHomeReviewStart').click();
       await waitUntil(() => mistakeReviewPicker && !mistakeReviewPicker.pickerLoading, 'home start opens unified picker');
       check(document.querySelectorAll('[data-review-category]').length === 4 && !mistakeReviewPicker.pickerType && currentView.type === 'course', 'unified picker shows four categories');

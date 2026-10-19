@@ -11,6 +11,10 @@ const { spawn, spawnSync } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
 const { testMistakeMigrations, testMistakeApi } = require('./mistake-backend.cjs');
 const { mistakeBrowserPrelude, mistakeBrowserScenario } = require('./mistake-frontend.cjs');
+const { mistakeChoiceBrowserScenario } = require('./mistake-choice-frontend.cjs');
+const { reviewPlanDayMergeBrowserScenario } = require('./review-plan-day-merge-frontend.cjs');
+const { totalReviewCompleteBrowserScenario } = require('./total-review-complete-frontend.cjs');
+const { mistakeCreateBrowserScenario } = require('./mistake-create-frontend.cjs');
 const { mistakeEditBrowserScenario } = require('./mistake-edit.cjs');
 const { mistakeListBrowserScenario } = require('./mistake-list.cjs');
 const { testMaterialReviewMigration, testMaterialReviewApi, materialBrowserPrelude, materialBrowserScenario } = require('./material-review.cjs');
@@ -40,6 +44,7 @@ let db;
 
 async function testBackend() {
   fs.cpSync(path.join(source, 'db'), path.join(temp, 'db'), { recursive: true });
+  fs.cpSync(path.join(source, 'ai'), path.join(temp, 'ai'), { recursive: true });
   fs.copyFileSync(path.join(source, 'db.js'), path.join(temp, 'db.js'));
   fs.mkdirSync(path.join(temp, 'data'));
   if (originalHash !== null) {
@@ -61,7 +66,7 @@ async function testBackend() {
   before.close();
   const store = require(path.join(temp, 'db/index.js'));
   db = store.db;
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 16);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 17);
   assert.deepEqual(db.prepare('SELECT id, name FROM courses ORDER BY id').all(), existing);
   for (const snapshot of snapshots) assert.deepEqual(db.prepare(snapshot.sql).all(), snapshot.rows);
   const course = store.createCourse('regression course');
@@ -197,6 +202,28 @@ async function testBrowser(data) {
           ${mistakeBrowserScenario(data)} return;
         }
         ${mistakeBrowserPrelude()}
+        if (location.hash !== '#mistakeCreateOnly') { ${mistakeChoiceBrowserScenario()} }
+        if (location.hash === '#choiceOnly') {
+          result.dataset.result = 'passed';
+          result.textContent = 'choice mode preview ready';
+          document.body.appendChild(result);
+          return;
+        }
+        ${mistakeCreateBrowserScenario()}
+        if (location.hash === '#mistakeCreateOnly') {
+          result.dataset.result = 'passed';
+          result.textContent = 'mistake create preview ready';
+          document.body.appendChild(result);
+          return;
+        }
+        if (location.hash !== '#totalCompleteOnly') { ${reviewPlanDayMergeBrowserScenario()} }
+        ${totalReviewCompleteBrowserScenario()}
+        if (location.hash === '#totalCompleteOnly') {
+          result.dataset.result = 'passed';
+          result.textContent = 'total review completion preview ready';
+          document.body.appendChild(result);
+          return;
+        }
         if(!sessionStorage.getItem('review-plan-picker-done')) {
           ${reviewPlanPickerScenario({pickerOnly:process.argv.includes('--review-plan-picker-only')})}
           sessionStorage.setItem('review-plan-picker-done','true');
@@ -265,7 +292,10 @@ async function testBrowser(data) {
   });
   await new Promise(resolve => staticServer.listen(0, '127.0.0.1', resolve));
   try {
-    const url = `http://127.0.0.1:${staticServer.address().port}/`;
+    const previewHash = process.env.COURSES_TEST_CHOICE_ONLY === '1' ? '#choiceOnly'
+      : process.env.COURSES_TEST_TOTAL_COMPLETE_ONLY === '1' ? '#totalCompleteOnly'
+        : process.env.COURSES_TEST_MISTAKE_CREATE_ONLY === '1' ? '#mistakeCreateOnly' : '';
+    const url = `http://127.0.0.1:${staticServer.address().port}/${previewHash}`;
     const html=await runBrowser({chrome,profile:path.join(temp,'chrome-profile'),url,viewport,
       screenshot:process.env.COURSES_TEST_SCREENSHOT,noSandbox:!!process.env.COURSES_TEST_NO_SANDBOX});
     const failure=html.match(/<pre id="regressionResult"[^>]*>[\s\S]*?<\/pre>/)?.[0] || 'browser did not complete';

@@ -6,6 +6,7 @@ function totalReviewModalBrowserScenario() {
       const field=id=>document.getElementById(id),tabs=[...modal.querySelectorAll('[role=tab]')];
       const shown=selector=>[...modal.querySelectorAll(selector)].filter(el=>el.getClientRects().length);
       const rect=el=>el.getBoundingClientRect();
+      await Promise.all(dialog.getAnimations().map(animation=>animation.finished.catch(()=>{})));
       check(tabs.length===3 && !field('totalReviewModules').querySelector('input'),'equal tabs replace module checkboxes');
       check(Math.max(...tabs.map(el=>rect(el).width))-Math.min(...tabs.map(el=>rect(el).width))<1,'three equal-width tabs');
       check(rect(dialog).width<=innerWidth-18 && (innerWidth<900 || (rect(dialog).width>=900 && rect(dialog).width<=1000)),'desktop 900-1000px and responsive width');

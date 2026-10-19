@@ -129,7 +129,7 @@
         <button class="upload-btn" onclick="document.getElementById('materialFile').click()">＋ 上传文件</button>
         <button class="upload-btn upload-btn-plain" onclick="openManualModal('material')">＋ 手动输入</button>
       </div>
-      <div class="material-review-entry"><button type="button" onclick="openMaterialReviewPicker()">开始复习</button><button id="materialReviewResume" type="button" onclick="resumeMaterialReview()" style="display:none;">继续上次复习</button></div>
+      <div class="material-review-entry" style="display:none;"><button type="button" onclick="openMaterialReviewPicker()">开始复习</button><button id="materialReviewResume" type="button" onclick="resumeMaterialReview()" style="display:none;">继续上次复习</button></div>
       <div id="materialsBrowseFilters" class="reading-browse-filters"></div>
       <div id="materialList"></div>
     </div>
@@ -140,7 +140,7 @@
         <button class="upload-btn" onclick="document.getElementById('noteFile').click()">＋ 上传文件</button>
         <button class="upload-btn upload-btn-plain" onclick="openManualModal('note')">＋ 手动输入</button>
       </div>
-      <div class="material-review-entry"><button type="button" onclick="openNoteReviewPicker()">开始复习</button><button id="noteReviewResume" type="button" onclick="resumeNoteReview()" style="display:none;">继续上次复习</button></div>
+      <div class="material-review-entry" style="display:none;"><button type="button" onclick="openNoteReviewPicker()">开始复习</button><button id="noteReviewResume" type="button" onclick="resumeNoteReview()" style="display:none;">继续上次复习</button></div>
       <div id="notesBrowseFilters" class="reading-browse-filters"></div>
       <div id="noteList"></div>
     </div>
@@ -434,8 +434,8 @@
     </div>
   </div>
 
-  <!-- 复习完成弹窗：过完全部所选题后出现；正确率 100% 时飘彩带 -->
-  <div id="mistakeCompleteModal" class="modal-mask" onclick="if(event.target===this)cancelMistakeComplete()" onkeydown="if(event.key==='Escape'){event.preventDefault();cancelMistakeComplete()}">
+  <!-- 复习完成弹窗：总复习全部完成后出现；全部通过时飘彩带 -->
+  <div id="mistakeCompleteModal" class="modal-mask" onclick="if(event.target===this)cancelReviewComplete()" onkeydown="if(event.key==='Escape'){event.preventDefault();cancelReviewComplete()}">
     <!-- 彩带分两层，都在弹窗卡片后面：库可用时用 canvas-confetti，否则退回自绘 CSS 版 -->
     <div id="mistakeLibConfetti" class="mistake-confetti" style="display:none" aria-hidden="true">
       <canvas id="mistakeConfettiCanvas"></canvas>
@@ -445,9 +445,9 @@
       <h3 id="mistakeCompleteTitle" tabindex="-1"></h3>
       <p id="mistakeCompleteText"></p>
       <div class="modal-actions">
-        <button type="button" onclick="cancelMistakeComplete()">取消</button>
-        <button type="button" onclick="replayMistakeQueue()">再来一遍</button>
-        <button type="button" class="btn-primary" onclick="startNewMistakeReview()">开始新复习</button>
+        <button type="button" onclick="cancelReviewComplete()">取消</button>
+        <button type="button" onclick="replayReviewComplete()">再来一遍</button>
+        <button type="button" class="btn-primary" onclick="startNewReviewComplete()">开始新复习</button>
       </div>
     </div>
   </div>
@@ -523,6 +523,31 @@
             </div>
             <input type="file" id="mistakeEditQuestionUpload" style="display:none" onchange="chooseMistakeEditQuestionFile(this)" />
             <textarea id="mistakeEditContent" rows="4" placeholder="题目内容" oninput="refreshMistakeEditDirty()"></textarea>
+            <div class="edit-choice-config">
+              <label class="mistake-create-field">题型
+                <select id="mistakeEditFormat" onchange="toggleMistakeChoiceFields('Edit');refreshMistakeEditDirty()">
+                  <option value="open">主观题 / 非选择题</option>
+                  <option value="choice">选择题</option>
+                </select>
+              </label>
+              <div id="mistakeEditChoiceFields" class="edit-choice-fields" style="display:none;">
+                <label class="mistake-create-field">选择方式
+                  <select id="mistakeEditChoiceType" onchange="changeMistakeChoiceType('Edit');refreshMistakeEditDirty()">
+                    <option value="single">单选题</option>
+                    <option value="multiple">多选题</option>
+                  </select>
+                </label>
+                <div class="choice-option-editor">
+                  <div class="choice-option-list" id="mistakeEditOptionsList"></div>
+                  <button type="button" class="choice-add-option" onclick="addMistakeChoiceOption('Edit')">＋ 添加选项</button>
+                </div>
+                <div class="choice-answer-field">
+                  <div class="choice-answer-label">正确答案</div>
+                  <div id="mistakeEditAnswerOptions" class="choice-answer-options"></div>
+                </div>
+                <small>系统自动用 A/B/C… 编号；正确答案只能从已添加的选项里选。</small>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -596,21 +621,84 @@
           </div>
           <div class="name-tip" id="tagPickerNameTip">后缀由文件决定，不能修改</div>
         </div>
-        <!-- 分类 / 知识点一多，光靠翻很累：给个搜索框，只过滤显示，不动已选 -->
-        <div class="tag-picker-search" id="tagPickerSearchRow" style="display:none;">
-          <input id="tagPickerSearch" type="search" maxlength="100" autocomplete="off"
-                 placeholder="搜索分类 / 知识点"
-                 oninput="onTagSearchInput(this.value)"
-                 onkeydown="if(event.key==='Escape'){event.stopPropagation();this.value='';onTagSearchInput('');}" />
-        </div>
+        <section id="tagPickerTagBlock" class="tag-picker-tag-block">
+          <div id="tagPickerTagHeading" class="edit-card-head" style="display:none;">
+            <span class="edit-card-icon">🔖</span>
+            <div class="edit-card-titles"><b>标签</b><small>勾选知识框架中的分类或知识点；保存时一并生效</small></div>
+          </div>
+          <!-- 分类 / 知识点一多，光靠翻很累：给个搜索框，只过滤显示，不动已选 -->
+          <div class="tag-picker-search" id="tagPickerSearchRow" style="display:none;">
+            <input id="tagPickerSearch" type="search" maxlength="100" autocomplete="off"
+                   placeholder="搜索分类 / 知识点"
+                   oninput="onTagSearchInput(this.value)"
+                   onkeydown="if(event.key==='Escape'){event.stopPropagation();this.value='';onTagSearchInput('');}" />
+          </div>
 
-        <div class="tag-picker-tree" id="tagPickerTree"></div>
+          <div class="tag-picker-tree" id="tagPickerTree"></div>
+        </section>
 
-        <div id="tagPickerMistakeFields" class="mistake-edit-form" style="display:none;">
-          <div class="tag-sheet-section-title">错题信息</div>
-          <label>错题类型（必选）<select id="mistakeCreateType"><option value="">请选择类型</option><option value="knowledge">知识类</option><option value="thinking">思维类</option><option value="execution">执行类</option><option value="unclassified">待分类</option></select></label>
-          <label>参考答案<textarea id="mistakeCreateAnswer" rows="3" placeholder="可后续补齐，补齐后才能复习"></textarea></label>
-          <label>解析 / 错误原因（可选）<textarea id="mistakeCreateExplanation" rows="2"></textarea></label>
+        <div id="tagPickerMistakeFields" class="mistake-create-cards" style="display:none;">
+          <section class="edit-card">
+            <div class="edit-card-head">
+              <span class="edit-card-icon">📄</span>
+              <div class="edit-card-titles"><b>题目</b><small id="mistakeCreateQuestionHint">确认题目附件或正文，再选择题型</small></div>
+            </div>
+            <div class="edit-card-body">
+              <div id="mistakeCreateFileSummary" class="mistake-create-file" style="display:none;"></div>
+              <label class="mistake-create-field">题型
+                <select id="mistakeCreateFormat" onchange="toggleMistakeChoiceFields('Create')">
+                  <option value="open">主观题 / 非选择题</option>
+                  <option value="choice">选择题</option>
+                </select>
+              </label>
+              <div id="mistakeCreateChoiceFields" class="edit-choice-fields" style="display:none;">
+                <label class="mistake-create-field">选择方式
+                  <select id="mistakeCreateChoiceType" onchange="changeMistakeChoiceType('Create')">
+                    <option value="single">单选题</option>
+                    <option value="multiple">多选题</option>
+                  </select>
+                </label>
+                <div class="choice-option-editor">
+                  <div class="choice-option-list" id="mistakeCreateOptionsList"></div>
+                  <button type="button" class="choice-add-option" onclick="addMistakeChoiceOption('Create')">＋ 添加选项</button>
+                </div>
+                <div class="choice-answer-field">
+                  <div class="choice-answer-label">正确答案</div>
+                  <div id="mistakeCreateAnswerOptions" class="choice-answer-options"></div>
+                </div>
+                <small>系统自动用 A/B/C… 编号；正确答案只能从已添加的选项里选。</small>
+              </div>
+            </div>
+          </section>
+          <section class="edit-card">
+            <div class="edit-card-head">
+              <span class="edit-card-icon">🏷️</span>
+              <div class="edit-card-titles"><b>分类</b><small>决定它进入知识类、思维类、执行类还是待分类</small></div>
+            </div>
+            <div class="edit-card-body">
+              <label class="mistake-create-field">错题类型（必选）
+                <select id="mistakeCreateType"><option value="">请选择类型</option><option value="knowledge">知识类</option><option value="thinking">思维类</option><option value="execution">执行类</option><option value="unclassified">待分类</option></select>
+              </label>
+            </div>
+          </section>
+          <section class="edit-card">
+            <div class="edit-card-head">
+              <span class="edit-card-icon">✅</span>
+              <div class="edit-card-titles"><b>答案</b><small>可后补；补齐后才能复习</small></div>
+            </div>
+            <div class="edit-card-body">
+              <textarea id="mistakeCreateAnswer" rows="3" placeholder="参考答案"></textarea>
+            </div>
+          </section>
+          <section class="edit-card">
+            <div class="edit-card-head">
+              <span class="edit-card-icon">💡</span>
+              <div class="edit-card-titles"><b>解析 / 错因</b><small>选填：解析或错误原因</small></div>
+            </div>
+            <div class="edit-card-body">
+              <textarea id="mistakeCreateExplanation" rows="2" placeholder="解析 / 错误原因"></textarea>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -665,6 +753,7 @@
     <form id="reviewPlanForm" class="modal total-review-dialog" role="dialog" aria-modal="true" aria-labelledby="reviewPlanCreateTitle" onsubmit="event.preventDefault();if(!reviewPlanCreate?.preview)createReviewPlan()">
       <div id="reviewPlanSelector" class="total-review-selector">
         <header class="total-review-head"><h3 id="reviewPlanCreateTitle" tabindex="-1">创建考前复习计划</h3><button type="button" class="total-review-close" onclick="closeReviewPlanCreate()" aria-label="关闭创建计划">×</button></header>
+        <div id="reviewPlanBody" class="total-review-body" onscroll="rememberReviewPlanScroll()">
         <fieldset class="review-plan-info"><legend class="sr-only">计划信息</legend>
           <label for="reviewPlanName">计划名称<input id="reviewPlanName" required maxlength="100" placeholder="例如：期末考试复习" oninput="renderReviewPlanPreview()" /></label>
           <div class="review-plan-dates"><label for="reviewPlanStart">开始日期<input id="reviewPlanStart" type="date" required oninput="renderReviewPlanPreview()" onchange="renderReviewPlanPreview()" /></label><label for="reviewPlanExam">考试日期<input id="reviewPlanExam" type="date" required oninput="renderReviewPlanPreview()" onchange="renderReviewPlanPreview()" /></label></div>
@@ -690,6 +779,7 @@
             <div id="reviewPlanCandidates" class="total-review-list" onscroll="rememberReviewPlanScroll()"></div>
           </section>
         </section>
+        </div>
         <footer class="total-review-footer">
           <div class="total-review-summary" role="status" aria-live="polite"><strong id="reviewPlanCount">已选择 0 项</strong><small id="reviewPlanCounts">资料 0 · 笔记 0 · 错题 0</small></div>
           <div class="modal-actions"><button type="button" class="btn-cancel" onclick="closeReviewPlanCreate()">取消</button><button id="reviewPlanGenerate" type="submit" class="btn-confirm" disabled>创建计划</button></div>

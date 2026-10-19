@@ -64,7 +64,8 @@ async function renderMistakeDetailPage(mistakeId, review = false) {
   document.getElementById('mistakeEditExplanation').value = '';
   document.getElementById('mistakeReviewPanel').style.display = review ? 'block' : 'none';
   document.getElementById('mistakeReviewPanel').innerHTML = '<div class="loading-tip">加载复习进度…</div>';
-  document.getElementById('mistakeReviewToggle').disabled = true;
+  const reviewToggle = document.getElementById('mistakeReviewToggle');
+  if (reviewToggle) reviewToggle.disabled = true;
   try {
     const res = await requestApi(`${API}/mistakes/${mistakeId}`);
     const row = await res.json();
@@ -72,7 +73,7 @@ async function renderMistakeDetailPage(mistakeId, review = false) {
     if (row.course_id !== courseId) throw new Error('这道错题不属于当前课程');
     state.row = row;
     renderMistakeDetail(row, review);
-    document.getElementById('mistakeReviewToggle').disabled = false;
+    if (reviewToggle) reviewToggle.disabled = false;
     if (review) {
       await refreshMistakeReview(state);
       if (typeof prepareMistakeQueueItem === 'function') await prepareMistakeQueueItem(state);
@@ -92,8 +93,9 @@ function renderMistakeDetail(mistake, review = false) {
   const tags = Array.isArray(mistake.knowledge) ? mistake.knowledge : [];
   document.getElementById('mistakeDetailTags').innerHTML = tags.length
     ? tags.map(k => tagChipHtml(k, false, true)).join('') : '<span class="tag-none">暂无标签</span>';
-  document.getElementById('mistakeReviewToggle').textContent = review ? '查看 / 编辑资料' : '进入复习';
-  document.getElementById('mistakeReviewToolbar').style.display = review ? 'flex' : 'none';
+  // 单独复习入口已移除；总复习/考前计划仍可进入 review 模式。
+  const reviewToolbar = document.getElementById('mistakeReviewToolbar');
+  if (reviewToolbar) reviewToolbar.style.display = 'none';
   document.getElementById('mistakeReadPanel').style.display = review ? 'none' : 'block';
   document.getElementById('mistakeReviewPanel').style.display = review ? 'block' : 'none';
   document.getElementById('mistakeEditError').textContent = '';
@@ -111,6 +113,10 @@ function renderMistakeDetail(mistake, review = false) {
     document.getElementById('mistakeEditContent').value = mistake.content || '';
     document.getElementById('mistakeEditAnswer').value = mistake.answer_content || '';
     document.getElementById('mistakeEditExplanation').value = mistake.explanation || '';
+    document.getElementById('mistakeEditFormat').value = mistake.question_format || 'open';
+    document.getElementById('mistakeEditChoiceType').value = mistake.choice_type || 'single';
+    setMistakeChoiceEditor('Edit', mistake.options_json, mistake.correct_option, mistake.choice_type);
+    toggleMistakeChoiceFields('Edit');
   }
   const img = document.getElementById('mistakeDetailImage');
   const errBox = document.getElementById('mistakeDetailImageError');
@@ -207,6 +213,10 @@ function openMistakeEdit(row = mistakeDetailState?.row) {
   document.getElementById('mistakeEditContent').value = row.content || '';
   document.getElementById('mistakeEditAnswer').value = row.answer_content || '';
   document.getElementById('mistakeEditExplanation').value = row.explanation || '';
+  document.getElementById('mistakeEditFormat').value = row.question_format || 'open';
+  document.getElementById('mistakeEditChoiceType').value = row.choice_type || 'single';
+  setMistakeChoiceEditor('Edit', row.options_json, row.correct_option, row.choice_type);
+  toggleMistakeChoiceFields('Edit');
   document.getElementById('mistakeEditQuestionUpload').value = '';
   document.getElementById('mistakeEditAnswerUpload').value = '';
   document.getElementById('mistakeEditError').textContent = '';
@@ -459,8 +469,20 @@ function refreshMistakeEditDirty() {
   const before = (row.knowledge || []).map(k => k.id).sort((a, b) => a - b).join(',');
   const after = pending.tags.map(t => t.id).sort((a, b) => a - b).join(',');
   flag('mistakeEditFlagTags', before !== after);
+  const rowOptions = parseMistakeChoiceOptions(row.options_json).map(option => option.text.trim());
+  const currentOptions = readMistakeChoiceOptionValues('Edit').map(value => value.trim());
+  const rowSelected = parseMistakeCorrectIds(row.choice_type || 'single', row.correct_option).sort();
+  const currentSelected = readMistakeChoiceAnswerIds('Edit').sort();
+  const rowFormat = row.question_format || 'open';
+  const currentFormat = value('mistakeEditFormat');
+  const choiceDirty = (currentFormat === 'choice' || rowFormat === 'choice') && (
+    value('mistakeEditChoiceType') !== (row.choice_type || 'single')
+    || JSON.stringify(currentOptions) !== JSON.stringify(rowOptions)
+    || JSON.stringify(currentSelected) !== JSON.stringify(rowSelected));
   flag('mistakeEditFlagQuestion', (pending.questionRemoved && !!row.image_url) || !!pending.questionFile
-    || value('mistakeEditContent') !== (row.content || ''));
+    || value('mistakeEditContent') !== (row.content || '')
+    || currentFormat !== rowFormat
+    || choiceDirty);
   flag('mistakeEditFlagAnswer', (pending.answerRemoved && !!row.answer_image_url) || !!pending.answerFile
     || value('mistakeEditAnswer') !== (row.answer_content || ''));
   flag('mistakeEditFlagExplanation', value('mistakeEditExplanation') !== (row.explanation || ''));
@@ -491,12 +513,16 @@ async function saveMistakeDetail() {
   const button = document.getElementById('mistakeEditSave');
   if (!state?.row || state.saving || button.disabled || !mistakeEditIsCurrent(state)) return;
   const pending = state;
+  let choice;
+  try { choice = mistakeChoiceFields('Edit'); }
+  catch (err) { document.getElementById('mistakeEditError').textContent = err.message; showToast(err.message); return; }
   const body = {
     title: mistakeEditTitleValue(),
     content: document.getElementById('mistakeEditContent').value,
     mistakeType: document.getElementById('mistakeEditType').value,
     answerContent: document.getElementById('mistakeEditAnswer').value,
     explanation: document.getElementById('mistakeEditExplanation').value,
+    ...choice,
     expectedRevision: state.row.review_revision
   };
   if (!body.title) { showToast('请输入标题'); return; }
@@ -609,13 +635,42 @@ async function refreshMistakeReview(state = mistakeDetailState) {
   }
 }
 
+function mistakeChoiceHtml(p) {
+  const choice = p.choice;
+  if (!choice || !Array.isArray(choice.options)) return '';
+  const completed = p.stage === 'completed';
+  const multiple = choice.type === 'multiple';
+  const selectedIds = new Set(Array.isArray(choice.selectedOption)
+    ? choice.selectedOption : choice.selectedOption ? [choice.selectedOption] : []);
+  const correctIds = new Set(Array.isArray(choice.correctOption)
+    ? choice.correctOption : choice.correctOption ? [choice.correctOption] : []);
+  const options = choice.options.map((option) => {
+    const selected = selectedIds.has(option.id);
+    const correct = completed && correctIds.has(option.id);
+    const wrong = completed && selected && !correct;
+    return `<label class="mistake-choice-option${correct ? ' is-correct' : ''}${wrong ? ' is-wrong' : ''}">
+      <input type="${multiple ? 'checkbox' : 'radio'}" name="mistakeChoiceOption" value="${escapeHtml(option.id)}" ${selected ? 'checked' : ''} ${completed ? 'disabled' : ''} />
+      <span class="mistake-choice-id">${escapeHtml(option.id)}</span>
+      <span class="mistake-choice-text">${escapeHtml(option.text)}</span>
+    </label>`;
+  }).join('');
+  const correctText = Array.isArray(choice.correctOption) ? choice.correctOption.join('、') : choice.correctOption || '';
+  const result = completed && choice.correct !== null
+    ? `<p class="mistake-choice-result ${choice.correct ? 'is-correct' : 'is-wrong'}">${choice.correct ? '回答正确' : '回答错误'}${correctText ? ` · 正确答案 ${escapeHtml(correctText)}` : ''}</p>`
+    : '';
+  return `<div class="mistake-choice-options" role="${multiple ? 'group' : 'radiogroup'}" aria-label="选择答案">${options}</div>${result}`;
+}
+
 function renderMistakeReview(state) {
   const p = state.progress;
   const panel = document.getElementById('mistakeReviewPanel');
   const pending = mistakeStorageGet(mistakePendingKey(state)) || state.pending;
-  const reasons = { missing_answer: '请先补充参考答案', missing_question: '请先补充题目文字或附件' };
+  const reasons = { missing_answer: '请先补充参考答案', missing_question: '请先补充题目文字或附件',
+    missing_choice_options: '选择题缺少选项或正确选项' };
+  const isChoice = p.mode?.id === 'choice_reproduction';
+  if (!(isChoice && p.stage === 'question')) state.choiceStartedAt = null;
   const usesMastered = ['thinking', 'unclassified'].includes(p.mistakeType);
-  document.getElementById('mistakeDetailMeta').textContent = `${MISTAKE_TYPES[p.mistakeType]} · ${mistakeStatusText(p.reviewStatus)} · 第 ${p.round} 轮`;
+  document.getElementById('mistakeDetailMeta').textContent = `${MISTAKE_TYPES[p.mistakeType]}${p.mode?.name ? ' · ' + p.mode.name : ''} · ${mistakeStatusText(p.reviewStatus)} · 第 ${p.round} 轮`;
   let message = '';
   let actions = '';
   function button(text, action, key, value) {
@@ -623,9 +678,13 @@ function renderMistakeReview(state) {
   }
   if (!p.reviewable) {
     message = (p.blockedReasons || []).map(r => reasons[r] || r).join('；');
-    actions = '<button onclick="toggleMistakeReviewMode()">补齐内容</button>';
+    actions = '<button onclick="openMistakeEdit()">补齐内容</button>';
   } else if (p.stage === 'idle') {
     message = '先看题目，开始本轮复习。'; actions = button('开始复习', 'start');
+  } else if (isChoice && p.stage === 'question') {
+    message = '遮住答案，重新选择一次。';
+    state.choiceStartedAt ||= Date.now();
+    actions = '<button type="button" data-review-action="choose" onclick="submitMistakeChoice()">提交答案</button>';
   } else if (p.stage === 'question' && p.mistakeType === 'knowledge') {
     message = '你对这道题的记忆程度是？';
     actions = button('清楚', 'recall', 'recall', 'clear') + button('模糊', 'recall', 'recall', 'vague') + button('不记得', 'recall', 'recall', 'forgotten');
@@ -642,15 +701,28 @@ function renderMistakeReview(state) {
       actions = button('正确', 'judge', 'correct', true) + button('错误', 'judge', 'correct', false);
     }
   } else {
-    message = p.recall === 'forgotten' ? '已记录“不记得”，这道题仍为未复习。' : `本轮已保存：${mistakeStatusText(p.reviewStatus)}。`;
+    if (isChoice && p.choice) {
+      message = p.choice.correct ? '回答正确，本轮完成。' : '回答错误，本题仍为未复习。';
+    } else {
+      message = p.recall === 'forgotten' ? '已记录“不记得”，这道题仍为未复习。' : `本轮已保存：${mistakeStatusText(p.reviewStatus)}。`;
+    }
     actions = typeof mistakeQueueCurrent === 'function' && mistakeQueueCurrent(state) && p.round === mistakeQueue.rounds[state.id]
       ? '' : button('再次复习', 'start');
   }
   // 队列新开一轮时，不短暂展示上次已完成复习的答案。
   const answerVisible = p.answerVisible && (typeof mistakeQueueCurrent !== 'function' || !mistakeQueueCurrent(state)
     || p.round === mistakeQueue.rounds[state.id]);
-  panel.innerHTML = `<p>${escapeHtml(message)}</p>${answerVisible && p.answer ?
-    `<h2>参考答案</h2><div id="mistakeReviewAnswer" class="detail-content">${escapeHtml(p.answer.content || '')}</div>${mistakeAttachmentHtml('答案附件', p.answer.fileUrl, p.answer.fileType)}<h2>解析 / 错误原因</h2><div class="detail-content">${escapeHtml(p.answer.explanation || '暂无解析或错误原因')}</div>` : ''}
+  const answerText = p.answer?.content || '';
+  const answerFile = p.answer ? mistakeAttachmentHtml('答案附件', p.answer.fileUrl, p.answer.fileType) : '';
+  const answerBlock = answerVisible && p.answer
+    ? `${answerText || answerFile ? `<h2>参考答案</h2>${answerText ? `<div id="mistakeReviewAnswer" class="detail-content">${escapeHtml(answerText)}</div>` : ''}${answerFile}` : ''}
+      <h2>解析 / 错误原因</h2><div class="detail-content">${escapeHtml(p.answer.explanation || '暂无解析或错误原因')}</div>`
+    : '';
+  const modeSwitch = p.mode?.availableModes?.length > 1
+    ? `<label class="mistake-mode-switch"><span>复习模式</span><select onchange="changeMistakeReviewMode(this.value)" ${mistakeReviewBusy ? 'disabled' : ''}>${p.mode.availableModes.map(mode =>
+      `<option value="${escapeHtml(mode.id)}" ${mode.id === p.mode.id ? 'selected' : ''}>${escapeHtml(mode.name)}</option>`).join('')}</select></label>`
+    : '';
+  panel.innerHTML = `${modeSwitch}<p>${escapeHtml(message)}</p>${isChoice && p.choice ? mistakeChoiceHtml(p) : ''}${answerBlock}
     <div class="mistake-review-actions">${pending ? '<span>有一次操作待确认，请先重试。</span><button onclick="retryMistakeReview()">重试上次操作</button>' : actions}</div>
     <div id="mistakeReviewError" class="mistake-inline-error" role="alert"></div>`;
   if (mistakeReviewBusy) panel.querySelectorAll('button').forEach(b => { b.disabled = true; });
@@ -665,7 +737,7 @@ function renderMistakeReview(state) {
   if (typeof renderMistakeQueueBanner === 'function') renderMistakeQueueBanner();
 }
 
-async function submitMistakeReview(action, key, value) {
+async function submitMistakeReview(action, key, value, extra = {}) {
   const state = mistakeDetailState;
   if (!state?.progress || mistakeReviewBusy || !state.progress.allowedActions.includes(action)) return;
   if (typeof mistakeQueueCurrent === 'function' && mistakeQueueCurrent(state)
@@ -678,10 +750,45 @@ async function submitMistakeReview(action, key, value) {
   const requestId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2);
   const body = { action, requestId, expectedVersion: state.progress.version };
   if (key) body[key] = value;
+  Object.assign(body, extra);
   const pending = { body, start: action === 'start', planItemId:state.planItemId,sessionItemId:state.sessionItemId };
   mistakeStorageSet(mistakePendingKey(state), pending);
   state.pending = pending; // localStorage 不可用时，仍能在当前页面重试。
   await sendMistakeReview(state, pending);
+}
+function submitMistakeChoice() {
+  const state = mistakeDetailState;
+  if (!state?.progress || mistakeReviewBusy || state.progress.stage !== 'question') return;
+  const selected = [...document.querySelectorAll('input[name="mistakeChoiceOption"]:checked')].map(input => input.value);
+  if (!selected.length) { showToast('请先选择一个选项'); return; }
+  const durationMs = Math.max(0, Math.min(86400000, Date.now() - (state.choiceStartedAt || Date.now())));
+  return submitMistakeReview('choose', 'selectedOption',
+    state.progress.choice?.type === 'multiple' ? selected : selected[0], { durationMs });
+}
+async function changeMistakeReviewMode(modeId) {
+  const state = mistakeDetailState;
+  if (!state?.progress || mistakeReviewBusy || !modeId || modeId === state.progress.mode?.id) return;
+  if (state.progress.stage !== 'idle'
+    && !await showConfirm('切换复习模式会重新开始本轮，记忆状态和排期会保留。确定吗？', '切换复习模式')) {
+    renderMistakeReview(state);
+    return;
+  }
+  mistakeReviewBusy = true;
+  renderMistakeReview(state);
+  try {
+    const response = await requestApi(`${API}/courses/${state.courseId}/mistakes/${state.id}/mode`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modeId })
+    });
+    const mode = await response.json();
+    if (!mistakeDetailIsCurrent(state)) return;
+    await refreshMistakeReview(state);
+    showToast(`已切换为${mode.name || '新复习模式'}`);
+  } catch (err) {
+    if (mistakeDetailIsCurrent(state)) showToast(err.message);
+  } finally {
+    mistakeReviewBusy = false;
+    if (mistakeDetailIsCurrent(state)) renderMistakeReview(state);
+  }
 }
 async function retryMistakeReview() {
   const state = mistakeDetailState;

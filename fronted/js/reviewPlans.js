@@ -26,7 +26,23 @@ let planDayOpenedAt = 0;
 // 当天有真实会话时以会话项目为准（包含已跳过/未通过），否则用排期预估。
 function planDayItems(day) {
   if (!day) return [];
-  return day.sessionItems && day.sessionItems.length ? day.sessionItems : day.items;
+  const items = new Map();
+  for (const item of day.items || []) items.set(item.type + ':' + item.id, { ...item });
+  for (const item of day.sessionItems || []) {
+    const key = item.type + ':' + item.id;
+    const current = items.get(key);
+    if (current) {
+      items.set(key, {
+        ...current,
+        ...(item.title ? { title: item.title } : {}),
+        ...(item.status !== undefined ? { status: item.status } : {}),
+        ...(item.result !== undefined ? { result: item.result } : {}),
+      });
+    } else {
+      items.set(key, { ...item, minutes: Number(item.minutes) || 5, roundNo: item.roundNo || 1 });
+    }
+  }
+  return [...items.values()];
 }
 function planCalendarDate(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -127,20 +143,13 @@ function openPlanScheduleDay(date) {
   const today = planLocalDate();
   const overdue = date < today && day.state !== 'done';
   const future = date > today;
-  const tasks = (reviewPlanDetail?.items || []).filter(item => item.scheduled_date === date);
-  const doneTasks = tasks.filter(item => item.status === 'completed').length;
-  const skippedTasks = tasks.filter(item => item.status === 'skipped').length;
-  const pendingTasks = tasks.filter(item => item.status === 'pending').length;
-  // 没有物化任务的日期（纯排期预估）也要给出统计：有会话用会话结果，否则整天的内容都算待完成。
-  // 总任务就是当天全部项目，不做减法；待完成 = 还没成功复习的（待处理 + 未通过 + 跳过）。
-  const statsSession = day.sessionCounts || null;
-  const statsTotal = tasks.length ? tasks.length : statsSession ? statsSession.total : day.items.length;
-  const statsPassed = tasks.length ? doneTasks : statsSession ? statsSession.passed : 0;
-  const statsSkipped = tasks.length ? skippedTasks : statsSession ? statsSession.skipped : 0;
+  // 总量永远按“当天完整排期”算；会话只覆盖其中一部分状态时，不能把其他项目藏掉。
+  const source = planDayItems(day);
+  const statsTotal = source.length;
+  const statsPassed = source.filter(item => item.status === 'completed' && item.result !== 'failed').length;
+  const statsSkipped = source.filter(item => item.status === 'skipped').length;
   const stats = statsTotal
     ? `<p class="plan-day-stats">已完成 ${statsPassed} / ${statsTotal} · 待完成 ${statsTotal - statsPassed} · 已跳过 ${statsSkipped}</p>` : '';
-  // 当天有会话时以会话的真实项目为准（包含已跳过/未通过），否则用排期预估。
-  const source = planDayItems(day);
   const rows = ['mistake', 'material', 'note'].map(type => {
     const items = source.filter(item => item.type === type);
     if (!items.length) return ''; // 没有内容的类型不显示
@@ -150,7 +159,7 @@ function openPlanScheduleDay(date) {
     const failed = items.filter(item => item.status === 'completed' && item.result === 'failed').length;
     const passed = items.filter(item => item.status === 'completed' && item.result !== 'failed').length;
     const allPassed = items.length > 0 && passed === items.length;
-    const hasProgress = !!day.sessionId || passed + failed + skipped > 0;
+    const hasProgress = passed + failed + skipped > 0;
     const canResume = !!day.sessionId && ['active', 'paused'].includes(day.sessionStatus) && (day.sessionTypes || []).includes(type);
     // 有未通过/跳过 → 继续（只带没成功的题）；全部通过 → 再来一次；完全没开始 → 复习。
     const label = canResume ? '继续' : allPassed ? '再来一次' : hasProgress ? '继续' : '复习';
@@ -215,8 +224,10 @@ async function startPlanScheduleDay(date, type, action = '复习') {
     return;
   }
   const pending = state.items.filter(item => item.scheduled_date === date && item.item_type === type && item.status === 'pending');
-  if (pending.length) return startReviewPlanDay(state.plan.id, date, type);
-  const items = day.items.filter(item => item.type === type).map(item => ({ type: item.type, id: item.id }));
+  const available = planDayItems(day).filter(item => item.type === type && !item.sourceDeleted
+    && item.status !== 'completed' && item.status !== 'skipped');
+  if (pending.length && available.length <= pending.length) return startReviewPlanDay(state.plan.id, date, type);
+  const items = available.map(item => ({ type: item.type, id: item.id }));
   if (!items.length) return;
   planReviewStarting = true;
   try {
@@ -266,6 +277,7 @@ function openReviewPlanCreate() {
   if(reviewPlanCreate?.busy)return;
   reviewPlanCreate={courseId:currentCourseId,rows:[],ids:new Set(),tab:'material',filters:createReviewPickerFilters(),loading:true,busy:false,preview:null,validationTouched:false,returnFocus:document.activeElement};
   document.getElementById('reviewPlanForm').reset();document.getElementById('reviewPlanStart').value=planLocalDate();
+  document.getElementById('reviewPlanBody').scrollTop=0;
   document.getElementById('reviewPlanCreateError').textContent='';
   document.getElementById('reviewPlanSelector').hidden=false;document.getElementById('reviewPlanContentPreview').hidden=true;
   restoreReviewPlanFilters();
@@ -302,11 +314,15 @@ function restoreReviewPlanFilters() {
   document.getElementById('reviewPlanMistakeType').hidden=s.tab!=='mistake';
 }
 function rememberReviewPlanScroll() {
-  const s=reviewPlanCreate;if(s && !s.preview)s.filters[s.tab].scroll=document.getElementById('reviewPlanCandidates').scrollTop;
+  const s=reviewPlanCreate;if(s && !s.preview){
+    const body=document.getElementById('reviewPlanBody');
+    s.filters[s.tab].scroll=body?body.scrollTop:document.getElementById('reviewPlanCandidates').scrollTop;
+  }
 }
 function switchReviewPlanTab(type) {
   const s=reviewPlanCreate;if(!s || s.busy || s.preview || !Object.hasOwn(s.filters,type) || s.tab===type)return;
   saveReviewPlanFilters();rememberReviewPlanScroll();s.tab=type;restoreReviewPlanFilters();renderReviewPlanSelection();
+  const panel=document.getElementById('reviewPlanPanel');panel.classList.remove('tab-enter');void panel.offsetWidth;panel.classList.add('tab-enter');
 }
 function toggleReviewPlanTags() {const s=reviewPlanCreate;if(!s || s.busy)return;s.filters[s.tab].tagsOpen=!s.filters[s.tab].tagsOpen;renderReviewPickerTags(s,'reviewPlan','changeReviewPlanTag');}
 function changeReviewPlanTag(id,checked) {const s=reviewPlanCreate;if(!s || s.busy)return;const tags=s.filters[s.tab].tags;if(checked)tags.add(id);else tags.delete(id);renderReviewPlanSelection();}
@@ -322,11 +338,13 @@ function renderReviewPlanSelection() {
   const s=reviewPlanCreate;if(!s)return;
   const rows=filteredReviewPlanCandidates(),list=document.getElementById('reviewPlanCandidates'),scroll=s.filters[s.tab].scroll,focused=document.activeElement?.dataset.planChoice;
   document.querySelectorAll('#reviewPlanModules [role=tab]').forEach(button=>{const selected=button.id==='reviewPlanTab-'+s.tab;button.setAttribute('aria-selected',String(selected));button.tabIndex=selected ? 0 : -1;button.disabled=s.busy;});
+  document.getElementById('reviewPlanModules').style.setProperty('--tab-index',['material','note','mistake'].indexOf(s.tab));
   document.getElementById('reviewPlanPanel').setAttribute('aria-labelledby','reviewPlanTab-'+s.tab);
   document.getElementById('reviewPlanListTitle').textContent=PLAN_TYPE_LABELS[s.tab]+'列表';
   renderReviewPickerTags(s,'reviewPlan','changeReviewPlanTag');
   list.innerHTML=s.loading ? '<p class="loading-tip">加载中…</p>' : rows.length ? rows.map(row=>reviewPickerCard(row,s.ids.has(row.type+':'+row.id),s.busy,'data-plan-choice','selectReviewPlanItem','openReviewPlanPreview')).join('') : '<p class="empty">没有符合条件的内容。</p>';
-  list.scrollTop=scroll;if(focused)list.querySelector(`[data-plan-choice="${focused}"]`)?.focus({preventScroll:true});
+  list.scrollTop=scroll;const scrollBody=document.getElementById('reviewPlanBody');if(scrollBody)scrollBody.scrollTop=scroll;
+  if(focused)list.querySelector(`[data-plan-choice="${focused}"]`)?.focus({preventScroll:true});
   const eligible=rows.filter(row=>row.reviewable),count=eligible.filter(row=>s.ids.has(row.type+':'+row.id)).length,all=document.getElementById('reviewPlanSelectAll');
   all.checked=!!eligible.length && count===eligible.length;all.indeterminate=count>0 && count<eligible.length;all.disabled=s.loading || s.busy || !eligible.length;
   document.getElementById('reviewPlanCount').textContent=`已选择 ${s.ids.size} 项`;

@@ -8,6 +8,7 @@ const fs = require('fs');
 // 引入数据库模块：数据落在 back/data/app.db，数据库逻辑在 db/ 模块中。
 // 这里负责处理接口。
 const db = require('./db/index.js');
+const aiService = require('./ai/service');
 
 const app = express();
 
@@ -641,7 +642,8 @@ app.patch('/api/courses/:courseId/mistakes/:mistakeId', mistakeApi((req, res) =>
   const row = scopedMistake(req);
   const body = req.body;
   if (!body || typeof body !== 'object' || Array.isArray(body)) mistakeError(400, 'INVALID_ARGUMENT', '请求必须是 JSON 对象');
-  const allowed = ['title', 'content', 'mistakeType', 'answerContent', 'explanation', 'favorite', 'expectedRevision'];
+  const allowed = ['title', 'content', 'mistakeType', 'answerContent', 'explanation', 'favorite', 'expectedRevision',
+    'questionFormat', 'options', 'correctOption', 'choiceType'];
   if (Object.keys(body).some(key => !allowed.includes(key))) mistakeError(400, 'INVALID_ARGUMENT', '存在不支持的编辑字段');
   const changes = {};
   for (const [key, column] of [['title', 'title'], ['content', 'content'], ['answerContent', 'answer_content'], ['explanation', 'explanation']]) {
@@ -654,6 +656,20 @@ app.patch('/api/courses/:courseId/mistakes/:mistakeId', mistakeApi((req, res) =>
   if (body.mistakeType !== undefined) {
     if (!['knowledge', 'thinking', 'execution', 'unclassified'].includes(body.mistakeType)) mistakeError(400, 'INVALID_ARGUMENT', 'mistakeType 不合法');
     changes.mistake_type = body.mistakeType;
+  }
+  for (const key of ['questionFormat', 'choiceType']) {
+    if (body[key] !== undefined && typeof body[key] !== 'string') mistakeError(400, 'INVALID_ARGUMENT', `${key} 必须是字符串`);
+  }
+  if (body.correctOption !== undefined && typeof body.correctOption !== 'string' && !Array.isArray(body.correctOption)) {
+    mistakeError(400, 'INVALID_ARGUMENT', 'correctOption 必须是字符串或选项数组');
+  }
+  if (['questionFormat', 'options', 'correctOption', 'choiceType'].some(key => body[key] !== undefined)) {
+    Object.assign(changes, db.normalizeChoiceFields({
+      questionFormat: body.questionFormat,
+      options: body.options,
+      correctOption: body.correctOption,
+      choiceType: body.choiceType,
+    }, { current: row }));
   }
   if (body.favorite !== undefined) {
     if (typeof body.favorite !== 'boolean') mistakeError(400, 'INVALID_ARGUMENT', 'favorite 必须是布尔值');
@@ -704,6 +720,26 @@ app.get('/api/courses/:courseId/mistakes/:mistakeId/review', mistakeApi((req, re
   res.json(db.getMistakeReview(scopedMistake(req).id));
 }));
 
+// 复习模式：当前选择题会自动推荐 choice_reproduction；用户也可以显式改回标准复习。
+app.get('/api/courses/:courseId/mistakes/:mistakeId/mode', mistakeApi((req, res) => {
+  const row = scopedMistake(req);
+  const mode = db.resolveMistakeMode(row);
+  res.json({ ...mode, availableModes: mode.availableModes.map(({ id, name, description }) => ({ id, name, description })) });
+}));
+
+app.put('/api/courses/:courseId/mistakes/:mistakeId/mode', mistakeApi((req, res) => {
+  const row = scopedMistake(req);
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)
+    || Object.keys(body).some(key => key !== 'modeId')
+    || typeof body.modeId !== 'string' || !body.modeId.trim()) {
+    mistakeError(400, 'INVALID_ARGUMENT', 'modeId 必须是字符串');
+  }
+  db.setItemMode(row.course_id, 'mistake', row.id, body.modeId.trim(), 'user');
+  const mode = db.resolveMistakeMode(row);
+  res.json({ ...mode, availableModes: mode.availableModes.map(({ id, name, description }) => ({ id, name, description })) });
+}));
+
 app.post('/api/courses/:courseId/mistakes/:mistakeId/review', mistakeApi((req, res) => {
   res.json(db.applyMistakeReview(scopedMistake(req).id, req.body, true, planReviewItemId(req),sessionReviewItemId(req)));
 }));
@@ -728,8 +764,11 @@ app.post('/api/courses/:id/mistakes', upload.single('file'), mistakeApi((req, re
   if (!['knowledge', 'thinking', 'execution', 'unclassified'].includes(body.mistakeType)) {
     mistakeError(400, 'INVALID_ARGUMENT', '新建错题必须选择 knowledge、thinking、execution 或 unclassified');
   }
-  for (const key of ['title', 'content', 'answerContent', 'explanation']) {
+  for (const key of ['title', 'content', 'answerContent', 'explanation', 'questionFormat', 'choiceType']) {
     if (body[key] !== undefined && typeof body[key] !== 'string') mistakeError(400, 'INVALID_ARGUMENT', `${key} 必须是字符串`);
+  }
+  if (body.correctOption !== undefined && typeof body.correctOption !== 'string' && !Array.isArray(body.correctOption)) {
+    mistakeError(400, 'INVALID_ARGUMENT', 'correctOption 必须是字符串或选项数组');
   }
 
   const title = typeof body.title === 'string' ? body.title.trim() : '';
@@ -754,6 +793,12 @@ app.post('/api/courses/:id/mistakes', upload.single('file'), mistakeApi((req, re
     ? keepFileExtension(title, req.file ? req.file.originalname : '')
     : (req.file ? req.file.originalname : '');
 
+  const choice = db.normalizeChoiceFields({
+    questionFormat: body.questionFormat,
+    options: body.options,
+    correctOption: body.correctOption,
+    choiceType: body.choiceType,
+  });
   const newItem = db.createMistake(
     courseId,
     finalTitle,
@@ -761,7 +806,9 @@ app.post('/api/courses/:id/mistakes', upload.single('file'), mistakeApi((req, re
     content,
     req.file ? req.file.mimetype : '',
     knowledgeIds,
-    { mistakeType: body.mistakeType, answerContent: body.answerContent, explanation: body.explanation }
+    { mistakeType: body.mistakeType, answerContent: body.answerContent, explanation: body.explanation,
+      questionFormat: choice.question_format, optionsJson: choice.options_json,
+      correctOption: choice.correct_option, choiceType: choice.choice_type }
   );
 
   res.status(201).json(newItem);
@@ -936,6 +983,41 @@ app.put('/api/knowledge-nodes/:id/move', (req, res) => {
 });
 
 // ===== 启动服务器 =====
+// ===== AI 门面：浏览器只调用本地后端，云端地址/密钥留在服务端 =====
+function aiApi(handler) {
+  return async (req, res) => {
+    try {
+      await handler(req, res);
+    } catch (err) {
+      if (!err.status) console.error('AI 接口失败', req.method, req.originalUrl, err);
+      res.status(err.status || 500).json({
+        code: err.code || 'AI_INTERNAL_ERROR',
+        message: err.status ? err.message : 'AI 操作失败',
+      });
+    }
+  };
+}
+
+app.get('/api/ai/health', aiApi((req, res) => {
+  res.json(aiService.health());
+}));
+
+app.post('/api/ai/cloze', aiApi(async (req, res) => {
+  res.json(await aiService.createCloze(req.body));
+}));
+
+app.post('/api/ai/cloze/evaluate', aiApi((req, res) => {
+  res.json(aiService.evaluateCloze(req.body));
+}));
+
+app.post('/api/ai/evaluate-answer', aiApi(async (req, res) => {
+  res.json(await aiService.evaluateAnswer(req.body));
+}));
+
+app.post('/api/ai/recommend-mode', aiApi(async (req, res) => {
+  res.json(await aiService.recommendMode(req.body));
+}));
+
 app.listen(3000, () => {
   console.log('后端已启动，地址：http://localhost:3000');
   console.log('前端可以开始连接了！');

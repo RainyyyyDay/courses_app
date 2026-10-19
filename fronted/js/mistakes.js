@@ -24,17 +24,149 @@ function ensureMistakeUi() {
 }
 function rememberMistakeUi() { mistakeStorageSet('mistake-list:' + currentCourseId, mistakeUi); }
 function mistakeStatusText(status) { return status === 'reviewed' ? '已复习' : '未复习'; }
+function choiceLetters(count) {
+  return Array.from({ length: Math.max(0, count) }, (_, index) => String.fromCharCode(65 + index));
+}
+function parseMistakeChoiceOptions(raw) {
+  let options = [];
+  try { options = Array.isArray(raw) ? raw : JSON.parse(raw || '[]'); } catch { options = []; }
+  return Array.isArray(options)
+    ? options.map((option, index) => {
+        const letter = choiceLetters(index + 1)[index];
+        if (typeof option === 'string') return { id: letter, text: option };
+        return { id: String(option?.id || letter).toUpperCase(), text: String(option?.text || '') };
+      })
+    : [];
+}
+function parseMistakeCorrectIds(choiceType, raw) {
+  if (choiceType === 'multiple') {
+    if (Array.isArray(raw)) return raw.map(value => String(value).toUpperCase());
+    try {
+      const parsed = JSON.parse(raw || '[]');
+      if (Array.isArray(parsed)) return parsed.map(value => String(value).toUpperCase());
+    } catch { /* 兼容逗号分隔值 */ }
+    return String(raw || '').split(',').map(value => value.trim().toUpperCase()).filter(Boolean);
+  }
+  return raw ? [String(raw).toUpperCase()] : [];
+}
+function toggleMistakeChoiceFields(prefix) {
+  const format = document.getElementById(`mistake${prefix}Format`);
+  const box = document.getElementById(`mistake${prefix}ChoiceFields`);
+  if (format && box) box.style.display = format.value === 'choice' ? 'grid' : 'none';
+}
+function readMistakeChoiceOptionValues(prefix) {
+  return [...document.querySelectorAll(`#mistake${prefix}OptionsList .choice-option-input`)].map(input => input.value);
+}
+function readMistakeChoiceAnswerIds(prefix) {
+  return [...document.querySelectorAll(`#mistake${prefix}AnswerOptions input:checked`)].map(input => input.value);
+}
+function renderMistakeChoiceAnswerOptions(prefix, selected = readMistakeChoiceAnswerIds(prefix)) {
+  const box = document.getElementById(`mistake${prefix}AnswerOptions`);
+  if (!box) return;
+  const values = readMistakeChoiceOptionValues(prefix);
+  const type = document.getElementById(`mistake${prefix}ChoiceType`)?.value || 'single';
+  const letters = choiceLetters(values.length);
+  const selectedSet = new Set(type === 'single' ? selected.slice(0, 1) : selected);
+  box.innerHTML = letters.length
+    ? letters.map((letter, index) => `<label class="choice-answer-option">
+        <input type="${type === 'multiple' ? 'checkbox' : 'radio'}" name="mistake${prefix}CorrectAnswer"
+          value="${letter}" ${selectedSet.has(letter) ? 'checked' : ''} ${values[index].trim() ? '' : 'disabled'}
+          onchange="syncMistakeChoiceAnswer('${prefix}')" />
+        <span>${letter}</span>
+      </label>`).join('')
+    : '<span class="tag-none">先添加选项</span>';
+}
+function renderMistakeChoiceOptionRows(prefix, values, selected) {
+  const list = document.getElementById(`mistake${prefix}OptionsList`);
+  if (!list) return;
+  const currentSelected = selected === undefined ? readMistakeChoiceAnswerIds(prefix) : selected;
+  const rows = Array.isArray(values) ? values.slice(0, 26) : [];
+  while (rows.length < 2) rows.push('');
+  const letters = choiceLetters(rows.length);
+  list.innerHTML = rows.map((text, index) => `<div class="choice-option-row" data-choice-option-index="${index}">
+    <span class="choice-option-letter">${letters[index]}.</span>
+    <input class="choice-option-input" maxlength="500" value="${escapeHtml(text || '')}" placeholder="选项内容"
+      oninput="syncMistakeChoiceAnswer('${prefix}')" />
+    <button type="button" class="choice-option-remove" onclick="removeMistakeChoiceOption('${prefix}',${index})"
+      ${rows.length <= 2 ? 'disabled' : ''} aria-label="删除选项 ${letters[index]}">×</button>
+  </div>`).join('');
+  const add = document.querySelector(`#mistake${prefix}ChoiceFields .choice-add-option`);
+  if (add) add.disabled = rows.length >= 26;
+  renderMistakeChoiceAnswerOptions(prefix, currentSelected.filter(id => letters.includes(id)));
+}
+function setMistakeChoiceEditor(prefix, options, correctOption, choiceType = 'single') {
+  const type = choiceType === 'multiple' ? 'multiple' : 'single';
+  const typeSelect = document.getElementById(`mistake${prefix}ChoiceType`);
+  if (typeSelect) typeSelect.value = type;
+  const parsed = parseMistakeChoiceOptions(options);
+  const values = parsed.length ? parsed.map(option => option.text) : ['', ''];
+  const selected = parseMistakeCorrectIds(type, correctOption);
+  renderMistakeChoiceOptionRows(prefix, values, selected);
+}
+function addMistakeChoiceOption(prefix) {
+  const values = readMistakeChoiceOptionValues(prefix);
+  const selected = readMistakeChoiceAnswerIds(prefix);
+  if (values.length >= 26) { showToast('最多只能添加 26 个选项（A–Z）'); return; }
+  values.push('');
+  renderMistakeChoiceOptionRows(prefix, values, selected);
+  if (prefix === 'Edit') refreshMistakeEditDirty();
+}
+function removeMistakeChoiceOption(prefix, index) {
+  const values = readMistakeChoiceOptionValues(prefix);
+  const selected = readMistakeChoiceAnswerIds(prefix);
+  if (values.length <= 2) { showToast('至少保留两个选项'); return; }
+  const letters = choiceLetters(values.length);
+  const removed = letters[index];
+  const mapped = selected.filter(id => id !== removed).map(id => {
+    const code = id.charCodeAt(0);
+    return code > removed.charCodeAt(0) ? String.fromCharCode(code - 1) : id;
+  });
+  values.splice(index, 1);
+  renderMistakeChoiceOptionRows(prefix, values, mapped);
+  if (prefix === 'Edit') refreshMistakeEditDirty();
+}
+function changeMistakeChoiceType(prefix) {
+  const selected = readMistakeChoiceAnswerIds(prefix);
+  const type = document.getElementById(`mistake${prefix}ChoiceType`)?.value || 'single';
+  const next = type === 'single' ? selected.slice(0, 1) : selected;
+  renderMistakeChoiceAnswerOptions(prefix, next);
+  if (prefix === 'Edit') refreshMistakeEditDirty();
+}
+function syncMistakeChoiceAnswer(prefix) {
+  renderMistakeChoiceAnswerOptions(prefix, readMistakeChoiceAnswerIds(prefix));
+  if (prefix === 'Edit') refreshMistakeEditDirty();
+}
+function mistakeChoiceFields(prefix) {
+  const format = document.getElementById(`mistake${prefix}Format`)?.value || 'open';
+  const choiceType = document.getElementById(`mistake${prefix}ChoiceType`)?.value || 'single';
+  if (format === 'open') return { questionFormat: 'open', options: [], correctOption: '', choiceType };
+  const values = readMistakeChoiceOptionValues(prefix).map(value => value.trim());
+  if (values.length < 2) throw new Error('选择题至少需要两个选项');
+  if (values.some(value => !value)) throw new Error('请填写每个选项的内容');
+  if (new Set(values).size !== values.length) throw new Error('选项内容不能重复');
+  const letters = choiceLetters(values.length);
+  const selected = readMistakeChoiceAnswerIds(prefix);
+  if (choiceType === 'single' && selected.length !== 1) throw new Error('单选题只能选择一个正确答案');
+  if (choiceType === 'multiple' && selected.length < 1) throw new Error('多选题至少选择一个正确答案');
+  return {
+    questionFormat: 'choice',
+    options: values.map((text, index) => ({ id: letters[index], text })),
+    correctOption: choiceType === 'single' ? selected[0] : selected,
+    choiceType,
+  };
+}
 function mistakeCreationFields() {
   const mistakeType = document.getElementById('mistakeCreateType').value;
   if (!Object.hasOwn(MISTAKE_TYPES, mistakeType)) throw new Error('请选择错题类型');
   return { mistakeType, answerContent: document.getElementById('mistakeCreateAnswer').value,
-    explanation: document.getElementById('mistakeCreateExplanation').value };
+    explanation: document.getElementById('mistakeCreateExplanation').value, ...mistakeChoiceFields('Create') };
 }
 
 function renderMistakeCategories(rows = null) {
   const home = !mistakeUi.type;
   const reviewEntry = document.getElementById('mistakeHomeReview');
-  if (reviewEntry) reviewEntry.style.display = home ? 'flex' : 'none';
+  // 错题单独复习入口已移除；只保留总复习和考前计划。
+  if (reviewEntry) reviewEntry.style.display = 'none';
   // 录入入口（上传文件 / 手动输入）只留在「错题」大页：
   // 分类详情页是用来查看和复习的，加题请回大页点分类上方的按钮。
   const entryBtns = document.getElementById('mistakeEntryBtns');
@@ -235,7 +367,10 @@ async function doUploadMistake(file, knowledgeIds, title) {
   fd.append('file', file);
   if (title) fd.append('title', title);
   fd.append('knowledgeIds', JSON.stringify(knowledgeIds));
-  for (const [key, value] of Object.entries(options)) fd.append(key, value);
+  for (const [key, value] of Object.entries(options)) {
+    fd.append(key, key === 'options' || (key === 'correctOption' && Array.isArray(value))
+      ? JSON.stringify(value) : value);
+  }
   try {
     await requestApi(`${API}/courses/${currentCourseId}/mistakes`, { method: 'POST', body: fd });
     showToast('上传成功');

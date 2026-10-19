@@ -923,6 +923,23 @@ body.mistake-review-open { overflow: hidden; }
 .mistake-categories small { display: block; color: #777; margin-top: 8px; }
 .mistake-workspace { padding: 16px; background: #fff; border: 1px solid #e3e3e3; border-radius: 8px; margin: 12px 0; }
 .mistake-toolbar, .mistake-filter-form, .mistake-review-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 10px 0; }
+.mistake-mode-switch { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 12px; color: #667187; }
+.mistake-mode-switch select { height: 30px; padding: 0 8px; border: 1px solid #dce1e9; border-radius: 7px; background: #fff; color: #34415a; font: inherit; }
+.mistake-mode-switch select:disabled { opacity: .55; }
+.mistake-choice-options { display: flex; flex-direction: column; gap: 9px; margin: 14px 0 10px; }
+.mistake-choice-option { display: flex; align-items: flex-start; gap: 10px; padding: 11px 14px; border: 1px solid #e1e6ef; border-radius: 10px; background: #fff; color: #34415a; cursor: pointer; transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease; }
+.mistake-choice-option:hover { border-color: #b8c6ea; background: #f8faff; }
+.mistake-choice-option:has(input:checked) { border-color: #8fa8ff; background: #f1f5ff; box-shadow: 0 0 0 3px rgba(74, 108, 247, .1); }
+.mistake-choice-option.is-correct,
+.mistake-choice-option.is-correct:has(input:checked) { border-color: #6dbb8a; background: #f1fbf4; box-shadow: 0 0 0 3px rgba(109, 187, 138, .12); }
+.mistake-choice-option.is-wrong,
+.mistake-choice-option.is-wrong:has(input:checked) { border-color: #e3a0a0; background: #fff6f6; box-shadow: 0 0 0 3px rgba(227, 160, 160, .12); }
+.mistake-choice-option input { flex-shrink: 0; width: 16px; height: 16px; margin: 2px 0 0; accent-color: #4a6cf7; }
+.mistake-choice-id { flex-shrink: 0; min-width: 18px; font-weight: 700; color: #52627f; }
+.mistake-choice-text { min-width: 0; line-height: 1.6; overflow-wrap: anywhere; }
+.mistake-choice-result { margin: 0 0 12px; font-size: 13px; font-weight: 600; }
+.mistake-choice-result.is-correct { color: #2f8a55; }
+.mistake-choice-result.is-wrong { color: #b34b4b; }
 .mistake-toolbar h2, .mistake-workspace h2 { font-size: 16px; margin: 8px 0; }
 .mistake-filter-form label, .mistake-edit-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .mistake-filter-form input, .mistake-filter-form select, .mistake-edit-form input, .mistake-edit-form select, .mistake-edit-form textarea { padding: 9px; border: 1px solid #ccc; border-radius: 5px; font: inherit; max-width: 100%; box-sizing: border-box; }
@@ -1230,6 +1247,75 @@ body.tag-picker-open { overflow: hidden; }
   border: 1px solid #eef0f5;
   border-radius: 12px;
 }
+/* 错题新建/上传：沿用编辑错题的卡片 + 图标设计，但只作用于错题创建弹窗。 */
+#tagPickerModal .tag-sheet-body.mistake-create-body { background: #f6f7fb; }
+#tagPickerModal .mistake-create-cards { display: grid; gap: 14px; margin-top: 14px; }
+#tagPickerModal .mistake-create-cards .edit-card { margin-bottom: 0; }
+#tagPickerModal .tag-picker-name.mistake-create-card,
+#tagPickerModal .tag-picker-tag-block.mistake-create-card {
+  background: #fff;
+  border: 1px solid #e6e9f2;
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 2px rgba(21, 30, 60, .04);
+}
+#tagPickerModal .tag-picker-name.mistake-create-card label::before {
+  content: '📝';
+  margin-right: 6px;
+}
+#tagPickerModal .tag-picker-tag-block.mistake-create-card .tag-picker-search { margin-bottom: 12px; }
+#tagPickerModal .tag-picker-tag-block.mistake-create-card .tag-picker-tree {
+  padding: 2px 0 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+#tagPickerModal .mistake-create-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #667187;
+}
+#tagPickerModal .mistake-create-cards input:not([type="file"]):not([type="checkbox"]):not([type="radio"]),
+#tagPickerModal .mistake-create-cards select,
+#tagPickerModal .mistake-create-cards textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid #dbe0ea;
+  border-radius: 9px;
+  background: #fcfdff;
+  font: inherit;
+  font-size: 14px;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+#tagPickerModal .mistake-create-cards textarea { resize: vertical; }
+#tagPickerModal .mistake-create-cards input:focus,
+#tagPickerModal .mistake-create-cards select:focus,
+#tagPickerModal .mistake-create-cards textarea:focus {
+  outline: none;
+  background: #fff;
+  border-color: #4a6cf7;
+  box-shadow: 0 0 0 3px rgba(74, 108, 247, .12);
+}
+.mistake-create-file {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e5e9f1;
+  border-radius: 10px;
+  background: #f8faff;
+  color: #49566f;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.mistake-create-file-icon { flex-shrink: 0; font-size: 18px; line-height: 1.3; }
+.mistake-create-file strong { display: block; font-size: 13px; }
+.mistake-create-file small { display: block; margin-top: 3px; color: #8a93a5; font-size: 12px; }
 #tagPickerModal .tag-sheet-section-title, #mistakeEditModal .tag-sheet-section-title { margin: 0; font-size: 13px; font-weight: 600; color: #5b6478; }
 
 /* ---------- 底部按钮：看得清、点得准 ---------- */
@@ -1410,12 +1496,37 @@ body.mistake-edit-open { overflow: hidden; }
   background: #eef2ff; color: #4a6cf7; font-size: 11px;
 }
 .edit-card-body { display: grid; gap: 10px; }
+.edit-choice-config { display: grid; gap: 10px; margin-top: 4px; padding-top: 10px; border-top: 1px dashed #e5e9f1; }
+.edit-choice-config > label, .edit-choice-fields label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #667187; }
+.edit-choice-fields { display: grid; gap: 10px; }
+.choice-option-editor { display: grid; gap: 8px; }
+.choice-option-list { display: grid; gap: 8px; }
+.choice-option-row { display: flex; align-items: center; gap: 8px; }
+.choice-option-letter { flex: 0 0 auto; min-width: 24px; font-size: 13px; font-weight: 700; color: #52627f; }
+#mistakeEditModal .choice-option-input,
+#tagPickerModal .choice-option-input { flex: 1 1 auto; width: auto; min-width: 0; }
+.choice-option-remove { flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border: 1px solid #e1e5ee; border-radius: 7px; background: #fff; color: #8a93a5; font-size: 16px; line-height: 1; cursor: pointer; }
+.choice-option-remove:hover { border-color: #e3a0a0; color: #b34b4b; background: #fff6f6; }
+.choice-option-remove:disabled { opacity: .35; cursor: default; }
+.choice-add-option { justify-self: flex-start; padding: 7px 11px; border: 1px dashed #b9c8ff; border-radius: 8px; background: #f7f9ff; color: #4a6cf7; font-size: 12px; cursor: pointer; }
+.choice-add-option:hover { background: #eef2ff; }
+.choice-add-option:disabled { opacity: .45; cursor: default; }
+.choice-answer-field { display: grid; gap: 6px; }
+.choice-answer-label { font-size: 12px; color: #667187; }
+.choice-answer-options { display: flex; flex-wrap: wrap; gap: 8px; min-height: 30px; }
+#tagPickerModal .choice-answer-option,
+#mistakeEditModal .choice-answer-option { display: inline-flex; flex-direction: row; align-items: center; flex: 0 0 auto; width: auto; gap: 6px; padding: 6px 10px; border: 1px solid #dce1e9; border-radius: 8px; background: #fff; color: #34415a; font-size: 13px; cursor: pointer; }
+.choice-answer-option:has(input:checked) { border-color: #8fa8ff; background: #f1f5ff; }
+.choice-answer-option input { flex: 0 0 auto; width: 15px; height: 15px; margin: 0; accent-color: #4a6cf7; }
+.edit-choice-fields textarea, .edit-choice-fields input { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid #dce1e9; border-radius: 7px; font: inherit; font-size: 13px; }
+.edit-choice-fields textarea { min-height: 86px; resize: vertical; }
+.edit-choice-fields small { color: #8a93a5; font-size: 11px; line-height: 1.5; }
 .edit-card-row { display: flex; flex-wrap: wrap; gap: 10px; }
 .edit-card-row input { flex: 2 1 190px; }
 .edit-card-row select { flex: 1 1 110px; }
 
 /* 输入框统一成一张「能点、能改」的样子 */
-#mistakeEditModal input:not([type="file"]):not([type="checkbox"]),
+#mistakeEditModal input:not([type="file"]):not([type="checkbox"]):not([type="radio"]),
 #mistakeEditModal select,
 #mistakeEditModal textarea {
   width: 100%;
@@ -1594,7 +1705,15 @@ body.mistake-edit-open { overflow: hidden; }
 }
 /* 两个复习内容选择弹窗共享布局，仅 .review-picker 生效，不影响其它页面。 */
 .review-picker { overflow: hidden; }
-.review-picker .total-review-dialog { width: 960px; max-width: 100%; height: min(780px, 90vh); height: min(780px, 90dvh); max-height: 90vh; max-height: 90dvh; padding: 0; overflow: hidden; transform: none; }
+.review-picker.modal-mask { background: rgba(17, 25, 40, .42); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.review-picker .total-review-dialog {
+  width: 960px; max-width: 100%; height: min(780px, 90vh); height: min(780px, 90dvh);
+  max-height: 90vh; max-height: 90dvh; padding: 0; overflow: hidden;
+  opacity: 0; transform: translateY(14px);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, .22);
+  transition: opacity .2s ease, transform .32s cubic-bezier(.22, 1, .36, 1), box-shadow .32s ease;
+}
+.review-picker.show .total-review-dialog { opacity: 1; transform: translateY(0); }
 .review-picker [hidden] { display: none !important; }
 .review-picker .total-review-selector, .review-picker .total-review-preview { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .review-picker .total-review-head { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; gap: 12px; padding: 18px 24px 14px; }
@@ -1606,6 +1725,17 @@ body.mistake-edit-open { overflow: hidden; }
 .review-picker .total-review-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; margin: 0 24px 16px; border-radius: 9px; background: #f0f2f6; flex-shrink: 0; }
 .review-picker .total-review-tabs button { border: 0; padding: 9px 8px; border-radius: 6px; background: transparent; color: #70798b; font-size: 15px; }
 .review-picker .total-review-tabs [aria-selected=true] { background: #fff; color: #354b76; font-weight: 600; box-shadow: 0 1px 3px #2434540d; }
+.review-picker .total-review-tabs button { transition: color .18s ease; }
+#reviewPlanModules { position: relative; isolation: isolate; }
+#reviewPlanModules::before {
+  content: ''; position: absolute; top: 4px; bottom: 4px; left: 4px;
+  width: calc((100% - 16px) / 3); border-radius: 6px; background: #fff;
+  box-shadow: 0 1px 3px rgba(36, 52, 84, .08), 0 1px 1px rgba(36, 52, 84, .04);
+  transform: translateX(calc(var(--tab-index, 0) * (100% + 4px)));
+  transition: transform .3s cubic-bezier(.22, 1, .36, 1);
+}
+#reviewPlanModules button { position: relative; z-index: 1; }
+#reviewPlanModules [aria-selected=true] { background: transparent; box-shadow: none; }
 .review-picker .total-review-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; padding: 0 24px; }
 .review-picker .total-review-search { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; flex-shrink: 0; margin-bottom: 10px; }
 .review-picker .total-review-search > input { flex: 1 1 180px; width: 0; min-width: 0; height: 36px; margin: 0; padding: 7px 10px; border: 1px solid #dce1e9; border-radius: 6px; font-size: 13px; }
@@ -1634,6 +1764,76 @@ body.mistake-edit-open { overflow: hidden; }
 .review-picker .total-review-item-preview { display: inline-flex; align-items: center; gap: 4px; padding: 2px 0 2px 6px; border: 0; background: transparent; color: #7c879c; font-size: 12px; line-height: 1.5; white-space: nowrap; }
 .review-picker .total-review-item-preview svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; }
 .review-picker .total-review-footer { flex-shrink: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; border-top: 1px solid #e8ebf1; padding: 14px 24px; }
+/* 弹窗结构：标题固定、底部操作固定，中间内容整体滚动（列表不再单独滚动）。 */
+#reviewPlanModal .total-review-selector { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
+#reviewPlanModal .total-review-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 14px;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd3e1 transparent;
+}
+#reviewPlanModal .total-review-body::-webkit-scrollbar { width: 8px; }
+#reviewPlanModal .total-review-body::-webkit-scrollbar-track { background: transparent; }
+#reviewPlanModal .total-review-body::-webkit-scrollbar-thumb { border: 2px solid #fff; border-radius: 999px; background: #cbd3e1; }
+#reviewPlanModal .total-review-body::-webkit-scrollbar-thumb:hover { background: #aeb9cc; }
+#reviewPlanModal .total-review-panel { flex: 0 0 auto; }
+#reviewPlanModal .total-review-list-region { flex: 0 0 auto; min-height: 0; }
+#reviewPlanModal .total-review-list { flex: 0 0 auto; overflow: visible; padding-bottom: 12px; }
+#reviewPlanModal .total-review-footer {
+  position: relative;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "summary actions" "hint actions" "error error";
+  align-items: center;
+  gap: 2px 18px;
+  flex-shrink: 0;
+  background: #fff;
+  border-top: 1px solid #e8ebf1;
+  padding: 10px 24px 11px;
+  box-shadow: 0 -10px 24px rgba(15, 23, 42, .055);
+}
+#reviewPlanModal .total-review-summary { grid-area: summary; flex-direction: row; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; min-width: 0; margin: 0; }
+#reviewPlanModal .total-review-summary strong { font-size: 15px; color: #2f3b52; }
+#reviewPlanModal .total-review-summary small { font-size: 12px; color: #8a93a5; }
+#reviewPlanModal .total-review-footer .modal-actions { grid-area: actions; align-self: center; }
+#reviewPlanModal #reviewPlanPreview { grid-area: hint; margin: 0; font-size: 12px; line-height: 1.5; color: #8a93a5; }
+#reviewPlanModal #reviewPlanCreateError { grid-area: error; }
+#reviewPlanModal #reviewPlanCreateError:empty { display: none; }
+
+/* 大厂式微交互：卡片、复选框与按钮的过渡都收在同一节奏里，避免弹窗里出现生硬跳变。 */
+.review-picker .total-review-card {
+  transition: background-color .18s ease, box-shadow .18s ease;
+}
+.review-picker .total-review-card:hover { background: #f1f4fa; }
+.review-picker .total-review-card:has(input:checked) {
+  background: #eef3ff;
+  box-shadow: inset 0 0 0 1px #c7d4ff;
+}
+.review-picker .modal-actions button, .review-picker .total-review-preview-foot button {
+  transition: background-color .18s ease, color .18s ease, box-shadow .18s ease, transform .12s ease;
+}
+.review-picker .btn-confirm:not(:disabled) { box-shadow: 0 6px 16px rgba(74, 108, 247, .22); }
+.review-picker .btn-confirm:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 9px 22px rgba(74, 108, 247, .28); }
+.review-picker .btn-confirm:not(:disabled):active { transform: translateY(0) scale(.97); box-shadow: 0 3px 10px rgba(74, 108, 247, .2); }
+.review-picker .btn-cancel:hover { background: #e9ecf3; }
+.review-picker .btn-cancel:active { transform: scale(.97); }
+#reviewPlanPanel.tab-enter { animation: reviewPlanTabIn .24s cubic-bezier(.22, 1, .36, 1); }
+@keyframes reviewPlanTabIn {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .review-picker .total-review-dialog,
+  .review-picker.show .total-review-dialog { transition: none; opacity: 1; transform: none; }
+  #reviewPlanModules::before,
+  .review-picker .total-review-card,
+  .review-picker .modal-actions button { transition: none; }
+  #reviewPlanPanel.tab-enter { animation: none; }
+}
 .review-picker .total-review-summary { display: flex; flex-direction: column; gap: 4px; margin-right: auto; }
 .review-picker .total-review-summary strong { font-size: 14px; font-weight: 600; color: #41516f; }
 .review-picker .total-review-summary small { font-size: 12px; color: #8a93a5; }
@@ -1681,13 +1881,11 @@ body.mistake-edit-open { overflow: hidden; }
 #reviewPlanModal .review-picker-hint { font-size: 12px; color: #8993a5; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }
 #reviewPlanModal #reviewPlanValidation { margin-top: 5px; }
 #reviewPlanModal #reviewPlanValidation:empty { display: none; }
-#reviewPlanModal #reviewPlanPreview { flex-basis: 100%; }
-#reviewPlanModal .total-review-footer { gap: 6px 12px; padding: 10px 24px; }
+#reviewPlanModal .total-review-footer { gap: 2px 18px; padding: 10px 24px 11px; }
 #reviewPlanModal .total-review-list-head { padding: 9px 0 7px; }
 #reviewPlanModal .total-review-tabs { margin-bottom: 8px; }
-/* 列表至少留出可浏览的高度；屏幕特别矮时整块选择区可以滚动 */
-#reviewPlanModal .total-review-list-region { min-height: 200px; }
-#reviewPlanModal .total-review-selector { overflow-y: auto; }
+/* 中间内容区是唯一滚动容器；列表跟随内容区滚动，避免底部信息栏压住列表。 */
+#reviewPlanModal .total-review-list-region { min-height: 0; }
 @media(max-width:540px) {
   #reviewPlanModal .review-plan-info { padding: 0 14px 10px; }
   /* 窄屏放不下三列，回到一行一个字段 */

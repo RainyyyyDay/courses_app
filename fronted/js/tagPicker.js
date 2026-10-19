@@ -46,11 +46,20 @@ async function openTagPicker(mode, resourceType, resourceId) {
 
   const resourceLabel =
     resourceType === 'material' ? '资料' : (resourceType === 'note' ? '笔记' : '错题');
-  document.getElementById('tagPickerTitle').textContent =
-    (mode === 'edit' ? '编辑' : '选择') + resourceLabel + '标签';
+  const isMistakeCreate = resourceType === 'mistake' && mode !== 'edit';
+  document.getElementById('tagPickerTitle').textContent = isMistakeCreate
+    ? (mode === 'upload' ? '上传错题' : '新建错题')
+    : (mode === 'edit' ? '编辑' : '选择') + resourceLabel + '标签';
   document.getElementById('tagPickerConfirm').textContent =
     (mode === 'edit' || mode === 'manual') ? '保存' : '上传';
   document.getElementById('tagPickerConfirm').disabled = false;
+
+  const tagPickerBody = document.getElementById('tagPickerBody');
+  if (tagPickerBody) tagPickerBody.classList.toggle('mistake-create-body', isMistakeCreate);
+  const tagBlock = document.getElementById('tagPickerTagBlock');
+  if (tagBlock) tagBlock.classList.toggle('mistake-create-card', isMistakeCreate);
+  const tagHeading = document.getElementById('tagPickerTagHeading');
+  if (tagHeading) tagHeading.style.display = isMistakeCreate ? 'flex' : 'none';
 
   const mistakeFields = document.getElementById('tagPickerMistakeFields');
   mistakeFields.style.display = resourceType === 'mistake' && mode !== 'edit' ? 'grid' : 'none';
@@ -59,6 +68,12 @@ async function openTagPicker(mode, resourceType, resourceId) {
     document.getElementById('mistakeCreateType').value = mistakeUi.type || '';
     document.getElementById('mistakeCreateAnswer').value = '';
     document.getElementById('mistakeCreateExplanation').value = '';
+    const createFormat = document.getElementById('mistakeCreateFormat');
+    if (createFormat) createFormat.value = 'open';
+    const createChoiceType = document.getElementById('mistakeCreateChoiceType');
+    if (createChoiceType) createChoiceType.value = 'single';
+    setMistakeChoiceEditor('Create', [], [], 'single');
+    toggleMistakeChoiceFields('Create');
   }
 
   // 名称那一行：上传和编辑时都显示，可以改名字。
@@ -67,6 +82,23 @@ async function openTagPicker(mode, resourceType, resourceId) {
   const nameInput = document.getElementById('tagPickerName');
   const extChip = document.getElementById('tagPickerNameExt');
   const nameTip = document.getElementById('tagPickerNameTip');
+  if (nameRow) nameRow.classList.toggle('mistake-create-card', isMistakeCreate && mode === 'upload');
+
+  const fileSummary = document.getElementById('mistakeCreateFileSummary');
+  if (fileSummary) {
+    fileSummary.style.display = 'none';
+    fileSummary.innerHTML = '';
+    if (isMistakeCreate && mode === 'upload' && pendingUploadFile) {
+      fileSummary.innerHTML = `<span class="mistake-create-file-icon">📎</span><div><strong>${escapeHtml(pendingUploadFile.name)}</strong><small>${escapeHtml(pendingUploadFile.type || '附件')} · 保存后上传</small></div>`;
+      fileSummary.style.display = 'flex';
+    } else if (isMistakeCreate && mode === 'manual' && pendingManual) {
+      fileSummary.innerHTML = `<span class="mistake-create-file-icon">📝</span><div><strong>${escapeHtml(pendingManual.title || '题目正文')}</strong><small>使用上一步填写的题目正文</small></div>`;
+      fileSummary.style.display = 'flex';
+    }
+  }
+  const questionHint = document.getElementById('mistakeCreateQuestionHint');
+  if (questionHint) questionHint.textContent = mode === 'upload'
+    ? '确认题目附件、题型和选项' : '确认题目正文、题型和选项';
 
   let nameBase = '';
   let nameExt = '';

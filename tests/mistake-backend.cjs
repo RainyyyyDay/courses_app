@@ -36,7 +36,7 @@ function testMistakeMigrations(source, temp) {
         connection.db.exec('DROP TABLE idx_mistakes_filters');
       }
       const store = require('./db/index.js');
-      assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 16);
+      assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 17);
       if (${version} !== 0) {
         const row = store.getMistakeDetail(1);
         assert.equal(row.title, '旧错题');
@@ -51,7 +51,7 @@ function testMistakeMigrations(source, temp) {
       // 模拟可重复迁移（已有列/表），必须安全且不改数据。
       store.db.exec('PRAGMA user_version = 6');
       delete require.cache[require.resolve('./db/schema.js')]; require('./db/schema.js');
-      assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 16);
+      assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 17);
       assert.equal(JSON.stringify(store.db.prepare('SELECT * FROM mistakes').all()), snapshot);
       assert.deepEqual(store.db.prepare('PRAGMA foreign_key_check').all(), []);
       const probe = store.createMistake(1, '事务测试', '', '题目', '', [], {mistakeType:'knowledge', answerContent:'答案'});
@@ -361,6 +361,136 @@ async function testMistakeApi({ base, course, child, other, restart }) {
   await request('GET', reviewPath(noAnswer.id), undefined, 404);
   await request('DELETE', `/mistakes/${rows.execution.id}`);
   await request('GET', reviewPath(rows.execution.id) + '/events', undefined, 404);
+  // 选择题复现：模式自动解析、错误答案不完成、正确答案记 Good、模式切换不清记忆状态。
+  const choice = await request('POST', listPath, {
+    title: '选择题复现', content: '1+1=?', mistakeType: 'knowledge',
+    questionFormat: 'choice', choiceType: 'single',
+    options: [{ id: 'A', text: '1' }, { id: 'B', text: '2' }, { id: 'C', text: '3' }],
+    correctOption: 'B',
+  }, 201);
+  assert.equal(choice.question_format, 'choice');
+  assert.equal(JSON.parse(choice.options_json).length, 3);
+  assert.equal(choice.correct_option, 'B');
+  assert.equal(choice.choice_ready, 1);
+  const choiceListRow = (await request('GET', listPath)).find(row => row.id === choice.id);
+  assert.equal(choiceListRow.correct_option, undefined, 'list never exposes the correct option');
+  assert.equal(choiceListRow.choice_ready, 1);
+  const choiceReview = await request('GET', reviewPath(choice.id));
+  assert.equal(choiceReview.mode.id, 'choice_reproduction');
+  assert.equal(choiceReview.mode.source, 'rule');
+  assert.deepEqual(choiceReview.allowedActions, ['start']);
+  assert.equal(choiceReview.choice.options.length, 3);
+  assert.equal(choiceReview.choice.correctOption, undefined, 'correct option hidden before submission');
+  assert.equal(choiceReview.answerVisible, false);
+  const modeEndpoint = await request('GET', `${targetPath(choice.id)}/mode`);
+  assert.equal(modeEndpoint.id, 'choice_reproduction');
+  assert.ok(modeEndpoint.availableModes.some(mode => mode.id === 'standard'));
+
+  let choiceStarted = await operation(choice.id, 'start');
+  assert.equal(choiceStarted.result.stage, 'question');
+  assert.deepEqual(choiceStarted.result.allowedActions, ['choose']);
+  assert.equal(choiceStarted.result.choice.correct, null);
+  const wrongChoice = await operation(choice.id, 'choose', { selectedOption: 'C' });
+  assert.equal(wrongChoice.result.stage, 'completed');
+  assert.equal(wrongChoice.result.reviewStatus, 'unreviewed');
+  assert.equal(wrongChoice.result.choice.correct, false);
+  assert.equal(wrongChoice.result.choice.selectedOption, 'C');
+  assert.equal(wrongChoice.result.choice.correctOption, 'B');
+  let choiceState = await request('GET', `/courses/${course.id}/review-items/mistake/${choice.id}/state`);
+  assert.equal(choiceState.lastGrade, 1);
+  assert.equal(choiceState.lastModeId, 'choice_reproduction');
+  await operation(choice.id, 'choose', { selectedOption: 'B' }, 409);
+  await operation(choice.id, 'start');
+  const correctChoice = await operation(choice.id, 'choose', { selectedOption: 'B' });
+  assert.equal(correctChoice.result.reviewStatus, 'reviewed');
+  assert.equal(correctChoice.result.choice.correct, true);
+  choiceState = await request('GET', `/courses/${course.id}/review-items/mistake/${choice.id}/state`);
+  assert.equal(choiceState.lastGrade, 3);
+
+  const standardMode = await request('PUT', `${targetPath(choice.id)}/mode`, { modeId: 'standard' });
+  assert.equal(standardMode.id, 'standard');
+  assert.equal(standardMode.source, 'user');
+  const standardReview = await request('GET', reviewPath(choice.id));
+  assert.equal(standardReview.stage, 'idle');
+  assert.deepEqual(standardReview.allowedActions, ['start']);
+  await operation(choice.id, 'start');
+  await operation(choice.id, 'recall', { recall: 'clear' });
+  const standardDone = await operation(choice.id, 'judge', { correct: true });
+  assert.equal(standardDone.result.reviewStatus, 'reviewed');
+  const choiceModeAgain = await request('PUT', `${targetPath(choice.id)}/mode`, { modeId: 'choice_reproduction' });
+  assert.equal(choiceModeAgain.id, 'choice_reproduction');
+  assert.equal((await request('GET', reviewPath(choice.id))).stage, 'idle');
+
+  // 多选：答案数组、全选对才算通过，接口和候选列表都要承认结构化答案。
+  const multi = await request('POST', listPath, {
+    title: '多选题复现', content: '选正确的', mistakeType: 'knowledge',
+    questionFormat: 'choice', choiceType: 'multiple',
+    options: [{ id: 'A', text: '甲' }, { id: 'B', text: '乙' }, { id: 'C', text: '丙' }],
+    correctOption: ['A', 'C'],
+  }, 201);
+  assert.equal(multi.choice_type, 'multiple');
+  assert.deepEqual(JSON.parse(multi.correct_option), ['A', 'C']);
+  const multiReview = await request('GET', reviewPath(multi.id));
+  assert.equal(multiReview.mode.id, 'choice_reproduction');
+  assert.equal(multiReview.choice.type, 'multiple');
+  assert.equal(multiReview.choice.correctOption, undefined);
+  await operation(multi.id, 'start');
+  const partialMulti = await operation(multi.id, 'choose', { selectedOption: ['A'] });
+  assert.equal(partialMulti.result.reviewStatus, 'unreviewed');
+  assert.equal(partialMulti.result.choice.correct, false);
+  assert.deepEqual(partialMulti.result.choice.selectedOption, ['A']);
+  await operation(multi.id, 'start');
+  const correctMulti = await operation(multi.id, 'choose', { selectedOption: ['A', 'C'] });
+  assert.equal(correctMulti.result.reviewStatus, 'reviewed');
+  assert.equal(correctMulti.result.choice.correct, true);
+  assert.deepEqual(correctMulti.result.choice.correctOption, ['A', 'C']);
+  const sessionCandidates = await request('GET', `/courses/${course.id}/review-sessions/candidates`);
+  assert.equal(sessionCandidates.find(row => row.type === 'mistake' && row.id === multi.id)?.reviewable, 1);
+  const planCandidates = await request('GET', `/courses/${course.id}/review-plans/candidates`);
+  assert.equal(planCandidates.find(row => row.type === 'mistake' && row.id === multi.id)?.reviewable, 1);
+  await request('POST', listPath, {
+    title: '单选数组', content: 'q', mistakeType: 'knowledge', questionFormat: 'choice',
+    choiceType: 'single', options: [{ id: 'A', text: 'a' }, { id: 'B', text: 'b' }], correctOption: ['A'],
+  }, 400);
+
+  for (const body of [
+    { title: '缺正确选项', content: 'q', mistakeType: 'knowledge', questionFormat: 'choice', options: [{ id: 'A', text: 'a' }, { id: 'B', text: 'b' }] },
+    { title: '重复选项', content: 'q', mistakeType: 'knowledge', questionFormat: 'choice', options: [{ id: 'A', text: 'a' }, { id: 'A', text: 'b' }], correctOption: 'A' },
+    { title: '选项不足', content: 'q', mistakeType: 'knowledge', questionFormat: 'choice', options: [{ id: 'A', text: 'a' }], correctOption: 'A' },
+  ]) await request('POST', listPath, body, 400);
+  const toOpen = await request('PATCH', targetPath(choice.id), {
+    questionFormat: 'open', answerContent: '2', expectedRevision: (await request('GET', `/mistakes/${choice.id}`)).review_revision,
+  });
+  assert.equal(toOpen.question_format, 'open');
+  assert.equal(toOpen.options_json, '[]');
+  assert.equal(toOpen.correct_option, '');
+  await request('DELETE', `/mistakes/${multi.id}`);
+  await request('DELETE', `/mistakes/${choice.id}`);
+  // AI 门面：默认 mock，挖空答案不下发，提交后才判分。
+  const aiHealth = await request('GET', '/ai/health');
+  assert.equal(aiHealth.status, 'ok');
+  assert.equal(aiHealth.provider, 'mock');
+  const cloze = await request('POST', '/ai/cloze', {
+    text: '牛顿第二定律：合外力等于质量乘以加速度。', blankCount: 1,
+  });
+  assert.ok(cloze.attemptId);
+  assert.ok(cloze.clozeText.includes('【b1】'));
+  assert.deepEqual(cloze.blanks.map(item => item.id), ['b1']);
+  assert.equal('answer' in cloze.blanks[0], false);
+  assert.equal('answers' in cloze, false);
+  const clozeCorrect = await request('POST', '/ai/cloze/evaluate', { attemptId: cloze.attemptId, answers: { b1: '牛顿第二定律' } });
+  assert.equal(clozeCorrect.judgment, 'correct');
+  assert.equal(clozeCorrect.results[0].correct, true);
+  const evaluated = await request('POST', '/ai/evaluate-answer', {
+    question: '植物光合作用需要什么？', studentAnswer: '光照、水和二氧化碳', referenceAnswer: '光照、水和二氧化碳',
+  });
+  assert.equal(evaluated.judgment, 'correct');
+  assert.equal(evaluated.needsReview, true);
+  const recommended = await request('POST', '/ai/recommend-mode', { itemType: 'note', text: '这是一段需要背诵的长笔记，'.repeat(12) });
+  assert.equal(recommended.modeId, 'cloze');
+  assert.equal(recommended.needsReview, true);
+  await request('POST', '/ai/cloze', { text: 'x', blankCount: 0 }, 400);
+  await request('POST', '/ai/cloze/evaluate', { attemptId: 'missing', answers: {} }, 404);
   console.log('PASS mistake API: four types/create/multipart/edit/type transitions/filter/tags, generic mastered review/repeat/restart/idempotency/version/history/reset/missing content, original flows, course isolation, legacy CRUD');
 }
 

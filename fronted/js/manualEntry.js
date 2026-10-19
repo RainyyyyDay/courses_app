@@ -69,7 +69,10 @@ async function doCreateManual(nodeIds) {
   fd.append('title', pending.title);
   fd.append('content', pending.content);
   if (pending.type === 'mistake') {
-    for (const [key, value] of Object.entries(mistakeCreationFields())) fd.append(key, value);
+    for (const [key, value] of Object.entries(mistakeCreationFields())) {
+      fd.append(key, key === 'options' || (key === 'correctOption' && Array.isArray(value))
+        ? JSON.stringify(value) : value);
+    }
   }
   // 错题的接口历史上用 knowledgeIds，另外两个用 nodeIds，后端两个都认
   fd.append(pending.type === 'mistake' ? 'knowledgeIds' : 'nodeIds', JSON.stringify(nodeIds));

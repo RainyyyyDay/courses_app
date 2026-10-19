@@ -10,8 +10,26 @@ const { findKnowledgeNode, listSubtreeIds, SUBTREE_CTE } = require('./knowledge'
 
 // ==================== 错题 ====================
 
-const MISTAKE_COLUMNS =
-  'id, course_id, title, image_url, file_type, ocr_text, content, created_at, mistake_type, answer_content, explanation, favorite, review_status, review_revision, answer_image_url, answer_file_type';
+const BASE_MISTAKE_COLUMNS = [
+  'id', 'course_id', 'title', 'image_url', 'file_type', 'ocr_text', 'content', 'created_at',
+  'mistake_type', 'answer_content', 'explanation', 'favorite', 'review_status', 'review_revision',
+  'answer_image_url', 'answer_file_type',
+];
+
+// 迁移夹具会先在旧版本上建数据、再升级；列清单按当前真实表结构生成，
+// 避免旧库上执行新 SQL。正常启动时这里永远包含 v17 的选择题列。
+function mistakeColumns({ detail = false } = {}) {
+  const names = new Set(db.prepare('PRAGMA table_info(mistakes)').all().map((column) => column.name));
+  const columns = [...BASE_MISTAKE_COLUMNS];
+  if (names.has('question_format')) columns.push('question_format');
+  if (names.has('options_json')) columns.push('options_json');
+  if (names.has('choice_type')) columns.push('choice_type');
+  if (names.has('question_format') && names.has('correct_option')) {
+    columns.push("CASE WHEN question_format = 'choice' AND correct_option <> '' THEN 1 ELSE 0 END AS choice_ready");
+  }
+  if (detail && names.has('correct_option')) columns.push('correct_option');
+  return columns.join(', ');
+}
 
 // 错题列表：字段和原来完全一样，按加入的先后顺序返回（没有额外排序）。
 // 额外给每条错题补一个 knowledge 数组（知识点标签）；新增字段不影响老前端。
@@ -38,7 +56,7 @@ function listMistakes(courseId, filters = {}) {
     }
   }
   const rows = db
-    .prepare(`SELECT ${MISTAKE_COLUMNS} FROM mistakes WHERE ${conditions.join(' AND ')} ORDER BY id`)
+    .prepare(`SELECT ${mistakeColumns()} FROM mistakes WHERE ${conditions.join(' AND ')} ORDER BY id`)
     .all(...params);
   return attachNodes(rows, courseId);
 }
@@ -46,7 +64,7 @@ function listMistakes(courseId, filters = {}) {
 // 单条错题详情（含标签节点），找不到返回 undefined
 function getMistakeDetail(id) {
   const row = db
-    .prepare(`SELECT ${MISTAKE_COLUMNS} FROM mistakes WHERE id = ?`)
+    .prepare(`SELECT ${mistakeColumns({ detail: true })} FROM mistakes WHERE id = ?`)
     .get(id);
   if (!row) return undefined;
   return { ...row, knowledge: listMistakeNodes(id) };
@@ -60,18 +78,26 @@ function createMistake(courseId, title, imageUrl, content, fileType, nodeIds, op
   }
   db.exec('BEGIN');
   try {
-    const info = db
-      .prepare(
+    const hasChoiceColumns = db.prepare('PRAGMA table_info(mistakes)').all().some((column) => column.name === 'question_format');
+    const info = hasChoiceColumns
+      ? db.prepare(
+        `INSERT INTO mistakes (course_id, title, image_url, file_type, ocr_text, content, created_at, mistake_type,
+          answer_content, explanation, question_format, options_json, correct_option, choice_type)
+         VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(courseId, title, imageUrl, fileType || '', content || '', nowText(), options.mistakeType,
+        options.answerContent || '', options.explanation || '', options.questionFormat || 'open',
+        options.optionsJson || '[]', options.correctOption || '', options.choiceType || 'single')
+      : db.prepare(
         'INSERT INTO mistakes (course_id, title, image_url, file_type, ocr_text, content, created_at, mistake_type, answer_content, explanation) VALUES (?, ?, ?, ?, \'\', ?, ?, ?, ?, ?)'
-      )
-      .run(courseId, title, imageUrl, fileType || '', content || '', nowText(), options.mistakeType, options.answerContent || '', options.explanation || '');
+      ).run(courseId, title, imageUrl, fileType || '', content || '', nowText(), options.mistakeType,
+        options.answerContent || '', options.explanation || '');
     const id = Number(info.lastInsertRowid);
     const insert = db.prepare(
       'INSERT OR IGNORE INTO mistake_node_links (mistake_id, node_id) VALUES (?, ?)'
     );
     for (const nodeId of nodeIds || []) insert.run(id, nodeId);
     const item = db
-      .prepare(`SELECT ${MISTAKE_COLUMNS} FROM mistakes WHERE id = ?`)
+      .prepare(`SELECT ${mistakeColumns({ detail: true })} FROM mistakes WHERE id = ?`)
       .get(id);
     db.exec('COMMIT');
     return item;
@@ -103,7 +129,8 @@ function updateMistake(id, changes, expectedRevision) {
     const changed = Object.entries(changes).filter(([key, value]) => old[key] !== value);
     // 题目/答案的附件换了或删了，和改文字一样算实质修改：回到未复习，等重新过一遍。
     const invalidates = changed.some(([key]) => ['mistake_type', 'content', 'answer_content', 'explanation',
-      'image_url', 'file_type', 'answer_image_url', 'answer_file_type'].includes(key));
+      'image_url', 'file_type', 'answer_image_url', 'answer_file_type',
+      'question_format', 'options_json', 'correct_option', 'choice_type'].includes(key));
     if (changed.length) {
       const assignments = changed.map(([key]) => `${key} = ?`);
       if (invalidates) assignments.push("review_revision = review_revision + 1", "review_status = 'unreviewed'");

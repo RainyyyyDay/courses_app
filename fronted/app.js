@@ -83,9 +83,6 @@ loadCourses();
 
     if (stillThere) {
       openCourse(Number(savedCourseId), savedCourseName, savedTab || 'materials');
-      if (savedTab === 'mistakes') await restoreMistakeLocation(Number(savedCourseId));
-      if (savedTab === 'materials') await restoreMaterialReviewLocation(Number(savedCourseId));
-      if (savedTab === 'notes') await restoreNoteReviewLocation(Number(savedCourseId));
       if (savedTab === 'reviewPlans') {
         if(!await restoreReviewCenterLocation(Number(savedCourseId)))await restoreReviewPlanLocation(Number(savedCourseId));
       }
