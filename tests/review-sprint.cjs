@@ -91,6 +91,7 @@ for(const [name,run]of [['sessions',testReviewCenterApi],['plans',testReviewPlan
 test('shared scheduling calculations remain mode-independent',testReviewSchedulingUnit);
 test('shared scheduling API regression',{timeout:90000},async()=>fixture(async({base,ids})=>testReviewSchedulingApi({base,course:{id:ids.courseId}}),{legacy:false}));
 
+const {reviewInteractionChecks}=require('./review-interactions.cjs');
 function scenario(base,courseId){return `window.COURSES_API_BASE=${JSON.stringify(base)};window.addEventListener('load',async()=>{
   const check=(v,m)=>{if(!v)throw Error(m);};const wait=async(fn)=>{for(let i=0;i<200;i++){if(fn())return;await new Promise(r=>setTimeout(r,30));}throw Error('UI wait timeout');};
   const api=async(method,url,body)=>{const res=await requestApi(API+url,{method,...(body===undefined?{}:{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})});return res.json();};
@@ -118,8 +119,15 @@ function scenario(base,courseId){return `window.COURSES_API_BASE=${JSON.stringif
           check(reviewWorkbench.attempt.id!==oldId&&reviewWorkbench.attempt.firstAnswer===null,'retry reuses generic engine with a new immutable attempt');
           const old=await api('GET','/courses/${courseId}/review-items/note/'+noteId+'/attempts/'+oldId);check(old.firstAnswer==='重开前的首次讲解','retry retains prior submitted evidence');
         }
-        if(mode==='reading'){wb('Answer').value='读完后还有疑问';await submitWorkbenchAttempt('complete');check(reviewWorkbench.attempt.grade===null,'reading UI emits exposure only');}
-        else{wb('Answer').value='首次独立作答 '+mode;await submitWorkbenchAttempt('submit');check(reviewWorkbench.attempt.firstAnswer.includes('首次独立'),'open UI keeps first answer');await submitWorkbenchAttempt('judge',2);check(reviewWorkbench.attempt.grade===2,'open UI records Hard');}
+        if(mode==='reading'){check(wb('Attempt').querySelector('article')&&!wb('Attempt').querySelector('[data-review-reference]'),'reading is an article, not an answer task');wb('Answer').value='读完后还有疑问';wb('ReadComplete').click();await submitWorkbenchAttempt('complete');check(reviewWorkbench.attempt.grade===null,'reading UI emits exposure only');}
+        else{
+          if(mode==='contrast'){check(!wb('Answer')&&wb('Attempt').querySelectorAll('tbody textarea').length===4,'contrast uses object/dimension matrix, no generic answer');for(const n of wb('Attempt').querySelectorAll('[data-contrast-field]'))n.value='首次独立比较 '+n.dataset.contrastField;}
+          else {check(wb('Answer')?.rows===(mode==='self_explain'?10:5),'distinct open answer size');wb('Answer').value='首次独立作答 '+mode;}
+          check(!wb('Attempt').querySelector('[data-review-reference]'),'reference hidden before submitting');
+          await submitWorkbenchAttempt('submit');check(reviewWorkbench.attempt.firstAnswer.includes('首次独立'),'open UI keeps first answer');
+          if(['contrast','self_explain'].includes(mode)){const points=wb('Attempt').querySelectorAll('[data-review-checkpoint]');check(points.length>=2,'reference and rubric become actionable checklist');points[0].click();}
+          await submitWorkbenchAttempt('judge',2);check(reviewWorkbench.attempt.grade===2,'open UI records Hard');
+        }
         await finishWorkbenchAttempt();closeReviewCompleteModal();
       }
       const mistaken=await api('POST','/courses/${courseId}/mistakes',{title:'标准作答 UI',content:'2+2=?',answerContent:'4',mistakeType:'execution',questionFormat:'open'});
@@ -128,6 +136,7 @@ function scenario(base,courseId){return `window.COURSES_API_BASE=${JSON.stringif
       check(mistakeDetailState.progress.firstAnswer==='首次算得4'&&mistakeDetailState.progress.answerRevealed,'normal standard saves answer before revealing');
       await openReviewWorkbench('mistake',mistaken.id,{sessionItemId:standardSession.items[0].id,sessionId:standardSession.id});await loadReviewWorkbenchMode('retry');
       const round=mistakeDetailState.progress.round;await runExistingReviewMode();check(!wb('Dialog').open&&mistakeDetailState.progress.round===round+1&&mistakeDetailState.progress.firstAnswer===null,'retry reuses existing engine to start fresh round');
+      check(document.getElementById('mistakeFirstAnswer').value===''&&!document.getElementById('mistakeReviewAnswer'),'retry removes old input and answer DOM');
       document.getElementById('mistakeFirstAnswer').value='重做首次为4';await submitMistakeReview('reveal_answer');await submitMistakeReview('judge','correct',true);
       check(mistakeDetailState.progress.durationMs>0,'normal standard records actual elapsed time');
       const state=await api('GET','/courses/${courseId}/review-items/mistake/'+mistaken.id+'/state');check(state.lastGrade===2,'normal standard caps post-answer grade');
@@ -136,11 +145,17 @@ function scenario(base,courseId){return `window.COURSES_API_BASE=${JSON.stringif
         const choice=await api('POST','/courses/${courseId}/mistakes',{title:'选择复现保留 '+multiple,content:'选择正确项',mistakeType:'knowledge',questionFormat:'choice',choiceType:multiple?'multiple':'single',options:[{id:'A',text:'甲'},{id:'B',text:'乙'}],correctOption:multiple?['A','B']:'B'});
         const next=await createReviewRecord('total',[{type:'mistake',id:choice.id}]);await enterCenterReview(next);await wait(()=>mistakeDetailState?.progress?.stage==='question');
         check(!document.getElementById('mistakeReviewAnswer')&&mistakeDetailState.progress.choice.correctOption===undefined,'existing choice UI hides answer before submission');
+        check(!document.getElementById('mistakeFirstAnswer')&&document.querySelectorAll('input[name="mistakeChoiceOption"][type="'+(multiple?'checkbox':'radio')+'"]').length===2,'choice uses correct objective controls, not generic text');
+        document.querySelector('input[name="mistakeChoiceOption"]').click();
+        const previousRound=mistakeDetailState.progress.round;
+        await openReviewWorkbench('mistake',choice.id,{sessionItemId:next.items[0].id,sessionId:next.id});await loadReviewWorkbenchMode('retry');await runExistingReviewMode();
+        check(mistakeDetailState.progress.round===previousRound+1&&!document.querySelector('input[name="mistakeChoiceOption"]:checked')&&!document.getElementById('mistakeReviewAnswer'),'choice retry creates new round and hides old selection and answer');
         const selected=multiple?['A','B']:['B'];for(const id of selected)document.querySelector('input[name="mistakeChoiceOption"][value="'+id+'"]').click();
         await submitMistakeChoice();check(mistakeDetailState.progress.choice.correct===true,'existing single/multiple UI still objectively grades');
         const score=await api('GET','/courses/${courseId}/review-items/mistake/'+choice.id+'/state');check(score.lastGrade===3,'objective choice remains Good after post-submit answer display');closeReviewCompleteModal();
       }
-      out.dataset.result='passed';out.textContent='sprint UI manual/edit/AI draft/attempt/reload/session passed';document.body.append(out);return;
+      await (${reviewInteractionChecks.toString()})(${courseId});
+      out.dataset.result='passed';out.textContent='sprint UI seven distinct interactions, AI adoption, fallback, edit, draft, attempt, reload, session passed';document.body.append(out);return;
     }
     const note=await api('POST','/courses/${courseId}/notes',{title:'手动挖空 UI',content:'首都为北京。'});
     await openResourceDetail('note',note.id);check(document.querySelector('[data-review-preparation]'),'normal detail has preparation entry');
