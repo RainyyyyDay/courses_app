@@ -957,6 +957,9 @@ body.mistake-review-open { overflow: hidden; }
 .review-workbench { position:fixed;inset:0;margin:auto;padding:0;border:0;border-radius:12px;width:min(720px,calc(100% - 24px));max-height:calc(100dvh - 24px);overflow:hidden; }
 .review-workbench[open] { display:flex;flex-direction:column; }
 .review-workbench::backdrop { background:rgba(17,25,40,.45); }
+.review-workbench.is-inline { position:static;inset:auto;margin:16px 0;width:100%;max-height:none;overflow:visible;border:1px solid #dbe0ea;box-sizing:border-box; }
+.review-workbench.is-inline .review-workbench-body { overflow:visible; }
+.review-workbench.is-inline header .btn-cancel { display:none; }
 .review-workbench header,.review-workbench footer { flex:0 0 auto;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap; }
 .review-workbench h2 { margin:0;font-size:18px; }
 .review-workbench-body { padding:16px;overflow:auto;min-height:0; }

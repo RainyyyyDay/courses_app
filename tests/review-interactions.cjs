@@ -9,19 +9,24 @@ async function reviewInteractionChecks(courseId){
   check(recommendReviewMode('mistake',{...row,mistake_type:'knowledge'}).mode==='standard','knowledge deterministic standard');
   check(recommendReviewMode('mistake',{...row,question_format_confirmed:0,mistake_type:'execution'}).mode==='standard','unconfirmed format is not guessed');
   check(recommendReviewMode('mistake',row,'reading','cloze').mode==='reading','explicit selection beats confirmed AI');
+  const originalSession=await createReviewRecord('total',[{type:'mistake',id:row.id}]);await enterCenterReview(originalSession);
+  check(!reviewWorkbench&&!document.querySelector('[data-ai-review-mode]')&&!document.getElementById('mistakeReviewPanel').hidden,'no AI advice keeps original review page');
+  await pauseCenterReview();
   check(saveMistakeAiMethod(identity,'cloze'),'confirmed AI advice saved');
   const savedAi=localStorage.getItem(mistakeAiStorageKey(identity));
   const before=await api('GET','/review-items/mistake/'+row.id+'/state');
   const session=await createReviewRecord('total',[{type:'mistake',id:row.id}]);await enterCenterReview(session);
-  check(!wb('Dialog').open&&mistakeDetailState.progress.mode.id==='standard','saving advice never silently changes executing native mode');
+  check(wb('Dialog').open&&wb('Dialog').classList.contains('is-inline')&&reviewWorkbench.mode==='cloze','confirmed AI mode is displayed directly on review page');
+  const inlineRect=wb('Dialog').getBoundingClientRect();
+  check(getComputedStyle(wb('Dialog')).position==='static'&&inlineRect.width<=innerWidth&&document.documentElement.scrollWidth<=innerWidth+1,'inline AI review fits desktop and mobile without covering page');
+  check(document.getElementById('mistakeReviewPanel').hidden&&!reviewWorkbench.attempt,'missing material does not execute or grade original mode');
   const context=centerWorkbenchContext(session.items[0],session);
-  await openReviewWorkbench('mistake',row.id,context);
-  check(wb('Suggestion').querySelector('button')&&wb('Info').textContent.includes('当前实际流程：标准复习'),'suggestion and actual mode shown separately');
-  wb('Suggestion').querySelector('button').click();
-  for(let i=0;i<200&&reviewWorkbench.busy;i++)await new Promise(r=>setTimeout(r,20));
   check(reviewWorkbench.mode==='cloze'&&!reviewWorkbench.attempt&&wb('Editor').textContent.includes('每空答案'),'AI adoption checks real material, not just saved ID');
   check(wb('Actions').textContent.includes('手动准备材料')&&wb('Actions').textContent.includes('切换标准复习'),'missing material offers executable actions');
-  await switchWorkbenchToAvailableMode();check(reviewWorkbench.mode==='standard','fallback explicitly selects standard');
+  await toggleCenterAiReviewMode();check(!reviewWorkbench&&!document.getElementById('mistakeReviewPanel').hidden,'one click restores original review controls');
+  await renderCenterReviewItem();check(!reviewWorkbench,'original review selection survives rerender');
+  await toggleCenterAiReviewMode();check(reviewWorkbench.inline&&reviewWorkbench.mode==='cloze','one click returns to AI suggestion inline');
+  await toggleCenterAiReviewMode();
   closeReviewWorkbench();await openReviewWorkbench('mistake',row.id,context);
   check(reviewWorkbench.mode==='standard','manual override survives reopen and beats saved AI');
   await loadReviewWorkbenchMode('choice_reproduction');check(wb('Editor').textContent.includes('缺少')&&!wb('Answer')&&wb('Actions').textContent.includes('切换标准复习'),'incompatible choice never degrades to text');
@@ -33,6 +38,10 @@ async function reviewInteractionChecks(courseId){
   await saveWorkbenchMaterial();check(!wb('Error').textContent&&!wb('Prompt'),'in-session manual save returns to practice');
   check(JSON.stringify(await api('GET','/review-items/mistake/'+row.id+'/state'))===JSON.stringify(before),'advice adoption and material save never grade');
   await startWorkbenchAttempt();const attemptId=reviewWorkbench.attempt.id;
+  closeReviewWorkbench();await openReviewWorkbench('mistake',row.id,{...context,mode:'cloze',inline:true});
+  wb('Attempt').querySelector('[data-review-blank="b1"]').value='切换前草稿';
+  await toggleCenterAiReviewMode();await toggleCenterAiReviewMode();
+  check(reviewWorkbench.attempt.id===attemptId&&wb('Attempt').querySelector('[data-review-blank="b1"]').value==='切换前草稿','inline toggle restores same attempt and answer draft');
   closeReviewWorkbench();check(document.getElementById('mistakeReviewPanel').hidden&&document.getElementById('centerReviewToolbar').textContent.includes('原流程已暂停'),'closing workbench cannot expose another engine controls');
   await openReviewWorkbench('mistake',row.id,context);
   check(reviewWorkbench.attempt.modeId==='cloze'&&wb('Attempt').querySelector('[data-executing-mode="cloze"]'),'actual persisted attempt uses adopted AI mode');
@@ -49,6 +58,16 @@ async function reviewInteractionChecks(courseId){
   check(wb('Error').textContent.includes('新会话')&&mistakeStorageGet(restoreKey).attemptId===attemptId,'completed task retry keeps history pointer and requires new session');
   await loadReviewWorkbenchMode('cloze');
   await finishWorkbenchAttempt();closeReviewCompleteModal();
+
+  const nativeRow=await api('POST','/mistakes',{title:'原生模式 AI 切换',content:'2+2=?',answerContent:'4',mistakeType:'knowledge',questionFormat:'open'});
+  saveMistakeAiMethod({courseId,id:nativeRow.id},'retry');
+  switchTab('mistakes');await openMistakeCategory(null);await enterMistakeReviewFromHome();await openMistakeReviewCategory('knowledge');await clearMistakeFilters();chooseMistake(nativeRow.id,true);await startMistakeQueue();
+  check(centerReview?.session.source_type==='mistake','mistake-list review entry also adopts saved AI advice');
+  check(reviewWorkbench.inline&&reviewWorkbench.mode==='retry','native AI retry is also shown inline');
+  await runExistingReviewMode();check(!reviewWorkbench&&!document.getElementById('mistakeReviewPanel').hidden,'AI retry executes through original controls');
+  await renderCenterReviewItem();check(!reviewWorkbench&&document.querySelector('[data-ai-review-mode]').textContent.includes('切换原复习'),'running native AI mode survives rerender without preparation reopening');
+  await toggleCenterAiReviewMode();check(!reviewWorkbench&&document.querySelector('[data-ai-review-mode]').textContent.includes('当前使用原复习'),'native AI mode switches back to original flow');
+  await pauseCenterReview();
 
   for(const mode of ['self_explain','contrast','reading']){
     const next=await createReviewRecord('total',[{type:'mistake',id:row.id}]);await enterCenterReview(next);
