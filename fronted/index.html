@@ -574,9 +574,21 @@
             <div class="edit-file-actions">
               <button type="button" class="edit-btn edit-btn-danger" id="mistakeEditQuestionRemove" style="display:none;" onclick="removeMistakeEditQuestionFile()"><span class="edit-btn-icon">🗑</span>删除原题</button>
               <button type="button" class="edit-btn" id="mistakeEditQuestionUploadBtn" onclick="document.getElementById('mistakeEditQuestionUpload').click()"><span class="edit-btn-icon">⬆</span><span id="mistakeEditQuestionUploadLabel">上传新内容</span></button>
+              <button type="button" class="edit-btn" id="mistakeEditQuestionOcrBtn" style="display:none;" onclick="recognizeMistakeEditFile('question')">识别文字</button>
             </div>
             <input type="file" id="mistakeEditQuestionUpload" style="display:none" onchange="chooseMistakeEditQuestionFile(this)" />
             <textarea id="mistakeEditContent" rows="4" placeholder="题目内容" oninput="refreshMistakeEditDirty()"></textarea>
+            <section id="mistakeEditQuestionOcrPanel" class="mistake-ocr-panel" style="display:none;">
+              <div class="mistake-ocr-head"><b>识别结果</b><span>先人工校对，再填入</span></div>
+              <textarea id="mistakeEditQuestionOcrText" rows="5"></textarea>
+              <div class="mistake-ocr-actions">
+                <button type="button" onclick="applyMistakeEditOcr('content','replace')">替换题干</button>
+                <button type="button" onclick="applyMistakeEditOcr('content','append')">追加题干</button>
+                <button type="button" id="mistakeEditOcrToOptions" onclick="applyMistakeEditOcr('options')">填入选项</button>
+                <button type="button" class="btn-cancel" onclick="closeMistakeEditOcr('question')">放弃</button>
+              </div>
+              <small id="mistakeEditQuestionOcrMeta"></small>
+            </section>
             <div class="edit-choice-config">
               <label class="mistake-create-field">题型
                 <select id="mistakeEditFormat" onchange="markMistakeFormatSelected();toggleMistakeChoiceFields('Edit');refreshMistakeEditDirty()">
@@ -623,9 +635,19 @@
               <div class="edit-file-actions">
                 <button type="button" class="edit-btn edit-btn-danger" id="mistakeEditAnswerRemove" style="display:none;" onclick="removeMistakeEditAnswerFile()"><span class="edit-btn-icon">🗑</span>删除原答案</button>
                 <button type="button" class="edit-btn" id="mistakeEditAnswerUploadBtn" onclick="document.getElementById('mistakeEditAnswerUpload').click()"><span class="edit-btn-icon">⬆</span><span id="mistakeEditAnswerUploadLabel">上传新内容</span></button>
+                <button type="button" class="edit-btn" id="mistakeEditAnswerOcrBtn" style="display:none;" onclick="recognizeMistakeEditFile('answer')">识别答案文字</button>
               </div>
               <input type="file" id="mistakeEditAnswerUpload" style="display:none" onchange="chooseMistakeEditAnswerFile(this)" />
               <textarea id="mistakeEditAnswer" rows="4" placeholder="参考答案" oninput="refreshMistakeEditDirty()"></textarea>
+              <section id="mistakeEditAnswerOcrPanel" class="mistake-ocr-panel" style="display:none;">
+                <div class="mistake-ocr-head"><b>答案识别结果</b><span>校对后填入答案</span></div>
+                <textarea id="mistakeEditAnswerOcrText" rows="5"></textarea>
+                <div class="mistake-ocr-actions">
+                  <button type="button" onclick="applyMistakeEditOcr('answer')">填入答案</button>
+                  <button type="button" class="btn-cancel" onclick="closeMistakeEditOcr('answer')">放弃</button>
+                </div>
+                <small id="mistakeEditAnswerOcrMeta"></small>
+              </section>
             </div>
           </div>
         </section>

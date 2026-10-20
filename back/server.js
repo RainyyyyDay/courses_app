@@ -44,7 +44,14 @@ app.use((req, res, next) => {
   res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
   next();
 });
-app.use(express.static(path.join(__dirname, '..', 'fronted')));
+app.use(express.static(path.join(__dirname, '..', 'fronted'), {
+  // 页面和业务脚本每次都验缓存，避免改了代码用户还跑旧版本；
+  // 71MB 的 OCR 运行时和模型文件名固定，长期缓存。
+  setHeaders(res, filePath) {
+    const longLived = filePath.includes(`${path.sep}vendor${path.sep}`) || /\.(wasm|tar)$/.test(filePath);
+    res.setHeader('Cache-Control', longLived ? 'public, max-age=31536000, immutable' : 'no-cache');
+  },
+}));
 
 // ===== 错题标签（知识树节点）的解析与校验 =====
 
@@ -1092,4 +1099,8 @@ app.listen(3000, listenHost, () => {
   console.log((process.env.OCR_PROVIDER || 'http') === 'http'
     ? `OCR：真实识别 -> ${process.env.OCR_API_BASE || 'http://127.0.0.1:8001'}`
     : 'OCR：mock（返回固定样例 1+1=?，仅用于界面调试，不是真实识别）');
+  const ocrWebEntry = path.join(__dirname, '..', 'fronted', 'vendor', 'ocr', 'paddleocr-js.iife.js');
+  console.log(fs.existsSync(ocrWebEntry)
+    ? 'OCR：浏览器端资源已就绪'
+    : 'OCR：⚠ 浏览器端资源缺失，识别会自动回退服务端。先运行 node tools/prepare-ocr-web.cjs');
 });

@@ -300,18 +300,23 @@ function renderMistakeEditFiles() {
     }
     // 删除和上传并排：有东西可删（原文件还在，或刚选了新文件）时才显示删除
     removeBtn.style.display = (oldUrl || file) ? 'inline-flex' : 'none';
+    // 有附件就能识别（新选的或原来的都行）
+    const ocrBtn = document.getElementById(config.ocrId);
+    if (ocrBtn) ocrBtn.style.display = (oldUrl || file) ? 'inline-flex' : 'none';
     const label = document.getElementById(config.labelId);
     if (label) label.textContent = file ? '重新选择' : config.uploadText;
   };
 
   paint({
     boxId: 'mistakeEditQuestionFile', removeId: 'mistakeEditQuestionRemove', uploadId: 'mistakeEditQuestionUploadBtn',
+    ocrId: 'mistakeEditQuestionOcrBtn',
     labelId: 'mistakeEditQuestionUploadLabel', label: '题目附件', uploadText: '上传新内容',
     oldUrl: row.image_url, oldFileType: row.file_type,
     removedFlag: pending.questionRemoved, file: pending.questionFile
   });
   paint({
     boxId: 'mistakeEditAnswerFile', removeId: 'mistakeEditAnswerRemove', uploadId: 'mistakeEditAnswerUploadBtn',
+    ocrId: 'mistakeEditAnswerOcrBtn',
     labelId: 'mistakeEditAnswerUploadLabel', label: '答案附件', uploadText: '上传新内容',
     oldUrl: row.answer_image_url, oldFileType: row.answer_file_type,
     removedFlag: pending.answerRemoved, file: pending.answerFile
@@ -349,6 +354,130 @@ function removeMistakeEditAnswerFile() {
   mistakeEditPending.answerRemoved = true;
   renderMistakeEditFiles();
   refreshMistakeEditDirty();
+}
+
+// ===== 编辑弹窗里的 OCR：题目和答案各一套 =====
+function updateMistakeEditOcrActions() {
+  const choice = document.getElementById('mistakeEditFormat')?.value === 'choice';
+  const toOptions = document.getElementById('mistakeEditOcrToOptions');
+  if (toOptions) toOptions.style.display = choice ? 'inline-flex' : 'none';
+}
+
+async function recognizeMistakeEditFile(kind) {
+  const pending = mistakeEditPending;
+  const row = mistakeDetailState && mistakeDetailState.row;
+  const isQuestion = kind === 'question';
+  const newFile = isQuestion ? pending?.questionFile : pending?.answerFile;
+  const removed = isQuestion ? pending?.questionRemoved : pending?.answerRemoved;
+  const oldUrl = isQuestion ? row?.image_url : row?.answer_image_url;
+  const sourceUrl = !removed && oldUrl ? oldUrl : '';
+  if (!newFile && !sourceUrl) { showToast('请先上传附件'); return; }
+
+  const button = document.getElementById(isQuestion ? 'mistakeEditQuestionOcrBtn' : 'mistakeEditAnswerOcrBtn');
+  if (button?.disabled) return;
+  const original = button ? button.textContent : '';
+  if (button) { button.disabled = true; button.textContent = '识别中…'; }
+  try {
+    let file = newFile;
+    if (!file) {
+      // 识别原有附件：先下载成本地 File，再走同一套识别流程
+      const base = API.replace(/\/api\/?$/, '');
+      const response = await fetch(base + sourceUrl);
+      if (!response.ok) throw new Error('原附件下载失败');
+      const blob = await response.blob();
+      file = new File([blob], sourceUrl.split('/').pop() || 'attachment', { type: blob.type });
+    }
+    const result = await recognizeUploadedFile(file, (message) => {
+      if (button) button.textContent = message;
+    });
+    const textBox = document.getElementById(isQuestion ? 'mistakeEditQuestionOcrText' : 'mistakeEditAnswerOcrText');
+    const panel = document.getElementById(isQuestion ? 'mistakeEditQuestionOcrPanel' : 'mistakeEditAnswerOcrPanel');
+    const meta = document.getElementById(isQuestion ? 'mistakeEditQuestionOcrMeta' : 'mistakeEditAnswerOcrMeta');
+    if (textBox) textBox.value = result.text || '';
+    if (panel) panel.style.display = 'grid';
+    if (meta) {
+      const parts = [];
+      if (result.provider) parts.push(`识别来源：${ocrProviderLabel(result.provider)}`);
+      if (Number.isFinite(result.confidence)) parts.push(`置信度 ${Math.round(result.confidence * 100)}%`);
+      if (result.warnings?.length) parts.push(result.warnings.join('；'));
+      meta.textContent = parts.join(' · ');
+    }
+    updateMistakeEditOcrActions();
+    if (result.provider === 'mock') {
+      if (meta) meta.textContent = '⚠ 这是 mock 样例数据，不是真实识别。';
+      showToast('当前是 mock 样例数据，不是真实识别');
+      return;
+    }
+    showToast('识别完成，请校对后填入');
+  } catch (err) {
+    showToast(err.message);
+  } finally {
+    if (button) { button.disabled = false; button.textContent = original; }
+  }
+}
+
+function closeMistakeEditOcr(kind) {
+  const isQuestion = kind === 'question';
+  const panel = document.getElementById(isQuestion ? 'mistakeEditQuestionOcrPanel' : 'mistakeEditAnswerOcrPanel');
+  const text = document.getElementById(isQuestion ? 'mistakeEditQuestionOcrText' : 'mistakeEditAnswerOcrText');
+  const meta = document.getElementById(isQuestion ? 'mistakeEditQuestionOcrMeta' : 'mistakeEditAnswerOcrMeta');
+  if (panel) panel.style.display = 'none';
+  if (text) text.value = '';
+  if (meta) meta.textContent = '';
+}
+
+function applyMistakeEditOcr(target, mode = 'replace') {
+  const isQuestion = target !== 'answer';
+  const text = (document.getElementById(isQuestion ? 'mistakeEditQuestionOcrText' : 'mistakeEditAnswerOcrText')?.value || '').trim();
+  if (!text) { showToast('识别结果为空'); return; }
+
+  if (isQuestion && target === 'content') {
+    const content = document.getElementById('mistakeEditContent');
+    if (!content) return;
+    content.value = mode === 'append' && content.value.trim() ? `${content.value.trim()}\n\n${text}` : text;
+    refreshMistakeEditDirty();
+    showToast(mode === 'append' ? '已追加到题干' : '已替换题干');
+    return;
+  }
+  if (target === 'options') {
+    const format = document.getElementById('mistakeEditFormat')?.value;
+    if (format !== 'choice') { showToast('这道题不是选择题'); return; }
+    const values = [];
+    for (const rawLine of text.split('\n')) {
+      const line = rawLine.normalize('NFKC');
+      const match = line.match(/^\s*[（(]?\s*([A-Za-z])\s*(?:[）)]\s*|[.、,:：;；)）]\s*|\s+)(.+)$/);
+      if (match) values.push(match[2].trim());
+    }
+    if (values.length < 2) { showToast('没有识别到 A./B./C. 形式的选项行，请手动校对'); return; }
+    renderMistakeChoiceOptionRows('Edit', values, []);
+    refreshMistakeEditDirty();
+    showToast('已填入选项，请核对编号和内容');
+    return;
+  }
+  if (target === 'answer') fillMistakeEditAnswerFromOcr(text);
+}
+
+function fillMistakeEditAnswerFromOcr(text) {
+  const format = document.getElementById('mistakeEditFormat')?.value || 'open';
+  const answerText = extractMistakeOcrAnswer(text);
+  const payload = answerText || text;
+  if (format === 'choice') {
+    const match = text.normalize('NFKC').match(/(?:正确答案|答案)\s*[：:]?\s*((?:[A-Za-z]\s*[,，、;；\s]*)+)/);
+    if (!match) { showToast('没有识别到“答案：A”形式的字母'); return; }
+    const ids = [...new Set((match[1].toUpperCase().match(/[A-Z]/g) || []))];
+    const letters = choiceLetters(readMistakeChoiceOptionValues('Edit').length);
+    const valid = ids.filter(id => letters.includes(id));
+    if (!valid.length) { showToast('答案字母不在当前选项中，请先填入选项'); return; }
+    const type = document.getElementById('mistakeEditChoiceType')?.value || 'single';
+    renderMistakeChoiceAnswerOptions('Edit', type === 'single' ? valid.slice(0, 1) : valid);
+    refreshMistakeEditDirty();
+    showToast('已填入正确答案，请核对');
+    return;
+  }
+  const answer = document.getElementById('mistakeEditAnswer');
+  if (answer) answer.value = payload;
+  refreshMistakeEditDirty();
+  showToast(answerText ? '已填入答案（只取“答案：”之后的内容）' : '没有找到“答案：”标记，已填入整段识别文字');
 }
 
 // 当前课程的分类 / 知识点（弹窗里直接勾，不用跳别的弹窗）

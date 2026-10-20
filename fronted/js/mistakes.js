@@ -111,6 +111,7 @@ function toggleMistakeChoiceFields(prefix) {
     ? '可上传题干附件，也可直接录入题干'
     : '可上传题目附件，也可直接录入题目内容';
   if (prefix === 'Create') updateMistakeCreateOcrActions();
+  if (prefix === 'Edit' && typeof updateMistakeEditOcrActions === 'function') updateMistakeEditOcrActions();
 }
 function readMistakeChoiceOptionValues(prefix) {
   return [...document.querySelectorAll(`#mistake${prefix}OptionsList .choice-option-input`)].map(input => input.value);
@@ -624,12 +625,24 @@ async function recognizeUploadedFile(file, onProgress) {
   try {
     return await recognizeTextInBrowser(file, onProgress);
   } catch (err) {
-    console.warn('浏览器端 OCR 不可用，回退服务端：', err?.message || err);
-    onProgress?.('浏览器端不可用，改用服务端识别…');
+    const reason = err?.message || String(err);
+    const intentional = err?.code === 'OCR_WEB_PDF';
+    if (intentional) {
+      onProgress?.('PDF 交由服务端识别…');
+    } else {
+      console.warn('浏览器端 OCR 不可用，回退服务端：', reason);
+      const hint = err?.code === 'OCR_WEB_PROTOCOL' ? '当前是 file:// 打开的，浏览器端 OCR 不可用' : reason;
+      showToast(`浏览器端不可用：${hint}`);
+      onProgress?.('浏览器端不可用，改用服务端识别…');
+    }
     const form = new FormData();
     form.append('file', file);
     const response = await requestApi(`${API}/ocr`, { method: 'POST', body: form });
-    return await response.json();
+    const result = await response.json();
+    // 把回退原因留在校对面板的说明行里，别再被吞掉
+    result.fallbackReason = reason;
+    result.warnings = [...(result.warnings || []), intentional ? 'PDF 用服务端识别' : `浏览器端未使用：${reason}`];
+    return result;
   }
 }
 

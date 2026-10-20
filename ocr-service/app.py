@@ -173,7 +173,8 @@ def recognize_pdf(data):
             raise HTTPException(413, f"PDF 最多支持 {MAX_PAGES} 页")
 
         # Born-digital PDFs already carry exact text: use it instead of OCR.
-        text = "\n".join(page.get_text("text") for page in doc).strip()
+        # sort=True 按版面坐标重排，避免 PDF 内部绘制顺序把正文和页眉页脚串在一起。
+        text = "\n".join(page.get_text("text", sort=True) for page in doc).strip()
         if text_layer_usable(text):
             lines = [
                 {"text": line.strip(), "confidence": 1.0}

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>浏览器端 OCR 自检</title>
+<style>
+  body { margin: 0; padding: 24px; font: 14px/1.7 "Microsoft YaHei", system-ui, sans-serif; background: #f6f8fc; color: #1b2230; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .sub { color: #6b7488; margin: 0 0 16px; font-size: 13px; }
+  .row { display: flex; gap: 10px; padding: 8px 12px; background: #fff; border: 1px solid #dfe4ee; border-radius: 8px; margin-bottom: 6px; align-items: baseline; }
+  .row b { min-width: 120px; font-weight: 600; }
+  .ok { color: #137a3f; }
+  .bad { color: #b4301f; }
+  pre { background: #fff; border: 1px solid #dfe4ee; border-radius: 10px; padding: 14px; white-space: pre-wrap; word-break: break-all; }
+  button { font: inherit; padding: 7px 14px; border: 0; border-radius: 8px; background: #3b6cf6; color: #fff; cursor: pointer; }
+  button:disabled { opacity: .6; }
+</style>
+</head>
+<body>
+  <h1>浏览器端 OCR 自检</h1>
+  <p class="sub">逐项检查这台机器、这个浏览器能不能跑浏览器端 OCR。跑完把下面整段发我即可。</p>
+  <p><button id="run">开始自检</button></p>
+  <div id="rows"></div>
+  <pre id="log">等待开始…</pre>
+
+  <script src="js/ocrBrowser.js"></script>
+  <script>
+    const rows = document.getElementById('rows');
+    const log = document.getElementById('log');
+
+    function addRow(name, ok, detail) {
+      const div = document.createElement('div');
+      div.className = 'row';
+      div.innerHTML = `<b></b><span class="${ok ? 'ok' : 'bad'}"></span>`;
+      div.querySelector('b').textContent = name;
+      div.querySelector('span').textContent = (ok ? '✓ ' : '✗ ') + detail;
+      rows.appendChild(div);
+    }
+
+    function makeSampleFile() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 900;
+      canvas.height = 240;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#111';
+      ctx.font = '34px "Microsoft YaHei", sans-serif';
+      ctx.fillText('凌晨三点，墨多多被冻醒。', 30, 80);
+      ctx.fillText('机械狗的眼睛流出了温热的液体。', 30, 150);
+      return new Promise((resolve) => canvas.toBlob((blob) => {
+        resolve(new File([blob], 'self-check.png', { type: 'image/png' }));
+      }, 'image/png'));
+    }
+
+    document.getElementById('run').addEventListener('click', async () => {
+      const button = document.getElementById('run');
+      button.disabled = true;
+      rows.innerHTML = '';
+      log.textContent = '';
+      const started = performance.now();
+
+      addRow('页面协议', location.protocol.startsWith('http'), location.protocol);
+      addRow('跨源隔离', self.crossOriginIsolated === true, String(self.crossOriginIsolated));
+      addRow('WebGPU', 'gpu' in navigator, 'gpu' in navigator ? '支持' : '不支持（会退回 WASM）');
+
+      try {
+        await loadOcrWebScript();
+        addRow('SDK 脚本', true, '已加载');
+      } catch (err) {
+        addRow('SDK 脚本', false, err.message);
+        log.textContent = `${err.message}\n\n${err.stack || ''}`;
+        button.disabled = false;
+        return;
+      }
+
+      try {
+        await getOcrWebEngine((message) => { log.textContent = message; });
+        addRow('模型初始化', true, '完成');
+      } catch (err) {
+        addRow('模型初始化', false, err.message);
+        log.textContent = `${err.message}\n\n${err.stack || ''}`;
+        button.disabled = false;
+        return;
+      }
+
+      try {
+        const file = await makeSampleFile();
+        const result = await recognizeTextInBrowser(file, (message) => { log.textContent = message; });
+        addRow('识别样张', true, `${result.elapsedMs} ms`);
+        log.textContent = [
+          `识别来源：${result.provider}`,
+          `耗时：${((performance.now() - started) / 1000).toFixed(1)}s`,
+          `置信度：${result.confidence === null ? '—' : Math.round(result.confidence * 100) + '%'}`,
+          '----- 识别文本 -----',
+          result.text,
+        ].join('\n');
+      } catch (err) {
+        addRow('识别样张', false, err.message);
+        log.textContent = `${err.message}\n\n${err.stack || ''}`;
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
