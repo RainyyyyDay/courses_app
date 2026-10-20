@@ -28,3 +28,6 @@ ocr-service/.paddlex/
 ocr-trial/dist/
 ocr-trial/models/
 ocr-trial/samples/
+
+# 浏览器端 OCR 运行时产物（71MB），用 node tools/prepare-ocr-web.cjs 生成
+fronted/vendor/ocr/

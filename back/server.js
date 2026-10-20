@@ -37,6 +37,14 @@ const upload = multer({ storage });
 
 // 让上传的文件可以通过地址访问（比如 http://localhost:3000/uploads/xxx.jpg）
 app.use('/uploads', express.static(uploadDir));
+// 前端也由后端托管：浏览器端 OCR 需要 http 加载（file:// 下 wasm 和模块都会被拦），
+// 跨源隔离头只在页面资源上生效，对 /api 的 JSON 响应没有影响。
+app.use((req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+  next();
+});
+app.use(express.static(path.join(__dirname, '..', 'fronted')));
 
 // ===== 错题标签（知识树节点）的解析与校验 =====
 
@@ -1074,8 +1082,12 @@ app.post('/api/ocr', upload.single('file'), async (req, res) => {
   }
 });
 
-app.listen(3000, () => {
-  console.log('后端已启动，地址：http://localhost:3000');
+// 默认只监听本机：接口没有任何鉴权，绑 0.0.0.0 等于把整个数据库暴露给同网段的任何人。
+// 需要让别的机器访问时显式设 HOST=0.0.0.0，并自行承担风险。
+const listenHost = process.env.HOST || '127.0.0.1';
+app.listen(3000, listenHost, () => {
+  console.log(`后端已启动，地址：http://${listenHost === '0.0.0.0' ? 'localhost' : listenHost}:3000`);
+  if (listenHost === '0.0.0.0') console.log('⚠ 已监听所有网卡：任何能连到本机的人都可读写数据（接口无鉴权）');
   console.log('前端可以开始连接了！');
   console.log((process.env.OCR_PROVIDER || 'http') === 'http'
     ? `OCR：真实识别 -> ${process.env.OCR_API_BASE || 'http://127.0.0.1:8001'}`

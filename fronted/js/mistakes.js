@@ -532,10 +532,9 @@ async function recognizeMistakeAnswerFile() {
   const original = button ? button.textContent : '';
   if (button) { button.disabled = true; button.textContent = '识别中…'; }
   try {
-    const fd = new FormData();
-    fd.append('file', pendingAnswerFile);
-    const response = await requestApi(`${API}/ocr`, { method: 'POST', body: fd });
-    const result = await response.json();
+    const result = await recognizeUploadedFile(pendingAnswerFile, (message) => {
+      if (button) button.textContent = message;
+    });
     const text = document.getElementById('mistakeCreateAnswerOcrText');
     const panel = document.getElementById('mistakeCreateAnswerOcrPanel');
     const meta = document.getElementById('mistakeCreateAnswerOcrMeta');
@@ -543,7 +542,7 @@ async function recognizeMistakeAnswerFile() {
     if (panel) panel.style.display = 'grid';
     if (meta) {
       const parts = [];
-      if (result.provider) parts.push(`识别来源：${result.provider}`);
+      if (result.provider) parts.push(`识别来源：${ocrProviderLabel(result.provider)}`);
       if (Number.isFinite(result.confidence)) parts.push(`置信度 ${Math.round(result.confidence * 100)}%`);
       if (result.warnings?.length) parts.push(result.warnings.join('；'));
       meta.textContent = parts.join(' · ');
@@ -620,6 +619,26 @@ function closeMistakeOcr() {
   if (text) text.value = '';
   if (meta) meta.textContent = '';
 }
+// 浏览器端优先；file:// 打开、PDF、老浏览器这些情况回退服务端。
+async function recognizeUploadedFile(file, onProgress) {
+  try {
+    return await recognizeTextInBrowser(file, onProgress);
+  } catch (err) {
+    console.warn('浏览器端 OCR 不可用，回退服务端：', err?.message || err);
+    onProgress?.('浏览器端不可用，改用服务端识别…');
+    const form = new FormData();
+    form.append('file', file);
+    const response = await requestApi(`${API}/ocr`, { method: 'POST', body: form });
+    return await response.json();
+  }
+}
+
+function ocrProviderLabel(provider) {
+  if (provider === 'browser') return '浏览器端';
+  if (provider === 'paddle') return '服务端';
+  return provider || '';
+}
+
 async function recognizeMistakeCreateFile() {
   if (!pendingUploadFile) { showToast('请先选择题目附件'); return; }
   const button = document.getElementById('mistakeCreateOcrBtn');
@@ -627,10 +646,9 @@ async function recognizeMistakeCreateFile() {
   const original = button ? button.textContent : '';
   if (button) { button.disabled = true; button.textContent = '识别中…'; }
   try {
-    const fd = new FormData();
-    fd.append('file', pendingUploadFile);
-    const response = await requestApi(`${API}/ocr`, { method: 'POST', body: fd });
-    const result = await response.json();
+    const result = await recognizeUploadedFile(pendingUploadFile, (message) => {
+      if (button) button.textContent = message;
+    });
     const text = document.getElementById('mistakeCreateOcrText');
     const panel = document.getElementById('mistakeCreateOcrPanel');
     const meta = document.getElementById('mistakeCreateOcrMeta');
@@ -638,7 +656,7 @@ async function recognizeMistakeCreateFile() {
     if (panel) panel.style.display = 'grid';
     if (meta) {
       const parts = [];
-      if (result.provider) parts.push(`识别来源：${result.provider}`);
+      if (result.provider) parts.push(`识别来源：${ocrProviderLabel(result.provider)}`);
       if (Number.isFinite(result.confidence)) parts.push(`置信度 ${Math.round(result.confidence * 100)}%`);
       if (result.warnings?.length) parts.push(result.warnings.join('；'));
       meta.textContent = parts.join(' · ');
