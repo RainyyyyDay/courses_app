@@ -146,7 +146,7 @@ function openPlanScheduleDay(date) {
   // 总量永远按“当天完整排期”算；会话只覆盖其中一部分状态时，不能把其他项目藏掉。
   const source = planDayItems(day);
   const statsTotal = source.length;
-  const statsPassed = source.filter(item => item.status === 'completed' && item.result !== 'failed').length;
+  const statsPassed = source.filter(item => item.status === 'completed' && item.result === 'passed').length;
   const statsSkipped = source.filter(item => item.status === 'skipped').length;
   const stats = statsTotal
     ? `<p class="plan-day-stats">已完成 ${statsPassed} / ${statsTotal} · 待完成 ${statsTotal - statsPassed} · 已跳过 ${statsSkipped}</p>` : '';
@@ -157,7 +157,7 @@ function openPlanScheduleDay(date) {
     const pending = items.filter(item => !item.status || item.status === 'pending').length;
     const skipped = items.filter(item => item.status === 'skipped').length;
     const failed = items.filter(item => item.status === 'completed' && item.result === 'failed').length;
-    const passed = items.filter(item => item.status === 'completed' && item.result !== 'failed').length;
+    const passed = items.filter(item => item.status === 'completed' && item.result === 'passed').length;
     const allPassed = items.length > 0 && passed === items.length;
     const hasProgress = passed + failed + skipped > 0;
     const canResume = !!day.sessionId && ['active', 'paused'].includes(day.sessionStatus) && (day.sessionTypes || []).includes(type);
@@ -201,7 +201,7 @@ async function startPlanScheduleDay(date, type, action = '复习') {
   if (action === '继续') {
     // 只把这一天里还没成功复习的题带进新一轮（跳过/未通过/没做）。
     const items = planDayItems(day)
-      .filter(item => item.type === type && !item.sourceDeleted && !(item.status === 'completed' && item.result !== 'failed'))
+      .filter(item => item.type === type && !item.sourceDeleted && !(item.status === 'completed' && item.result === 'passed'))
       .map(item => ({ type: item.type, id: item.id }));
     if (!items.length) { showToast('这一天没有需要继续的内容'); return; }
     planReviewStarting = true;

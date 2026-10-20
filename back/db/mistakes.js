@@ -22,6 +22,7 @@ function mistakeColumns({ detail = false } = {}) {
   const names = new Set(db.prepare('PRAGMA table_info(mistakes)').all().map((column) => column.name));
   const columns = [...BASE_MISTAKE_COLUMNS];
   if (names.has('question_format')) columns.push('question_format');
+  if (names.has('question_format_confirmed')) columns.push('question_format_confirmed');
   if (names.has('options_json')) columns.push('options_json');
   if (names.has('choice_type')) columns.push('choice_type');
   if (names.has('question_format') && names.has('correct_option')) {
@@ -92,6 +93,11 @@ function createMistake(courseId, title, imageUrl, content, fileType, nodeIds, op
       ).run(courseId, title, imageUrl, fileType || '', content || '', nowText(), options.mistakeType,
         options.answerContent || '', options.explanation || '');
     const id = Number(info.lastInsertRowid);
+    if (db.prepare('PRAGMA table_info(mistakes)').all().some(column => column.name === 'question_format_confirmed')) {
+      // Explicit submitted format only; never infer confirmation from text/options/category.
+      const confirmed = options.questionFormatConfirmed ?? (options.questionFormat !== undefined);
+      db.prepare('UPDATE mistakes SET question_format_confirmed=? WHERE id=?').run(confirmed ? 1 : 0, id);
+    }
     const insert = db.prepare(
       'INSERT OR IGNORE INTO mistake_node_links (mistake_id, node_id) VALUES (?, ?)'
     );

@@ -6,7 +6,8 @@
  * 当前真正落地的是：
  *   - standard：沿用原有错题步骤机（回忆 → 看答案 → 自评）
  *   - choice_reproduction：选择题复现，客观判分
- * 其余模式先占位，避免以后把模式 id 写死在前端。
+ * cloze/self_explain/contrast/reading 通过通用材料工作台执行；旧步骤机可切换项仍保持两种。
+ * retry 为重新执行的动作，不注册第七套判分引擎。
  */
 const { db } = require('./connection');
 
@@ -27,20 +28,21 @@ const MODE_DEFINITIONS = {
     id: 'cloze',
     name: '挖空回忆',
     description: '对记忆型内容做挖空填空。',
-    implemented: false,
+    implemented: true, execution: 'workbench',
   },
   self_explain: {
     id: 'self_explain',
     name: '自述讲解',
     description: '用自己的话复述要点，再对照量规。',
-    implemented: false,
+    implemented: true, execution: 'workbench',
   },
   reading: {
     id: 'reading',
     name: '阅读标记',
     description: '阅读并标记“懂了/还要再看”，只作为曝光记录。',
-    implemented: false,
+    implemented: true, execution: 'workbench',
   },
+  contrast: {id:'contrast',name:'对比辨析',description:'按维度对比，复用开放作答与自评。',implemented:true,execution:'workbench'},
 };
 
 function fail(status, code, message) {
@@ -171,6 +173,7 @@ function setItemMode(courseId, type, id, modeId, source = 'user') {
   if (!['material', 'note', 'mistake'].includes(type)) fail(400, 'INVALID_ARGUMENT', '内容类型不合法');
   if (!['user', 'rule', 'ai', 'default'].includes(source)) fail(400, 'INVALID_ARGUMENT', 'modeSource 不合法');
   const mode = MODE_DEFINITIONS[modeId];
+  if(mode?.execution==='workbench')fail(409,'MODE_NOT_APPLICABLE','请通过“复习模式 / 手动材料”入口使用此模式');
   if (!mode || !mode.implemented) fail(400, 'INVALID_ARGUMENT', '这个复习模式还没有实现');
   if (type !== 'mistake' && modeId !== 'standard') {
     fail(409, 'MODE_NOT_APPLICABLE', '资料和笔记第一版只支持标准复习');

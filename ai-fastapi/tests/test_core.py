@@ -3,6 +3,7 @@ import copy
 from dataclasses import replace
 import importlib.util
 import json
+import re
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -15,6 +16,19 @@ FULL = {"question": "1+1=?", "student_answer": "3", "error_type": "careless"}
 
 
 class ContractTests(unittest.TestCase):
+    def test_documented_suggestion_modes_and_fallback_are_normalized(self):
+        modes = ['choice_reproduction', 'standard', 'cloze', 'self_explain', 'reading', 'contrast', 'retry']
+        plan = Path(__file__).resolve().parents[2] / 'docs/review-system-master-plan.md'
+        # Read the authoritative mode list, excluding the per-mode editing table below it.
+        mode_table = plan.read_text(encoding='utf-8').split('## 3. 模式清单', 1)[1].split('### 3.1', 1)[0]
+        documented = re.findall(r'^\| `([a-z_]+)`', mode_table, re.M)
+        self.assertEqual(documented, modes)
+        self.assertEqual([c['id'] for c in DEFAULT_RULES['categories']], modes + ['unclassified'])
+        for mode in modes + ['unclassified']:
+            self.assertEqual(normalize_result({'review_method': mode, 'reason': '演示', 'needs_review': True}, DEFAULT_RULES)['review_method'], mode)
+        for legacy in ['recall', 'guided']:
+            self.assertIsNone(normalize_result({'review_method': legacy, 'reason': '旧值', 'needs_review': True}, DEFAULT_RULES))
+
     def test_rules_match_original_node_file_exactly(self):
         original = Path(__file__).resolve().parents[2] / "ai-service/config/classification.json"
         self.assertEqual(DEFAULT_RULES, json.loads(original.read_text(encoding="utf-8")))
@@ -82,7 +96,7 @@ class CoreAsyncTests(unittest.IsolatedAsyncioTestCase):
     async def test_four_mock_categories_and_no_network(self):
         with patch.object(DeepSeekProvider, "classify", side_effect=AssertionError("network forbidden")):
             classifier = Classifier(Config())
-            for error_type, expected in [("knowledge_gap", "recall"), ("reasoning_gap", "guided"),
+            for error_type, expected in [("knowledge_gap", "cloze"), ("reasoning_gap", "self_explain"),
                                          ("careless", "retry"), ("unknown", "unclassified")]:
                 result, source = await classifier.classify({**FULL, "error_type": error_type})
                 self.assertEqual((result["review_method"], source, result["needs_review"]), (expected, "provider", True))

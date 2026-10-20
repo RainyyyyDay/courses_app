@@ -2,9 +2,10 @@
 function createReviewPickerFilters() {
   return Object.fromEntries(['material','note','mistake'].map(type=>[type,{q:'',favorite:false,status:'',category:'',tags:new Set(),tagsOpen:false,scroll:0}]));
 }
-function reviewPickerCard(row,selected,busy,choiceAttribute,selectAction,previewAction) {
+function reviewPickerCard(row,selected,busy,choiceAttribute,selectAction,previewAction,courseId=null) {
   const key=row.type+':'+row.id,title=escapeHtml(row.title || '（无标题）');
-  return `<article class="total-review-card"><input ${choiceAttribute}="${key}" aria-label="选择${title}" type="checkbox" ${selected ? 'checked' : ''} ${busy || !row.reviewable ? 'disabled' : ''} onchange="${selectAction}('${key}',this.checked)" /><button type="button" class="total-review-item-title" onclick="${previewAction}('${key}',this)">${title}</button><button type="button" class="total-review-item-preview" onclick="${previewAction}('${key}',this)" aria-label="预览${title}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>预览</button><small class="total-review-item-meta">${PLAN_TYPE_LABELS[row.type]} · ${mistakeStatusText(row.review_status)}${row.favorite ? ' · ★ 收藏' : ''}${!row.reviewable ? ' · 请先补齐题目或答案' : ''}</small></article>`;
+  const ai = row.type==='mistake' && courseId!==null && typeof mistakeAiSavedHtml==='function' ? mistakeAiSavedHtml(courseId,row.id) : '';
+  return `<article class="total-review-card"><input ${choiceAttribute}="${key}" aria-label="选择${title}" type="checkbox" ${selected ? 'checked' : ''} ${busy || !row.reviewable ? 'disabled' : ''} onchange="${selectAction}('${key}',this.checked)" /><button type="button" class="total-review-item-title" onclick="${previewAction}('${key}',this)">${title}</button><button type="button" class="total-review-item-preview" onclick="${previewAction}('${key}',this)" aria-label="预览${title}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>预览</button><small class="total-review-item-meta">${PLAN_TYPE_LABELS[row.type]} · ${mistakeStatusText(row.review_status)}${row.favorite ? ' · ★ 收藏' : ''}${!row.reviewable ? ' · 请先补齐题目或答案' : ''}</small>${ai ? `<small class="total-review-item-meta">${ai}</small>` : ''}</article>`;
 }
 function renderReviewPickerTags(state,prefix,changeAction) {
   const f=state.filters[state.tab],tags=new Map();
@@ -31,6 +32,7 @@ async function openReviewPickerPreview(state,candidate,trigger,ids,isCurrentStat
     const response=await requestApi(`${API}/${plural}/${candidate.id}`),row=await response.json();if(!isCurrent())return;
     if(row.course_id!==state.courseId)throw new Error('这条内容不属于当前课程');
     body.innerHTML=`<h3>${escapeHtml(row.title || '（无标题）')}</h3><p class="detail-meta">${PLAN_TYPE_LABELS[candidate.type]} · ${mistakeStatusText(row.review_status)}${candidate.type==='mistake' ? ' · '+(MISTAKE_TYPES[row.mistake_type] || '待分类') : ''}${row.favorite ? ' · ★ 收藏' : ''}</p><div>${rowNodes(row).map(tag=>tagChipHtml(tag,false,false)).join('')}</div>`;
+    if(candidate.type==='mistake' && ids===REVIEW_PICKER_PREVIEWS.total && typeof mistakeAiSavedHtml==='function') body.insertAdjacentHTML('beforeend',mistakeAiSavedHtml(state.courseId,candidate.id));
     const section=(label,content,fileUrl,fileType)=>{
       const heading=document.createElement('h4');heading.textContent=label;body.appendChild(heading);
       if(content){const text=document.createElement('div');text.className='detail-content';text.textContent=content;body.appendChild(text);}

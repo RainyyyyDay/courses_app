@@ -98,6 +98,7 @@ function testReviewSchedulingUnit() {
 async function testReviewSchedulingApi({ base, course }) {
   let sequence = 0;
   async function request(method, endpoint, body, status = 200) {
+    if(body&&['recall','reveal_answer'].includes(body.action)&&body.firstAnswer===undefined)body={...body,firstAnswer:'测试首次作答'};
     const response = await fetch(base + endpoint, {
       method,
       ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
@@ -161,7 +162,7 @@ async function testReviewSchedulingApi({ base, course }) {
   assert.equal(progress.stage, 'completed');
   const flowState = await request('GET', `/courses/${course.id}/review-items/mistake/${flow.id}/state`);
   assert.equal(flowState.reps, 1, '真实复习流程应自动记一次分');
-  assert.equal(flowState.lastGrade, 3, '清楚 + 正确 = Good');
+  assert.equal(flowState.lastGrade, 2, '看过参考答案后的自评最高为 Hard');
   assert.ok(flowState.dueDate > today);
 
   // 计划排期预览：所有出现日都在考试日之前

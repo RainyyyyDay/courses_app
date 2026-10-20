@@ -114,7 +114,7 @@ function createReadingReview(kind, label, resumeId, options = {}) {
       sessionId:options.sessionId || null,sessionItems:options.sessionItems || null};
     store(state.queue); await state.show();
   };
-  const successes = () => state.queue.ids.filter(id=>state.queue.results[id] === 'reviewed').length;
+  const successes = () => 0; // This legacy reader records exposure, not retrieval mastery.
   state.start = async () => {
     const s = state.selection;
     if (!s || !s.ids.size || s.loading || state.busy) return;
@@ -160,7 +160,7 @@ function createReadingReview(kind, label, resumeId, options = {}) {
     if (!current() || state.queue.finished) return;
     if(options.readOnly){el('Actions').innerHTML='<p>本项已处理，可使用上方按钮查看其他项目。</p>';return;}
     const queue = state.queue, disabled = !state.row || state.busy || queue.pending ? 'disabled' : '';
-    el('Progress').textContent = `第 ${queue.index+1} / ${queue.ids.length} 条 · 已处理 ${queue.index} 条 · 成功复习 ${successes()} 条`;
+    el('Progress').textContent = `第 ${queue.index+1} / ${queue.ids.length} 条 · 已处理 ${queue.index} 条 · 仅阅读曝光，不自动评分`;
     el('Actions').innerHTML = `<button data-material-review="reviewed" onclick="saveMaterialReview('reviewed')" ${disabled}>已复习</button>${queue.pending ? `<button onclick="retryMaterialReview()" ${state.busy ? 'disabled' : ''}>重试上次保存</button>` : ''}<button id="materialReviewNext" onclick="nextMaterialReview()" ${disabled}>跳过此条</button><button onclick="pauseMaterialReview()" ${state.busy ? 'disabled' : ''}>退出，稍后继续</button><button onclick="endMaterialReview()" ${state.busy ? 'disabled' : ''}>结束本轮</button>`;
     if(options.sessionId && typeof renderCenterReviewToolbar==='function')renderCenterReviewToolbar();
   };

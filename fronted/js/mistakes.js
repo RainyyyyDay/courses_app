@@ -24,6 +24,48 @@ function ensureMistakeUi() {
 }
 function rememberMistakeUi() { mistakeStorageSet('mistake-list:' + currentCourseId, mistakeUi); }
 function mistakeStatusText(status) { return status === 'reviewed' ? '已复习' : '未复习'; }
+function mistakeFormatHtml(row) {
+  const confirmed = row.question_format_confirmed === 1;
+  const name = confirmed ? (row.question_format === 'choice' ? '选择题' : '主观题') : '题型待确认';
+  return `<div class="mistake-format" data-format-id="${Number(row.id)}"><span class="mistake-state">${name}</span>${confirmed ? '' : `
+    <button type="button" class="edit-mini-btn" data-format-confirm onclick="event.stopPropagation();confirmMistakeFormat(${Number(row.id)}, '${row.question_format === 'choice' ? 'choice' : 'open'}')">${row.question_format === 'choice' ? '确认当前选择题' : '确认是主观题'}</button>
+    <button type="button" class="edit-mini-btn" data-format-edit onclick="event.stopPropagation();editMistakeFormatAsChoice(${Number(row.id)})">编辑为选择题</button>`}</div>`;
+}
+const mistakeFormatPending = new Set();
+function refreshMistakeFormat(row) {
+  currentMistakes = currentMistakes.map(item => item.id === row.id ? {...item, ...row} : item);
+  document.querySelectorAll('[data-format-id="'+row.id+'"]').forEach(node => { node.outerHTML = mistakeFormatHtml(row); });
+}
+async function confirmMistakeFormat(id, expectedFormat) {
+  const courseId = currentCourseId, key = courseId + ':' + id;
+  if (mistakeFormatPending.has(key)) return;
+  mistakeFormatPending.add(key);
+  try {
+    const row = await (await requestApi(`${API}/mistakes/${id}`)).json();
+    if (currentCourseId !== courseId || row.course_id !== courseId) return;
+    if (row.question_format !== expectedFormat) throw new Error('题型已被修改，请重新打开后确认');
+    const saved = await (await requestApi(`${API}/courses/${courseId}/mistakes/${id}`, {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({questionFormatConfirmed:true, expectedRevision:row.review_revision})
+    })).json();
+    if (currentCourseId !== courseId) return;
+    refreshMistakeFormat(saved);
+    if (mistakeDetailState?.id === id && mistakeDetailState.courseId === courseId) mistakeDetailState.row = saved;
+    showToast('题型已确认，复习进度保持不变');
+  } catch (err) { showToast(err.message || '确认失败，请重试'); }
+  finally { mistakeFormatPending.delete(key); }
+}
+function markMistakeFormatSelected() {
+  document.getElementById('mistakeEditFormatConfirmed').checked = true;
+}
+async function editMistakeFormatAsChoice(id) {
+  await editMistakeFromList(id);
+  if (!mistakeEditPending || mistakeEditPending.id !== id || !mistakeEditIsCurrent(mistakeEditPending)) return;
+  document.getElementById('mistakeEditFormat').value = 'choice';
+  markMistakeFormatSelected();
+  toggleMistakeChoiceFields('Edit');
+  refreshMistakeEditDirty();
+}
 function choiceLetters(count) {
   return Array.from({ length: Math.max(0, count) }, (_, index) => String.fromCharCode(65 + index));
 }
@@ -248,15 +290,19 @@ async function loadMistakes() {
             <div class="title">${escapeHtml(r.title)}</div>
             ${selecting ? `<input class="mistake-select-check" type="checkbox" value="${r.id}" aria-label="选择 ${escapeHtml(r.title)}" ${mistakeSelection.ids.has(r.id) ? 'checked' : ''} ${mistakeCannotReview(r) ? 'disabled' : ''} onchange="chooseMistake(${r.id}, this.checked)" />` : ''}
           </div>
+          ${mistakeFormatHtml(r)}
           ${selecting ? `<div class="mistake-line"><span class="mistake-state ${r.review_status === 'reviewed' ? 'mistake-state-reviewed' : ''}">${mistakeStatusText(r.review_status)}</span>${r.favorite ? '<span class="mistake-state">★ 已收藏</span>' : ''}${(r.knowledge || []).map(k => `<span class="mistake-state">${escapeHtml(k.name)}</span>`).join('')}</div>`
             : `<span class="material-review-badge">${mistakeStatusText(r.review_status)}</span>`}
           <div class="meta">${!r.image_url ? '手动输入' : (isImageFile(r.file_type, r.image_url) ? '图片' : '文件')} · ${escapeHtml(r.created_at || '')}</div>
           ${r.content ? `<div class="row-content">${escapeHtml(r.content)}</div>` : ''}
+          ${typeof mistakeAiSavedHtml === 'function' ? mistakeAiSavedHtml(courseId, r.id) : ''}
           ${selecting ? '' : `<div class="mistake-tags">${nodeChipsHtml(r)}</div>`}
           ${selecting && mistakeCannotReview(r) ? `<button type="button" class="mistake-inline-error mistake-repair" title="点击补齐内容" onclick="event.stopPropagation();${typeof mistakeReviewPicker !== 'undefined' && mistakeReviewPicker ? 'openMistakeReviewRepair' : 'openMistakeDetail'}(${r.id})">⚠️${mistakeCannotReview(r)}，暂不能勾选，请补齐内容。</button>` : ''}
         </div>
         <div class="mistake-actions" ${selecting ? 'style="display:none;"' : ''}>
           <button class="reading-favorite ${r.favorite ? 'is-favorite' : ''}" data-mistake-favorite="${r.id}" aria-label="${r.favorite ? '取消收藏' : '收藏'}" aria-pressed="${!!r.favorite}" ${mistakeFavoritePending.has(currentCourseId + ':' + r.id) ? 'disabled' : ''} onclick="event.stopPropagation();toggleMistakeFavorite(${r.id}, ${!r.favorite}, this)">${r.favorite ? '★' : '☆'}</button>
+          <button onclick="event.stopPropagation();openMistakeDetail(${r.id})">查看</button>
+          <button type="button" class="mistake-ai-entry" onclick="event.stopPropagation();openMistakeAiFromList(${r.id},this)">AI 复习建议</button>
           <button onclick="event.stopPropagation();editMistakeFromList(${r.id})">编辑</button>
           <button onclick="event.stopPropagation();delItem('mistakes', ${r.id}, loadMistakes)">删除</button>
         </div>
@@ -709,7 +755,7 @@ async function doCreateMistake(file, knowledgeIds, title, content) {
       ? `错题已保存，但答案附件上传失败：${answerError}`
       : (file ? '上传成功' : '已添加错题'));
     await loadMistakes();
-    return true;
+    return created;
   } catch (err) {
     showToast(err.message || '保存失败，请重试');
     return false;

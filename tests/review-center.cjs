@@ -7,7 +7,7 @@ const {DatabaseSync}=require('node:sqlite');
 function testReviewCenterMigration(source,temp) {
   const fixture=path.join(temp,'sessions-migration');fs.mkdirSync(fixture);fs.cpSync(path.join(source,'db'),path.join(fixture,'db'),{recursive:true});
   const schema=fs.readFileSync(path.join(source,'db/schema.js'),'utf8');
-  fs.writeFileSync(path.join(fixture,'db/schema.js'),schema.replace('CURRENT_DB_VERSION = 17','CURRENT_DB_VERSION = 12').replace('migrateReviewSessions();','').replace('migrateReviewScheduling();','').replace('migrateReviewResults();','').replace('migratePlanScheduleSnapshot();','').replace('migrateReviewModes();',''));
+  fs.writeFileSync(path.join(fixture,'db/schema.js'),schema.replace('CURRENT_DB_VERSION = 20','CURRENT_DB_VERSION = 12').replace('migrateReviewSessions();','').replace('migrateReviewScheduling();','').replace('migrateReviewResults();','').replace('migratePlanScheduleSnapshot();','').replace('migrateReviewModes();',''));
   const result=spawnSync(process.execPath,['-e',`
     const assert=require('node:assert/strict'),fs=require('node:fs'),store=require('./db/index.js'),d=store.db;
     assert.equal(d.prepare('PRAGMA user_version').get().user_version,12);
@@ -21,7 +21,7 @@ function testReviewCenterMigration(source,temp) {
     assert.equal(d.prepare('PRAGMA user_version').get().user_version,12);
     assert.equal(d.prepare("SELECT count(*) n FROM sqlite_master WHERE name='review_sessions'").get().n,0);
     d.exec('DROP TABLE idx_review_sessions_course');require('./db/schema.js');
-    assert.equal(d.prepare('PRAGMA user_version').get().user_version,17);
+    assert.equal(d.prepare('PRAGMA user_version').get().user_version,20);
     for(const t of before)assert.deepEqual(d.prepare('SELECT '+t.columns+' FROM '+t.name+' ORDER BY rowid').all(),t.rows);
     assert.equal(d.prepare('SELECT count(*) n FROM review_sessions').get().n,0,'no invented history');
     const session=store.createReviewSession(c.id,{requestId:'first',sourceType:'material',selectedItems:[{type:'material',id:m.id}]});
@@ -34,6 +34,7 @@ function testReviewCenterMigration(source,temp) {
 }
 async function testReviewCenterApi({base,temp}) {
   async function api(method,url,body,status=200) {
+    if(body&&['recall','reveal_answer'].includes(body.action)&&body.firstAnswer===undefined)body={...body,firstAnswer:'测试首次作答'};
     const response=await fetch(base+url,{method,...(body===undefined?{}:{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})});
     const json=await response.json();assert.equal(response.status,status,JSON.stringify(json));return json;
   }
@@ -80,7 +81,7 @@ async function testReviewCenterApi({base,temp}) {
     const result=await api('POST',w+'/events'+ctx,operation);assert.equal(result.reviewStatus,'unreviewed');
     assert.deepEqual(await api('POST',w+'/events'+ctx,operation),result,'existing requestId idempotency retained');
     await api('POST',w+'/events'+ctx,{...operation,requestId:'stale-new'},409);
-    after=await api('GET',url);assert.equal(after.status,'completed');assert.equal(after.completed,2);assert.equal(after.passed,1,'only the reviewed reading counts as completed');assert.equal(after.failed,1,'forgotten mistake is processed but not completed');assert.equal(after.skipped,1);assert.equal(after.progress,100);assert.equal(after.passRate,33);
+    after=await api('GET',url);assert.equal(after.status,'completed');assert.equal(after.completed,2);assert.equal(after.passed,0,'reading exposure is not retrieval success');assert.equal(after.exposed,1);assert.equal(after.failed,1,'forgotten mistake is processed but not completed');assert.equal(after.skipped,1);assert.equal(after.progress,100);assert.equal(after.passRate,0);
     const endedAt=after.completed_at;await api('POST',url+'/resume',{},409);await api('POST',url+'/position',{position:0},409);
     await api('POST',url+'/repeat',{requestId:'repeat-original'},201).then(row=>assert.notEqual(row.id,session.id));
     const two=await api('POST',prefix,{...body,requestId:'another-pending'},201);
@@ -100,7 +101,7 @@ async function testReviewCenterApi({base,temp}) {
     const plan=await api('POST',c+'/review-plans',{name:'session plan',startDate:'2026-10-17',examDate:'2026-10-18',selectedItems:[selectedItems[0]]},201);
     const linked=await api('POST',prefix,{requestId:'plan-linked',sourceType:'plan',sourceId:plan.id,scheduledDate:'2026-10-17',selectedItems:[selectedItems[0]]},201);
     await api('PATCH',c+'/materials/'+shared+'/review?sessionItemId='+linked.items[0].id,{reviewStatus:'reviewed'});
-    assert.equal((await api('GET',c+'/review-plans/'+plan.id)).completed,1);
+    assert.equal((await api('GET',c+'/review-plans/'+plan.id)).completed,0,'reading exposure does not complete a mastery plan task');
     const planRepeat=await api('POST',prefix+'/'+linked.id+'/repeat',{requestId:'plan-repeat'},201);assert.equal(planRepeat.items[0].plan_item_id,null,'repeat does not reopen old plan tasks');
     await api('DELETE','/materials/'+shared);await api('DELETE','/mistakes/'+shared);
     assert.equal((await api('GET',prefix+'/'+repeated.id)).status,'completed','deleted pending sources settle safely');
