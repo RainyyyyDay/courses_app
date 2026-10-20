@@ -44,6 +44,7 @@ function Set-MockEnvironment {
     # Override inherited provider/preload settings; never load a dotenv file.
     $env:AI_PROVIDER = 'mock'
     $env:AI_ENABLE_REAL = 'false'
+    $env:OCR_PROVIDER = 'mock'
     $env:PYTHONPATH = $dependencyPath
     Remove-Item Env:NODE_OPTIONS -ErrorAction SilentlyContinue
     Remove-Item Env:NPM_CONFIG_NODE_OPTIONS -ErrorAction SilentlyContinue
@@ -65,9 +66,11 @@ if ($Service -ne 'Main') {
         if ((Get-OccupiedPorts) -contains $port) { throw "端口 $port 已占用，未启动重复服务。" }
         if ($Service -eq 'Node') {
             Set-Location -LiteralPath $backendPath
-            $npmPath = Get-Tool 'npm.cmd'
+            $nodePath = Get-Tool 'node.exe'
             Write-Host '启动本地 Node 后端（会使用 back/data/app.db）…'
-            & $npmPath start
+            # The local launcher has its own fixed-mock contract. npm start may
+            # load .env or change independently; invoke the known entry directly.
+            & $nodePath server.js
         } else {
             Set-Location -LiteralPath $aiPath
             $pythonPath = Get-Tool 'python.exe'
@@ -107,10 +110,7 @@ try {
     if (-not (Test-Path -LiteralPath $dependencyPath -PathType Container)) {
         throw '缺少 .local-ai-deps 本地依赖目录。请联系项目维护者准备依赖；脚本不会自动安装。'
     }
-    $package = Get-Content -LiteralPath (Join-Path $backendPath 'package.json') -Raw | ConvertFrom-Json
-    if ($package.scripts.start -ne 'node server.js') { throw 'back/package.json 的启动命令已改变，请让维护者检查启动脚本。' }
     $nodePath = Get-Tool 'node.exe'
-    $null = Get-Tool 'npm.cmd'
     $pythonPath = Get-Tool 'python.exe'
     Set-MockEnvironment
 

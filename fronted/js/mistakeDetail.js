@@ -812,6 +812,7 @@ async function changeMistakeReviewMode(modeId) {
     const mode = await response.json();
     if (!mistakeDetailIsCurrent(state)) return;
     await refreshMistakeReview(state);
+    if(typeof rememberReviewModeSelection==='function')rememberReviewModeSelection({...state,type:'mistake'},modeId);
     showToast(`已切换为${mode.name || '新复习模式'}`);
   } catch (err) {
     if (mistakeDetailIsCurrent(state)) showToast(err.message);

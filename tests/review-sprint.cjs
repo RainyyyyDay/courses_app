@@ -3,6 +3,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
 const {fixture}=require('./mistake-format.cjs');
 const {runBrowser}=require('./browser-driver.cjs');
+const {reviewModeChecks}=require('./review-mode-checks.cjs');
 const {DatabaseSync}=require('node:sqlite');
 const {testReviewCenterApi}=require('./review-center.cjs');
 const {testReviewPlanApi}=require('./review-plans.cjs');
@@ -140,7 +141,8 @@ function scenario(base,courseId){return `window.COURSES_API_BASE=${JSON.stringif
         await submitMistakeChoice();check(mistakeDetailState.progress.choice.correct===true,'existing single/multiple UI still objectively grades');
         const score=await api('GET','/courses/${courseId}/review-items/mistake/'+choice.id+'/state');check(score.lastGrade===3,'objective choice remains Good after post-submit answer display');closeReviewCompleteModal();
       }
-      out.dataset.result='passed';out.textContent='sprint UI manual/edit/AI draft/attempt/reload/session passed';document.body.append(out);return;
+      await (${reviewModeChecks.toString()})(${courseId});
+      out.dataset.result='passed';out.textContent='sprint UI manual/edit/AI draft/attempt/reload/session and seven-mode routing passed';document.body.append(out);return;
     }
     const note=await api('POST','/courses/${courseId}/notes',{title:'手动挖空 UI',content:'首都为北京。'});
     await openResourceDetail('note',note.id);check(document.querySelector('[data-review-preparation]'),'normal detail has preparation entry');

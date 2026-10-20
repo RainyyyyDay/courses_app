@@ -291,7 +291,7 @@ async function renderCenterReviewItem() {
     if(item.status==='pending' && !saved?.finished && saved?.ids?.length===1 && saved.ids[0]===item.item_id)await controller.resume();
     else await controller.startItems([item.item_id]);
   }
-  if(centerReview===s)renderCenterReviewToolbar();
+  if(centerReview===s){renderCenterReviewToolbar();await routeCenterReviewMode(item,s.session);}
 }
 function renderCenterReviewToolbar() {
   const item=currentCenterItem(),bar=document.getElementById('centerReviewToolbar');if(!item || !bar)return;
@@ -299,7 +299,9 @@ function renderCenterReviewToolbar() {
   const s=centerReview,busy=s.busy || mistakeReviewBusy || activeReadingReview.busy,blocked=busy || centerReviewHasPendingSave();
   bar.innerHTML=`<strong>${escapeHtml(s.session.name)} · 第 ${s.position+1} / ${s.session.total} 项</strong><p>已完成 ${s.session.passed || 0} · 未通过 ${s.session.failed || 0} · 仅曝光 ${s.session.exposed || 0} · 跳过 ${s.session.skipped}</p><div class="mistake-toolbar"><button onclick="moveCenterReview(-1)" ${blocked || s.position===0 ? 'disabled' : ''}>上一项</button><button onclick="moveCenterReview(1)" ${blocked ? 'disabled' : ''}>下一项</button><button onclick="skipCenterReviewItem()" ${blocked || item.status!=='pending' ? 'disabled' : ''}>跳过</button><button onclick="pauseCenterReview()" ${busy ? 'disabled' : ''}>暂停，稍后继续</button></div>`;
   const modeButton=document.createElement('button');modeButton.type='button';modeButton.textContent='复习模式 / 手动材料';modeButton.disabled=blocked||item.status!=='pending';
-  modeButton.onclick=()=>openReviewWorkbench(item.item_type,item.item_id,{sessionItemId:item.id,sessionId:s.session.id,...(item.plan_item_id?{planItemId:item.plan_item_id}:{})});bar.querySelector('.mistake-toolbar').append(modeButton);
+  const context=centerWorkbenchContext(item,s.session),selection=workbenchSelection(context);
+  modeButton.textContent+=' · '+({user:'本次选择',ai:'已确认建议',rule:'默认推荐'})[selection.source]+'：'+AI_REVIEW_METHODS[selection.mode];
+  modeButton.onclick=()=>openReviewWorkbench(item.item_type,item.item_id,context);bar.querySelector('.mistake-toolbar').append(modeButton);
 }
 async function moveCenterReview(delta) {
   const s=centerReview;if(!s || s.busy || mistakeReviewBusy || activeReadingReview.busy || centerReviewHasPendingSave())return;
