@@ -288,6 +288,8 @@ async function confirmTagPicker() {
   }
 
   const button = document.getElementById('tagPickerConfirm');
+  const autoInput = typeof coursesAiSettings!=='undefined' && resourceType==='mistake' && mode!=='edit' && !state.createdMistake
+    ? coursesAiSettings.captureCreation() : null;
   state.saving = true;
   button.disabled = true;
   if (state.aiCreate) {
@@ -320,6 +322,7 @@ async function confirmTagPicker() {
       saved = await saveResourceTags(resourceType, resourceId, nodeIds, title);
     }
     if (saved && tagPickerState === state && currentCourseId === state.courseId) {
+      if(autoInput)void coursesAiSettings.afterCreated(saved,autoInput);
       if (state.aiCreate) {
         state.createdMistake = saved;
         if (!saveCreatedMistakeAi(state, saved)) {

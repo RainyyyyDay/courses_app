@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DeepSeek 官方临时测试</title>
+<style>body{font:16px/1.6 system-ui,sans-serif;max-width:800px;margin:24px auto;padding:0 16px;color:#24324b}label{display:block;margin:16px 0}input,select,textarea,button{font:inherit;box-sizing:border-box;max-width:100%;padding:8px}input[type=password],select,textarea{display:block;width:100%}button{margin:8px 8px 8px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f2f5fa;padding:16px}small{color:#526078}fieldset{min-width:0;border:1px solid #ccd4e0}</style></head>
+<body><h1>DeepSeek 官方临时测试</h1>
+<p>仅连接 <strong>https://api.deepseek.com</strong>。Key 不写入数据库或浏览器存储；不会修改网站默认 Mock、错题、复习进度或已保存建议。</p>
+<p>请求会经过本网站后端。测试可能产生费用；测试建议时，所填题目会发送到 DeepSeek。不要填写隐私资料。</p>
+<form id="testForm" autocomplete="off">
+<fieldset id="controls"><legend>本次凭据与输入</legend>
+<label>服务商：DeepSeek 官方（不支持自定义地址／中转站）</label>
+<label>API Key<input id="apiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512" required></label>
+<small>每次请求发送后清空 Key；再次测试请重新填写。不保证浏览器插件或密码管理器不会保存输入。</small>
+<label>模型<select id="model"><option>deepseek-flash</option><option>deepseek-v4-pro</option></select></label>
+<label>题目<textarea id="question" maxlength="4000">1+1=?</textarea></label>
+<label>学生答案<textarea id="studentAnswer" maxlength="4000">3</textarea></label>
+<label>参考答案（可选）<textarea id="correctAnswer" maxlength="4000">2</textarea></label>
+<label>解题过程（可选）<textarea id="solutionSteps" maxlength="4000"></textarea></label>
+<label>我认为的错误原因（可选线索）<select id="errorType"><option value="">不确定，请 AI 辅助分析</option><option value="careless">执行失误（careless）</option><option value="knowledge_gap">知识缺漏（knowledge_gap）</option><option value="reasoning_gap">推理缺漏（reasoning_gap）</option></select></label>
+<label><input id="confirmCost" type="checkbox" required>我同意本次发送请求，知晓可能产生费用及所填内容将发送至 DeepSeek。</label>
+<button type="submit" value="connection">测试连接（固定虚构题目）</button>
+<button type="submit" value="classify">测试复习建议（发送上方输入）</button>
+</fieldset></form>
+<button id="clear" type="button">清空 Key 和结果</button>
+<p id="status" role="status">尚未发送任何请求。</p><pre id="result" aria-live="polite"></pre>
+<p><a href="/">返回网站（默认仍为 Mock）</a></p>
+<script src="/deepseek-test.js"></script></body></html>
