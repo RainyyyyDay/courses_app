@@ -520,7 +520,7 @@ async function openReviewCompleteModal(session) {
     : '本轮总复习完成';
   document.getElementById('mistakeCompleteText').textContent = perfect
     ? `本轮共 ${session.total} 项，全部通过。`
-    : `本轮共 ${session.total} 项${summary ? `：${summary}` : ''}。通过 ${session.passed || 0} 项，未通过 ${session.failed || 0} 项，跳过 ${session.skipped || 0} 项。`;
+    : `本轮共 ${session.total} 项${summary ? `：${summary}` : ''}。通过 ${session.passed || 0} 项，未通过 ${session.failed || 0} 项，仅阅读曝光 ${session.exposed || 0} 项，跳过 ${session.skipped || 0} 项。`;
   box.classList.add('show');
   document.body.classList.add('mistake-review-open');
   document.getElementById('mistakeCompleteTitle').focus();

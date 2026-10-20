@@ -16,16 +16,17 @@ from uuid import uuid4
 
 PATH = "/api/ai/classify"
 FIELDS = {"question", "student_answer", "error_type", "correct_answer", "context"}
-DEFAULT_RULES = {
-    "version": "example-1",
-    "instructions": "仅为待团队确认的演示规则。根据明确提供的 error_type 匹配，不得从答案臆测错误原因。无法匹配或证据不足时使用 unclassified。所有结果需要人工复核。",
-    "categories": [
-        {"id": "recall", "description": "演示：回忆知识", "error_types": ["knowledge_gap"]},
-        {"id": "guided", "description": "演示：引导练习", "error_types": ["reasoning_gap"]},
-        {"id": "retry", "description": "演示：重新作答", "error_types": ["careless"]},
-        {"id": "unclassified", "description": "信息不足或尚无合适规则，等待人工分类", "error_types": []},
-    ],
-}
+DEFAULT_RULES = {'version': 'review-modes-2',
+ 'instructions': '仅为演示规则。根据明确提供的 error_type 匹配；knowledge_gap→cloze、reasoning_gap→self_explain、careless→retry，其余返回 '
+                 'unclassified。不得从答案臆测错因。结果仅为需人工确认的复习模式建议，不代表实际引擎已实现，不改变错题分类或排期。',
+ 'categories': [{'id': 'choice_reproduction', 'description': '演示建议：选择复现', 'error_types': []},
+                {'id': 'standard', 'description': '演示建议：标准复习', 'error_types': []},
+                {'id': 'cloze', 'description': '演示建议：挖空回忆', 'error_types': ['knowledge_gap']},
+                {'id': 'self_explain', 'description': '演示建议：自述讲解', 'error_types': ['reasoning_gap']},
+                {'id': 'reading', 'description': '演示建议：阅读标记', 'error_types': []},
+                {'id': 'contrast', 'description': '演示建议：对比辨析', 'error_types': []},
+                {'id': 'retry', 'description': '演示建议：重新作答', 'error_types': ['careless']},
+                {'id': 'unclassified', 'description': 'AI 暂未给出可用建议，请人工选择；不是复习模式', 'error_types': []}]}
 # Match ECMAScript trim and string.length rather than Python's different Unicode rules.
 JS_SPACE = "\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
 
@@ -249,7 +250,10 @@ async def _read_body(request):
 
 async def _with_disconnect(request, classifier, body):
     async def watch():
-        while not await request.is_disconnected():
+        # Starlette's is_disconnected uses a cancellation scope; on some
+        # Python/AnyIO combinations it can consume task cancellation. Also
+        # stop cooperatively once classification completes (including errors).
+        while not work.done() and not await request.is_disconnected():
             await asyncio.sleep(0.05)
     work = asyncio.create_task(classifier.classify(body))
     disconnected = asyncio.create_task(watch())
@@ -274,7 +278,8 @@ def register(app, *, dependencies=None, config=None):
     from fastapi import APIRouter, Depends, HTTPException, Request
     from fastapi.responses import JSONResponse
     from fastapi.routing import APIRoute
-    if any(getattr(route, "path", None) == PATH for route in app.routes):
+    if (getattr(app.state, "_ai_mistake_registered", False) or
+            any(getattr(route, "path", None) == PATH for route in app.routes)):
         raise ValueError("AI route already registered")
     config = Config.from_env() if config is None else config
     classifier = Classifier(config)
@@ -313,4 +318,6 @@ def register(app, *, dependencies=None, config=None):
         return JSONResponse(result, headers={"X-AI-Result-Source": source})
 
     app.include_router(router)
+    # Newer FastAPI may retain included routers rather than flatten app.routes.
+    app.state._ai_mistake_registered = True
     return router

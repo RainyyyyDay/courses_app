@@ -8,7 +8,7 @@
 const { db } = require('./connection');
 
 // ===== 当前程序支持的数据库版本 =====
-const CURRENT_DB_VERSION = 17;
+const CURRENT_DB_VERSION = 20;
 
 // 判断某张表是否已经存在
 function tableExists(name) {
@@ -279,6 +279,59 @@ function migratePlanScheduleSnapshot() {
     const exists = db.prepare('PRAGMA table_info(review_plans)').all().some((c) => c.name === 'schedule_json');
     if (!exists) db.exec('ALTER TABLE review_plans ADD COLUMN schedule_json TEXT');
     setUserVersion(16);
+    db.exec('COMMIT');
+  } catch (err) { db.exec('ROLLBACK'); throw err; }
+}
+
+// ===== v18 → v19：首次作答证据、计时及曝光标记；既有记录原样保留 =====
+function migrateReviewEvidence() {
+  if (getUserVersion() !== 18) return;
+  db.exec('BEGIN');
+  try {
+    for (const [table, fields] of Object.entries({
+      mistake_review_progress: {first_answer:'TEXT',answer_revealed:'INTEGER NOT NULL DEFAULT 0',started_at:'TEXT',duration_ms:'INTEGER NOT NULL DEFAULT 0'},
+      review_item_events: {first_answer:'TEXT',answer_revealed:'INTEGER NOT NULL DEFAULT 0',evidence_json:'TEXT'},
+      review_session_items: {exposure_only:'INTEGER NOT NULL DEFAULT 0'}
+    })) {
+      const columns = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(c=>c.name));
+      for (const [name,ddl] of Object.entries(fields)) if (!columns.has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${ddl}`);
+    }
+    setUserVersion(19);db.exec('COMMIT');
+  } catch (err) {db.exec('ROLLBACK');throw err;}
+}
+// ===== v19 → v20：版本化材料、不可变轮次快照、幂等作答事件 =====
+function migrateReviewArtifacts() {
+  if (getUserVersion() !== 19) return;
+  db.exec('BEGIN');
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS review_artifacts (
+      course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      item_type TEXT NOT NULL, item_id INTEGER NOT NULL, mode_id TEXT NOT NULL,
+      version INTEGER NOT NULL, payload_json TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(course_id,item_type,item_id,mode_id));
+      CREATE TABLE IF NOT EXISTS review_mode_attempts (
+      id TEXT PRIMARY KEY, course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      item_type TEXT NOT NULL,item_id INTEGER NOT NULL,mode_id TEXT NOT NULL,
+      artifact_version INTEGER NOT NULL,snapshot_json TEXT NOT NULL,first_answer TEXT,
+      answer_revealed INTEGER NOT NULL DEFAULT 0,started_at TEXT NOT NULL,
+      stage TEXT NOT NULL DEFAULT 'question',version INTEGER NOT NULL DEFAULT 0,
+      grade INTEGER,duration_ms INTEGER NOT NULL DEFAULT 0,session_item_id INTEGER,
+      plan_item_id INTEGER,result_json TEXT);
+      CREATE TABLE IF NOT EXISTS review_mode_events (
+      attempt_id TEXT NOT NULL REFERENCES review_mode_attempts(id) ON DELETE CASCADE,
+      request_id TEXT NOT NULL,request_json TEXT NOT NULL,response_json TEXT NOT NULL,
+      PRIMARY KEY(attempt_id,request_id));`);
+    setUserVersion(20);db.exec('COMMIT');
+  } catch(err) {db.exec('ROLLBACK');throw err;}
+}
+// ===== v17 → v18：显式题型确认 =====
+function migrateQuestionFormatConfirmation() {
+  if (getUserVersion() !== 17) return;
+  db.exec('BEGIN');
+  try {
+    const exists = db.prepare('PRAGMA table_info(mistakes)').all().some(column => column.name === 'question_format_confirmed');
+    if (!exists) db.exec('ALTER TABLE mistakes ADD COLUMN question_format_confirmed INTEGER NOT NULL DEFAULT 0 CHECK(question_format_confirmed IN (0,1))');
+    setUserVersion(18);
     db.exec('COMMIT');
   } catch (err) { db.exec('ROLLBACK'); throw err; }
 }
@@ -557,6 +610,9 @@ migrateReviewScheduling();
 migrateReviewResults();
 migratePlanScheduleSnapshot();
 migrateReviewModes();
+migrateQuestionFormatConfirmation();
+migrateReviewEvidence();
+migrateReviewArtifacts();
 
 // ===== 建表：Phase 0 的基础结构（version 1）=====
 // 每一张“子表”都用 course_id 指向 courses(id)，

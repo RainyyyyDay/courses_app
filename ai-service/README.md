@@ -51,7 +51,7 @@ mock 响应：
 
 ## 分类配置
 
-编辑 `config/classification.json` 后重启。`categories` 是唯一类别白名单，`description` 与 `instructions` 会进入系统提示词，`error_types` 是 mock 的精确匹配规则。演示映射：knowledge_gap → recall，reasoning_gap → guided，careless → retry，其他 → unclassified。不要把示例标签当作已经确定的教学依据。
+编辑 `config/classification.json` 后重启。`categories` 是唯一类别白名单，`description` 与 `instructions` 会进入系统提示词，`error_types` 是 mock 的精确匹配规则。演示映射：knowledge_gap → cloze，reasoning_gap → self_explain，careless → retry，其他 → unclassified。不要把示例标签当作已经确定的教学依据。
 
 新增/删除类别无需改 Provider；id 必须唯一，error_types 不得重复，必须保留 unclassified。真实模型根据配置和输入分类；不能保证与 mock 精确匹配。没有明确错误原因时不从答案推断原因。信息不足的硬性门槛在 app.js 中；团队确定正式证据标准后应一起评审和调整。
 
@@ -93,3 +93,6 @@ Provider 接口：`classify(input, rules, { signal })` 返回 `{ review_method, 
 已经实现：请求体与字段上限、类型校验、白名单结果验证、全局内存限流与 Provider 并发上限、超时与取消、响应体上限、HTTP 接收超时、统一脱敏错误、服务端请求 ID、可选白名单诊断、生产启动阻断。限流进程重启即重置，不能当作线上配额系统。
 
 公开上线前仍必须完成：正式登录与授权、用户/课程数据权限、按用户的分布式限流和并发/费用配额、TLS 与可信代理配置、浏览器接入时的精确来源及 CSRF 策略、用户 Key 治理、脱敏审计与监控、隐私告知及保留策略、提示注入/分类质量评测和人工纠正流程。届时需专项评审并修改启动阻断，不能仅删除校验上线。本版不创建云资源、不购买服务、不自动部署。
+
+
+建议规则已与 FastAPI 和前端统一为 review-modes-2：七种模式为 choice_reproduction（选择复现）、standard（标准复习）、cloze（挖空回忆）、self_explain（自述讲解）、reading（阅读标记）、contrast（对比辨析）、retry（重新作答）。unclassified 只表示暂无可用建议，需人工选择，不是可保存的模式。仅建议/人工确认，不启用实际引擎；不会将浏览器旧值 recall/guided 自动映射。默认仍为 mock，本轮仅更新配置与mock测试。

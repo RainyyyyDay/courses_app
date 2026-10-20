@@ -36,7 +36,7 @@ function testMistakeMigrations(source, temp) {
         connection.db.exec('DROP TABLE idx_mistakes_filters');
       }
       const store = require('./db/index.js');
-      assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 17);
+      assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 20);
       if (${version} !== 0) {
         const row = store.getMistakeDetail(1);
         assert.equal(row.title, '旧错题');
@@ -51,17 +51,17 @@ function testMistakeMigrations(source, temp) {
       // 模拟可重复迁移（已有列/表），必须安全且不改数据。
       store.db.exec('PRAGMA user_version = 6');
       delete require.cache[require.resolve('./db/schema.js')]; require('./db/schema.js');
-      assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 17);
+      assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 20);
       assert.equal(JSON.stringify(store.db.prepare('SELECT * FROM mistakes').all()), snapshot);
       assert.deepEqual(store.db.prepare('PRAGMA foreign_key_check').all(), []);
       const probe = store.createMistake(1, '事务测试', '', '题目', '', [], {mistakeType:'knowledge', answerContent:'答案'});
       const started = store.applyMistakeReview(probe.id, {action:'start',requestId:'start',expectedVersion:0}, true);
       store.db.exec("CREATE TRIGGER reject_review_event BEFORE INSERT ON mistake_review_events WHEN NEW.request_id = 'fail' BEGIN SELECT RAISE(ABORT, 'test rollback'); END");
-      assert.throws(() => store.applyMistakeReview(probe.id, {action:'recall',recall:'forgotten',requestId:'fail',expectedVersion:started.version}));
+      assert.throws(() => store.applyMistakeReview(probe.id, {action:'recall',firstAnswer:'不记得',recall:'forgotten',requestId:'fail',expectedVersion:started.version}));
       assert.deepEqual(store.getMistakeReview(probe.id), started);
       assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM mistake_review_events WHERE mistake_id = ?').get(probe.id).n, 1);
       store.db.exec('DROP TRIGGER reject_review_event');
-      assert.equal(store.applyMistakeReview(probe.id, {action:'recall',recall:'forgotten',requestId:'fail',expectedVersion:started.version}).stage, 'completed');
+      assert.equal(store.applyMistakeReview(probe.id, {action:'recall',firstAnswer:'不记得',recall:'forgotten',requestId:'fail',expectedVersion:started.version}).stage, 'completed');
       store.deleteMistake(probe.id);
       assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM mistake_review_progress WHERE mistake_id = ?').get(probe.id).n, 0);
       assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM mistake_review_events WHERE mistake_id = ?').get(probe.id).n, 0);
@@ -76,6 +76,7 @@ function testMistakeMigrations(source, temp) {
 async function testMistakeApi({ base, course, child, other, restart }) {
   let sequence = 0;
   async function request(method, endpoint, body, status = 200) {
+    if(body && ['recall','reveal_answer'].includes(body.action) && body.firstAnswer===undefined)body={...body,firstAnswer:'测试首次作答'};
     const response = await fetch(base + endpoint, { method,
       ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
     const json = await response.json();
@@ -206,7 +207,7 @@ async function testMistakeApi({ base, course, child, other, restart }) {
     for (const positive of [true, false]) {
       const { result: started, body: startBody } = await operation(id, 'start');
       assert.equal(started.stage, 'question'); assert.equal(started.answer, null);
-      assert.deepEqual(started.allowedActions, ['reveal_answer']);
+      assert.deepEqual(started.allowedActions, ['reveal_answer','restart']);
       assert.deepEqual(await request('POST', reviewPath(id), startBody), started);
       if (type === 'unclassified' && positive) {
         await restart();
@@ -215,7 +216,7 @@ async function testMistakeApi({ base, course, child, other, restart }) {
       await operation(id, 'recall', { recall: 'clear' }, 409);
       await operation(id, 'judge', usesMastered ? { mastered: true } : { correct: true }, 409);
       const { result: revealed, body: revealBody } = await operation(id, 'reveal_answer');
-      assert.equal(revealed.stage, 'answer'); assert.deepEqual(revealed.allowedActions, ['judge']);
+      assert.equal(revealed.stage, 'answer'); assert.deepEqual(revealed.allowedActions, ['judge','restart']);
       if (type === 'unclassified') {
         assert.deepEqual(await request('POST', reviewPath(id) + '/events', revealBody), revealed);
         assert.equal((await request('POST', reviewPath(id) + '/events', {...revealBody, requestId: 'stale-unclassified-' + positive}, 409)).code, 'VERSION_CONFLICT');
@@ -388,7 +389,7 @@ async function testMistakeApi({ base, course, child, other, restart }) {
 
   let choiceStarted = await operation(choice.id, 'start');
   assert.equal(choiceStarted.result.stage, 'question');
-  assert.deepEqual(choiceStarted.result.allowedActions, ['choose']);
+  assert.deepEqual(choiceStarted.result.allowedActions, ['choose','restart']);
   assert.equal(choiceStarted.result.choice.correct, null);
   const wrongChoice = await operation(choice.id, 'choose', { selectedOption: 'C' });
   assert.equal(wrongChoice.result.stage, 'completed');

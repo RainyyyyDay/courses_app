@@ -9,6 +9,7 @@
  *   - 按计划生成「今天到考前」的排期预览。
  */
 const { db } = require('./connection');
+const {limitReviewGrade}=require('./reviewAnswers');
 const { planError, planToday } = require('./reviewPlanSchedule');
 const {
   PROFILES, profileFor, applyGrade, normalizeState, emptyState, isValidDate, retrievability, toDay, planOccurrences,
@@ -67,7 +68,9 @@ function getReviewItemState(courseId, type, id) {
 function recordGradeInTransaction({
   courseId, type, id, grade, reviewDate = planToday(), durationMs = 0,
   sessionId = null, sessionItemId = null, mistakeType = null, modeId = null,
+  firstAnswer = null, answerRevealed = false, evidence = null,
 }) {
+  grade=limitReviewGrade(grade,answerRevealed,evidence?.judgedBeforeReveal===true);
   if (sessionItemId !== null && db.prepare('SELECT 1 FROM review_item_events WHERE session_item_id=?').get(sessionItemId)) {
     return null;
   }
@@ -90,6 +93,10 @@ function recordGradeInTransaction({
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(courseId, type, id, now, reviewDate, grade, durationMs, sessionId, sessionItemId,
       before.stability, after.stability, before.difficulty, after.difficulty, before.dueDate, after.dueDate, modeId);
+  if (db.prepare('PRAGMA table_info(review_item_events)').all().some(c=>c.name==='first_answer')) {
+    db.prepare('UPDATE review_item_events SET first_answer=?,answer_revealed=?,evidence_json=? WHERE id=?')
+      .run(firstAnswer,answerRevealed?1:0,evidence===null?null:JSON.stringify(evidence),Number(info.lastInsertRowid));
+  }
   if (modeId) {
     db.prepare('UPDATE review_item_states SET last_mode_id=? WHERE course_id=? AND item_type=? AND item_id=?')
       .run(modeId, courseId, type, id);
@@ -125,13 +132,18 @@ function recordReviewItemGrade(courseId, type, id, body) {
     sessionId = item.session_id;
     const existing = db.prepare('SELECT * FROM review_item_events WHERE session_item_id=?').get(sessionItemId);
     if (existing) return { ...stateView(courseId, type, id, stateRow(courseId, type, id)), eventId: existing.id, duplicate: true };
+    const {reviewSessionContext,assertSessionItemWritable}=require('./reviewSessions');
+    assertSessionItemWritable(reviewSessionContext(sessionItemId,courseId,type,id));
   }
 
   db.exec('BEGIN');
   try {
+    const progress=type==='mistake'?db.prepare('SELECT * FROM mistake_review_progress WHERE mistake_id=?').get(id):null;
     const written = recordGradeInTransaction({
       courseId, type, id, grade, reviewDate, durationMs, sessionId, sessionItemId,
       mistakeType: type === 'mistake' ? source.mistake_type : null,
+      firstAnswer:progress?.first_answer??null,answerRevealed:!!progress?.answer_revealed,
+      evidence:{manualGrade:true,judgedBeforeReveal:progress?.choice_correct===1&&progress?.selected_option!==null},
     });
     db.exec('COMMIT');
     if (!written) {
@@ -273,7 +285,7 @@ function getReviewPlanSchedule(courseId, planId) {
         SUM(CASE WHEN status='completed' AND result='failed' THEN 1 ELSE 0 END) failed,
         SUM(CASE WHEN status!='completed' THEN 1 ELSE 0 END) open,
         SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) completed,
-        SUM(CASE WHEN status='completed' AND result!='failed' THEN 1 ELSE 0 END) passed,
+        SUM(CASE WHEN status='completed' AND result='passed' THEN 1 ELSE 0 END) passed,
         SUM(CASE WHEN status='skipped' THEN 1 ELSE 0 END) skipped,
         SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) pending
         FROM review_session_items WHERE session_id=?`).get(session.id);
@@ -287,7 +299,7 @@ function getReviewPlanSchedule(courseId, planId) {
       };
       sessionTypes = db.prepare('SELECT DISTINCT item_type FROM review_session_items WHERE session_id=?')
         .all(session.id).map(row => row.item_type);
-      sessionItems = db.prepare(`SELECT item_type,item_id,title_snapshot,status,result
+      sessionItems = db.prepare(`SELECT item_type,item_id,title_snapshot,status,CASE WHEN exposure_only=1 THEN 'exposure' ELSE result END AS result
         FROM review_session_items WHERE session_id=? ORDER BY position`).all(session.id).map(row => ({
         type: row.item_type,
         id: row.item_id,
@@ -303,7 +315,7 @@ function getReviewPlanSchedule(courseId, planId) {
     })));
     if (session) {
       const active = items.filter(item => item.status !== 'skipped');
-      const passed = active.filter(item => item.status === 'completed' && item.result !== 'failed').length;
+      const passed = active.filter(item => item.status === 'completed' && item.result === 'passed').length;
       state = active.length && passed === active.length ? 'done' : 'partial';
     }
     return {
@@ -352,7 +364,7 @@ function getReviewPlanSchedule(courseId, planId) {
       preview?.sessionItems || [],
     );
     const active = items.filter(row => row.status !== 'skipped');
-    const completed = active.filter(row => row.status === 'completed' && row.result !== 'failed').length;
+    const completed = active.filter(row => row.status === 'completed' && row.result === 'passed').length;
     return {
       date,
       minutes: items.reduce((sum, row) => sum + (Number(row.minutes) || 5), 0),
@@ -414,7 +426,7 @@ function getPlanScheduleStats(courseId, planId) {
     for (const item of items) {
       total += 1;
       if (item.status === 'completed') {
-        if (item.result === 'failed') failed += 1; else passed += 1;
+        if (item.result === 'failed') failed += 1; else if(item.result==='passed') passed += 1; else pending += 1;
       } else if (item.status === 'skipped') skipped += 1;
       else pending += 1;
     }

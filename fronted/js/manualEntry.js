@@ -83,9 +83,10 @@ async function doCreateManual(nodeIds) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.message || '保存失败');
     }
+    const created = pending.type === 'mistake' ? await res.json().catch(() => ({})) : true;
     showToast('已添加' + cfg.label);
     await cfg.reload();
-    return true;
+    return created;
   } catch (err) {
     console.error('手动输入保存失败:', err);
     showToast(err.message || '保存失败，请重试');

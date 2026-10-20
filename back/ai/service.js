@@ -99,4 +99,17 @@ function health() {
   return { status: 'ok', provider: port.name, local_only: port.name === 'mock' };
 }
 
-module.exports = { createCloze, evaluateCloze, evaluateAnswer, recommendMode, health };
+async function createReviewDraft(body) {
+  const modeId=body?.modeId;
+  if(!['standard','cloze','self_explain','reading','contrast'].includes(modeId))invalid('不支持的草稿模式');
+  const text=requiredText(body.text,'text',20000);
+  // This demo endpoint always reuses the local deterministic provider, irrespective of env.
+  const material={prompt:text,reference:modeId==='reading'?'':'Mock 演示参考要点（请人工核对）：'+text,rubric:modeId==='reading'?'':'核对是否覆盖关键概念与推理；最终档位由用户确认。',blanks:[],objects:[],dimensions:[]};
+  if(modeId==='cloze'){
+    const generated=await createAiPort({provider:'mock'}).generateCloze({text,blankCount:3});material.prompt=generated.clozeText;
+    material.blanks=generated.blanks.map(b=>({...b,aliases:[]}));material.reference='';material.rubric='';
+  }
+  if(modeId==='contrast'){material.objects=['概念 A（请修改）','概念 B（请修改）'];material.dimensions=['定义','适用范围'];}
+  return {provider:'mock',needsReview:true,material};
+}
+module.exports = { createCloze, evaluateCloze, evaluateAnswer, recommendMode, health, createReviewDraft };

@@ -37,4 +37,5 @@ module.exports = {
   ...require('./reviewPlans'),
   ...require('./reviewSessions'),
   ...require('./reviewItems'),
+  ...require('./reviewArtifacts'),
 };

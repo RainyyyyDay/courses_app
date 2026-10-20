@@ -29,11 +29,11 @@ function sessionItems(id) {
   });
 }
 function sessionView(row,withItems=false) {
-  const items=sessionItems(row.id),counts={total:items.length,completed:0,pending:0,skipped:0,passed:0,failed:0};
+  const items=sessionItems(row.id),counts={total:items.length,completed:0,pending:0,skipped:0,passed:0,failed:0,exposed:0};
   for (const item of items) {
     counts[item.status]++;
     // 只有通过复习模式的项目才算「已完成」；未通过（答错/不记得）与跳过都只算看过一遍。
-    if(item.status==='completed') { if(item.result==='failed') counts.failed++; else counts.passed++; }
+    if(item.status==='completed') { if(item.exposure_only) counts.exposed++; else if(item.result==='failed') counts.failed++; else counts.passed++; }
   }
   const {request_json,create_request_id,...publicRow}=row;
   return {...publicRow,...counts,progress:counts.total ? Math.round((counts.completed+counts.skipped)/counts.total*100) : 0,
@@ -163,13 +163,9 @@ function saveSessionReadingReview(sessionItemId,row,type,status,setStatus,planIt
     assertSessionItemWritable(item);
     const task=item.plan_item_id ? reviewPlanContext(item.plan_item_id,row.course_id,type,row.id) : null;
     const result=setStatus(row.id,row.course_id,status);
-    if(task) completePlanItem(task);
-    completeSessionItem(item,null,null,'passed');
-    // 阅读类通过也写入记忆状态，排期才能按实际完成日期重新计算下次复习。
-    recordGradeInTransaction({
-      courseId: row.course_id, type, id: row.id, grade: 3,
-      reviewDate: planToday(), sessionId: item.session_id, sessionItemId: item.id,
-    });
+    // Reading is exposure/processed, not a successful retrieval or a grade.
+    completeSessionItem(item,null,null,null);
+    db.prepare('UPDATE review_session_items SET exposure_only=1 WHERE id=?').run(item.id);
     db.exec('COMMIT');return result;
   } catch(err) {db.exec('ROLLBACK');throw err;}
 }

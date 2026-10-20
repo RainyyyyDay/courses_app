@@ -15,11 +15,7 @@ function unavailableError(message = 'AI 服务暂不可用') {
   return Object.assign(new Error(message), { status: 502, code: 'AI_UNAVAILABLE' });
 }
 
-function normalizeAnswer(value) {
-  return String(value ?? '').toLowerCase()
-    .replace(/[\s\u3000]+/g, '')
-    .replace(/[，。；：、,.!?！？；：""''（）()\[\]【】]/g, '');
-}
+const {normalizeAnswer}=require('../db/reviewAnswers');
 
 function mockProvider() {
   return {

@@ -1,12 +1,91 @@
 /*
- * AI 请求适配层。这里只使用网站现有 API 基础地址；不保存密钥，也不允许客户端指定上游。
- * 当前网站尚无登录，后端会以 AI_AUTH_NOT_CONFIGURED 拒绝请求。
+ * AI 请求适配层。默认使用网站 API；宿主可在加载脚本前配置 COURSES_AI_API_BASE。
+ * 本地开发由 test_app.py 同源注入地址；正式部署沿用宿主配置。
  */
-async function classifyMistakeWithAi(input) {
-  const res = await requestApi(`${API}/ai/classify`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input)
+// Suggestion options only; selecting one does not activate its review engine.
+const AI_REVIEW_METHODS = Object.freeze({
+  choice_reproduction: '选择复现', standard: '标准复习', cloze: '挖空回忆',
+  self_explain: '自述讲解', reading: '阅读标记', contrast: '对比辨析', retry: '重新作答'
+});
+
+function mistakeAiError(code, status = 0) {
+  const messages = {
+    AI_AUTH_NOT_CONFIGURED: 'AI 服务尚未接入网站授权，暂不可用，请等待管理员完成联调。',
+    AI_API_NOT_CONFIGURED: '当前打开方式未配置 AI 接口。请启动本地 Node 和 FastAPI 服务，然后打开 http://127.0.0.1:3002/，不要直接双击 HTML 文件。',
+    LOCAL_MOCK_UNAVAILABLE: '无法连接本地 AI mock。请确认 FastAPI 在 3002 端口运行，启动后点击“重新获取 / 重试”；输入和已保存选择仍保留。',
+    AI_BUSY: 'AI 服务繁忙，请稍后重试。',
+    AI_TIMEOUT: 'AI 分类超时，请重试。',
+    INVALID_INPUT: '请检查输入：每项最多 4000 字，总请求不能超过 16KB。',
+    BODY_TOO_LARGE: '文字总量超过 16KB，请精简后重试。',
+    INVALID_RESPONSE: 'AI 返回格式不正确，本次建议未采用，请重试。',
+    NETWORK_ERROR: '无法连接 AI 服务，请检查网络后重试。'
+  };
+  const message = messages[code] || (status === 401 ? '请先登录后再使用 AI 分类。'
+    : status === 403 ? '当前账号无权使用 AI 分类。'
+    : status === 429 ? '请求过于频繁，请稍后重试。'
+    : status === 404 ? '网站尚未接入 AI 分类接口，请联系管理员。'
+    : status === 503 ? 'AI 服务暂不可用，请稍后重试。'
+    : 'AI 分类失败，请稍后重试。');
+  return Object.assign(new Error(message), { code, status });
+}
+
+async function classifyMistakeWithAi(input, { signal, timeoutMs = 20000 } = {}) {
+  const configured = globalThis.COURSES_AI_API_BASE;
+  if ((configured === undefined && globalThis.location?.protocol === 'file:')
+    || (configured !== undefined && (typeof configured !== 'string' || !configured.trim()))) {
+    throw mistakeAiError('AI_API_NOT_CONFIGURED');
+  }
+  const base = (configured ?? API).trim().replace(/\/$/, '');
+  const fields = ['question', 'student_answer', 'error_type', 'correct_answer', 'context'];
+  if (!input || typeof input !== 'object' || Array.isArray(input)
+    || Object.keys(input).some(key => !fields.includes(key))
+    || Object.values(input).some(value => typeof value !== 'string' || value.length > 4000)) {
+    throw mistakeAiError('INVALID_INPUT');
+  }
+  const body = JSON.stringify(input);
+  if (new TextEncoder().encode(body).length > 16384) throw mistakeAiError('BODY_TOO_LARGE');
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw mistakeAiError('INVALID_INPUT');
+  const controller = new AbortController();
+  let timer, onAbort;
+  // 总超时包含读取响应体；即使测试替身忽略 abort，也不会一直占住界面。
+  const cancelled = new Promise((_, reject) => {
+    onAbort = () => {
+      controller.abort();
+      reject(Object.assign(new Error('请求已取消'), { name: 'AbortError' }));
+    };
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener('abort', onAbort, { once: true });
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(mistakeAiError('AI_TIMEOUT', 504));
+    }, timeoutMs);
   });
-  return res.json();
+  const request = async () => {
+    if (signal?.aborted) throw Object.assign(new Error('请求已取消'), { name: 'AbortError' });
+    let res;
+    try {
+      res = await fetch(`${base}/ai/classify`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body, signal: controller.signal, cache: 'no-store'
+      });
+    } catch (err) {
+      if (controller.signal.aborted) throw err;
+      throw mistakeAiError(globalThis.COURSES_AI_LOCAL_MOCK ? 'LOCAL_MOCK_UNAVAILABLE' : 'NETWORK_ERROR');
+    }
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      // 不展示上游 message/detail/异常正文，以免泄露路径、凭据或内部信息。
+      throw mistakeAiError(typeof data?.error === 'string' ? data.error : 'HTTP_ERROR', res.status);
+    }
+    if (!data || typeof data.review_method !== 'string'
+      || (!Object.hasOwn(AI_REVIEW_METHODS, data.review_method) && data.review_method !== 'unclassified')
+      || typeof data.reason !== 'string' || !data.reason.trim() || data.reason.length > 500
+      || data.needs_review !== true) throw mistakeAiError('INVALID_RESPONSE');
+    return { review_method: data.review_method, reason: data.reason.trim(), needs_review: true };
+  };
+  try { return await Promise.race([cancelled, request()]); }
+  finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
+  }
 }

@@ -3,7 +3,7 @@
 const fs=require('node:fs');
 const {spawn}=require('node:child_process');
 
-async function runBrowser({chrome,profile,url,viewport,screenshot,noSandbox}) {
+async function runBrowser({chrome,profile,url,viewport,screenshot,noSandbox,initScript,blockedUrls}) {
   const browser=spawn(chrome,['--headless=new','--disable-gpu','--no-first-run','--no-default-browser-check',
     ...(noSandbox ? ['--no-sandbox','--disable-software-rasterizer'] : []),
     '--remote-debugging-port=0','--user-data-dir='+profile,'--window-size='+viewport.join(','),'about:blank'],{windowsHide:true});
@@ -31,6 +31,8 @@ async function runBrowser({chrome,profile,url,viewport,screenshot,noSandbox}) {
     const page=(method,params)=>send(method,params,sessionId);
     const [width,height]=viewport;
     await page('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<600,screenWidth:width,screenHeight:height});
+    if(initScript){await page('Page.enable');await page('Page.addScriptToEvaluateOnNewDocument',{source:initScript});}
+    if(blockedUrls){await page('Network.enable');await page('Network.setBlockedURLs',{urls:blockedUrls});}
     await page('Page.navigate',{url});
     const deadline=Date.now()+120000;
     while(Date.now()<deadline) {
