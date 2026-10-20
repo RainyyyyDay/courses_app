@@ -195,6 +195,7 @@ function setItemMode(courseId, type, id, modeId, source = 'user') {
   if (type === 'mistake' && before?.mode_id !== modeId) {
     db.prepare(`UPDATE mistake_review_progress
       SET stage='idle', recall=NULL, selected_option=NULL, choice_correct=NULL,
+          first_answer=NULL, answer_revealed=0, started_at=NULL, duration_ms=0,
           version=version+1, updated_at=?
       WHERE mistake_id=?`).run(new Date().toISOString(), id);
   }

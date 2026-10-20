@@ -17,7 +17,7 @@ async function fixture(run,{legacy=true}={}){
   try{
     for(const file of ['server.js','aiProxy.js','db.js'])fs.copyFileSync(path.join(root,'back',file),path.join(back,file));
     for(const folder of ['db','ai','ocr'])fs.cpSync(path.join(root,'back',folder),path.join(back,folder),{recursive:true,filter:p=>fs.statSync(p).isDirectory()||p.endsWith('.js')});
-    const env={...process.env,NODE_PATH:path.join(root,'back/node_modules'),AI_PROVIDER:'mock',AI_ENABLE_REAL:'false'};
+    const env={...process.env,NODE_PATH:path.join(root,'back/node_modules'),AI_PROVIDER:'mock',AI_ENABLE_REAL:'false',OCR_PROVIDER:'mock'};
     delete env.NODE_OPTIONS;delete env.NPM_CONFIG_NODE_OPTIONS;
     const schemaPath=path.join(back,'db/schema.js'),schema=fs.readFileSync(schemaPath,'utf8');
     if(legacy)fs.writeFileSync(schemaPath,schema.replace('CURRENT_DB_VERSION = 20','CURRENT_DB_VERSION = 17').replace('migrateQuestionFormatConfirmation();','').replace('migrateReviewEvidence();','').replace('migrateReviewArtifacts();',''));

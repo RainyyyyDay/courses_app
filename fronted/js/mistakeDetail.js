@@ -682,6 +682,8 @@ function mistakeChoiceHtml(p) {
 
 function renderMistakeReview(state) {
   const p = state.progress;
+  const roundKey=p.round+':'+p.mode?.id;
+  if(state.renderedRoundKey!==roundKey){state.firstAnswerDraft='';document.getElementById('mistakeFirstAnswer')?.remove();state.renderedRoundKey=roundKey;}
   const typedAnswer=document.getElementById('mistakeFirstAnswer')?.value || state.firstAnswerDraft || '';
   state.firstAnswerDraft=typedAnswer;
   const panel = document.getElementById('mistakeReviewPanel');
@@ -812,6 +814,7 @@ async function changeMistakeReviewMode(modeId) {
     const mode = await response.json();
     if (!mistakeDetailIsCurrent(state)) return;
     await refreshMistakeReview(state);
+    if(state.sessionItemId&&typeof rememberReviewSelection==='function')rememberReviewSelection({...state,type:'mistake'},modeId);
     showToast(`已切换为${mode.name || '新复习模式'}`);
   } catch (err) {
     if (mistakeDetailIsCurrent(state)) showToast(err.message);
