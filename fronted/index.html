@@ -126,8 +126,7 @@
     <div class="tab-pane active" id="pane-materials">
       <input type="file" id="materialFile" style="display:none" onchange="uploadMaterial()" />
       <div class="entry-btns">
-        <button class="upload-btn" onclick="document.getElementById('materialFile').click()">＋ 上传文件</button>
-        <button class="upload-btn upload-btn-plain" onclick="openManualModal('material')">＋ 手动输入</button>
+        <button class="upload-btn" onclick="openResourceCreate('material')">＋ 添加资料</button>
       </div>
       <div class="material-review-entry" style="display:none;"><button type="button" onclick="openMaterialReviewPicker()">开始复习</button><button id="materialReviewResume" type="button" onclick="resumeMaterialReview()" style="display:none;">继续上次复习</button></div>
       <div id="materialsBrowseFilters" class="reading-browse-filters"></div>
@@ -137,8 +136,7 @@
     <div class="tab-pane" id="pane-notes">
       <input type="file" id="noteFile" style="display:none" onchange="uploadNote()" />
       <div class="entry-btns">
-        <button class="upload-btn" onclick="document.getElementById('noteFile').click()">＋ 上传文件</button>
-        <button class="upload-btn upload-btn-plain" onclick="openManualModal('note')">＋ 手动输入</button>
+        <button class="upload-btn" onclick="openResourceCreate('note')">＋ 添加笔记</button>
       </div>
       <div class="material-review-entry" style="display:none;"><button type="button" onclick="openNoteReviewPicker()">开始复习</button><button id="noteReviewResume" type="button" onclick="resumeNoteReview()" style="display:none;">继续上次复习</button></div>
       <div id="notesBrowseFilters" class="reading-browse-filters"></div>
@@ -368,9 +366,26 @@
       </div>
       <div class="detail-section-title" id="resourceDetailSectionTitle">文件</div>
       <div id="resourceDetailPreview"></div>
+      <section id="resourceDetailOutlineSection" style="display:none;">
+        <div class="detail-section-title">重点总结 / 大纲
+          <button type="button" class="edit-mini-btn" onclick="openOutlineFullscreen()">全屏查看</button>
+        </div>
+        <div id="resourceDetailOutlineMap" class="outline-map"></div>
+      </section>
       <div class="detail-actions">
         <a id="resourceDetailOpen" class="detail-link" href="#" target="_blank">打开文件</a>
       </div>
+    </div>
+  </div>
+
+  <!-- 大纲结构图全屏 -->
+  <div class="modal-mask outline-fullscreen" id="outlineFullscreen">
+    <div class="outline-fullscreen-panel">
+      <div class="outline-fullscreen-head">
+        <b>重点总结 / 大纲</b>
+        <button type="button" class="edit-mini-btn" onclick="closeOutlineFullscreen()">关闭</button>
+      </div>
+      <div class="outline-fullscreen-body" id="outlineFullscreenBody"></div>
     </div>
   </div>
 
@@ -714,6 +729,47 @@
             </label>
           </div>
         </div>
+        <section id="tagPickerResourceFields" class="edit-card" style="display:none;">
+          <div class="edit-card-head">
+            <span class="edit-card-icon">📄</span>
+            <div class="edit-card-titles"><b id="tagPickerResourceTitle">资料</b><small>可上传附件，也可直接录入正文；两者至少填一个</small></div>
+            <button type="button" class="edit-mini-btn" id="tagPickerResourceClear" style="display:none;" onclick="clearPickerResourceContent()">清空</button>
+          </div>
+          <div class="edit-card-body">
+            <div id="tagPickerResourceFileSummary" class="mistake-create-file" style="display:none;"></div>
+            <div class="edit-file-actions">
+              <button type="button" class="edit-btn" onclick="document.getElementById('tagPickerResourceUpload').click()">上传附件</button>
+              <button type="button" class="edit-btn edit-btn-danger" id="tagPickerResourceRemove" style="display:none;" onclick="clearPickerResourceFile()">移除附件</button>
+            </div>
+            <input type="file" id="tagPickerResourceUpload" style="display:none" onchange="choosePickerResourceFile(this)" />
+            <textarea id="tagPickerResourceContent" rows="5" placeholder="正文 / 重点内容（可只上传附件）" oninput="updatePickerResourceClear()"></textarea>
+          </div>
+        </section>
+        <section id="tagPickerOutlineBlock" class="edit-card" style="display:none;">
+          <div class="edit-card-head">
+            <span class="edit-card-icon">🧭</span>
+            <div class="edit-card-titles"><b>重点总结 / 大纲</b><small>一行一条，缩进两格表示下一级；用来生成结构图</small></div>
+            <button type="button" class="edit-mini-btn" id="tagPickerOutlineGen" style="display:none;" onclick="generatePickerOutline()">自动生成</button>
+          </div>
+          <div class="edit-card-body">
+            <textarea id="tagPickerOutline" rows="6" placeholder="- 第一章&#10;  - 1.1 极限&#10;  - 1.2 连续"></textarea>
+          </div>
+        </section>
+        <section id="tagPickerMindmapBlock" class="edit-card" style="display:none;">
+          <div class="edit-card-head">
+            <span class="edit-card-icon">🗺️</span>
+            <div class="edit-card-titles"><b>思维导图</b><small>可以导入导图功能导出的 JSON，也可以直接用上面的大纲生成</small></div>
+          </div>
+          <div class="edit-card-body">
+            <div class="edit-file-actions">
+              <button type="button" class="edit-btn" onclick="document.getElementById('tagPickerMindmapFile').click()">导入导图 JSON</button>
+              <button type="button" class="edit-btn" onclick="generatePickerMindmap()">用大纲生成</button>
+              <button type="button" class="edit-btn edit-btn-danger" id="tagPickerMindmapClear" style="display:none;" onclick="clearPickerMindmap()">移除导图</button>
+            </div>
+            <input type="file" id="tagPickerMindmapFile" accept=".json,application/json" style="display:none" onchange="importPickerMindmap(this)" />
+            <div id="tagPickerMindmapSummary" class="mistake-create-file" style="display:none;"></div>
+          </div>
+        </section>
         <section id="tagPickerTagBlock" class="tag-picker-tag-block">
           <div id="tagPickerTagHeading" class="edit-card-head" style="display:none;">
             <span class="edit-card-icon">🔖</span>
@@ -1029,6 +1085,7 @@
   <script src="js/notes.js"></script>
   <script src="js/assessments.js"></script>
   <script src="js/ocrBrowser.js"></script>
+  <script src="js/outlineMap.js"></script>
   <script src="js/mistakes.js"></script>
 
   <!-- 录入流程：手动输入 + 选标签 -->

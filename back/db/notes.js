@@ -10,7 +10,7 @@ const { findKnowledgeNode, SUBTREE_CTE } = require('./knowledge');
 
 // ==================== 笔记 ====================
 
-const NOTE_COLUMNS = 'id, course_id, title, file_url, file_type, source, content, created_at, review_status, favorite';
+const NOTE_COLUMNS = 'id, course_id, title, file_url, file_type, source, content, outline, mindmap_json, created_at, review_status, favorite';
 
 // 笔记列表：字段和原来一样，额外给每条补一个 nodes 数组（标签节点）
 function listNotes(courseId) {
@@ -36,14 +36,14 @@ function setNoteFavorite(id, courseId, favorite) {
 
 // 新建笔记；nodeIds 可选，不传就是原来那条“没有标签”的笔记
 // content 是“手动输入”的正文；上传文件录入时传空字符串
-function createNote(courseId, title, fileUrl, fileType, source, nodeIds, content) {
+function createNote(courseId, title, fileUrl, fileType, source, nodeIds, content, outline, mindmapJson) {
   db.exec('BEGIN');
   try {
     const info = db
       .prepare(
-        'INSERT INTO notes (course_id, title, file_url, file_type, source, content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO notes (course_id, title, file_url, file_type, source, content, outline, mindmap_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
       )
-      .run(courseId, title, fileUrl, fileType, source, content || '', nowText());
+      .run(courseId, title, fileUrl, fileType, source, content || '', outline || '', mindmapJson || '', nowText());
     const id = Number(info.lastInsertRowid);
 
     const insert = db.prepare(

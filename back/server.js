@@ -52,6 +52,8 @@ app.use(express.static(path.join(__dirname, '..', 'fronted'), {
     res.setHeader('Cache-Control', longLived ? 'public, max-age=31536000, immutable' : 'no-cache');
   },
 }));
+// 思维导图（组员的功能包，静态资源，只读嵌入用）
+app.use('/mindmap', express.static(path.join(__dirname, '..', 'mindmap')));
 
 // ===== 错题标签（知识树节点）的解析与校验 =====
 
@@ -424,7 +426,9 @@ app.post('/api/courses/:id/materials', upload.single('file'), (req, res) => {
     req.file ? '/uploads/' + req.file.filename : '',
     req.file ? req.file.mimetype : '',
     nodeIds,
-    content
+    content,
+    typeof body.outline === 'string' ? body.outline : '',
+    typeof body.mindmapJson === 'string' ? body.mindmapJson : ''
   );
   res.status(201).json(newItem);
 });
@@ -510,7 +514,9 @@ app.post('/api/courses/:id/notes', upload.single('file'), (req, res) => {
     req.file ? req.file.mimetype : '',
     body.source || (req.file ? '手动上传' : '手动输入'),
     nodeIds,
-    content
+    content,
+    typeof body.outline === 'string' ? body.outline : '',
+    typeof body.mindmapJson === 'string' ? body.mindmapJson : ''
   );
   res.status(201).json(newItem);
 });
@@ -1033,6 +1039,16 @@ function aiApi(handler) {
 
 const reviewScope=req=>({courseId:mistakeCourse(req.params.courseId),type:req.params.itemType,id:positiveId(req.params.itemId)});
 app.post('/api/ai/review-draft',aiApi(async(req,res)=>res.json(await aiService.createReviewDraft(req.body))));
+
+// 重点总结 / 大纲：先用本地规则从正文提炼，不依赖模型
+app.post('/api/ai/outline', (req, res) => {
+  const text = typeof req.body?.text === 'string' ? req.body.text : '';
+  if (!text.trim()) return res.status(400).json({ message: '没有可提炼的正文' });
+  const { buildOutline } = require('./ai/outline');
+  const outline = buildOutline(text);
+  if (!outline) return res.status(422).json({ message: '没能从这段正文里提炼出大纲' });
+  res.json({ outline });
+});
 app.get('/api/courses/:courseId/review-items/:itemType/:itemId/materials/:modeId',mistakeApi((req,res)=>{
   const s=reviewScope(req);res.json(db.getReviewMaterial(s.courseId,s.type,s.id,req.params.modeId,req.query.view==='practice'));
 }));

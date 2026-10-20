@@ -89,6 +89,16 @@ function renderResourceDetail(resourceType, item) {
       ? '<div class="detail-content">' + escapeHtml(item.content) + '</div>'
       : '<div class="empty">这条' + label + '是手动输入的，但没有填内容。</div>';
   }
+
+  // 大纲结构图：有就显示，没有就整块隐藏
+  const outlineSection = document.getElementById('resourceDetailOutlineSection');
+  OUTLINE_MAP.currentTitle = item.title || '';
+  let outlineText = item.outline || '';
+  if (!outlineText && item.mindmap_json) {
+    try { outlineText = mindmapToOutline(JSON.parse(item.mindmap_json)); } catch { outlineText = ''; }
+  }
+  const hasOutline = renderOutlineMap(document.getElementById('resourceDetailOutlineMap'), outlineText, { rootTitle: item.title || '' });
+  if (outlineSection) outlineSection.style.display = hasOutline ? '' : 'none';
 }
 
 // 按文件类型做最简预览：图片直接显示、PDF 用 iframe，其它只给“打开文件”

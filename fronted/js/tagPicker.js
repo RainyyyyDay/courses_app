@@ -93,6 +93,29 @@ async function openTagPicker(mode, resourceType, resourceId) {
   // 名称那一行：上传和编辑时都显示，可以改名字。
   // 后缀单独做成一块固定文字（不进输入框），所以用户改不到它。
   const nameRow = document.getElementById('tagPickerNameRow');
+  // 资料 / 笔记：显示「重点总结 / 大纲」；手动输入模式下可以自动提炼
+  const outlineBlock = document.getElementById('tagPickerOutlineBlock');
+  const isResource = resourceType === 'material' || resourceType === 'note';
+  if (outlineBlock) {
+    outlineBlock.style.display = isResource && mode !== 'edit' ? 'block' : 'none';
+    const gen = document.getElementById('tagPickerOutlineGen');
+    if (gen) gen.style.display = isResource && mode === 'manual' && pendingManual?.content ? 'inline-flex' : 'none';
+    const mindmapBlock = document.getElementById('tagPickerMindmapBlock');
+    if (mindmapBlock) mindmapBlock.style.display = isResource && mode !== 'edit' ? 'block' : 'none';
+    renderPickerMindmapSummary();
+  }
+  const resourceFields = document.getElementById('tagPickerResourceFields');
+  if (resourceFields) {
+    const isResourceForm = resourceType === 'material' || resourceType === 'note';
+    resourceFields.style.display = isResourceForm ? 'block' : 'none';
+    if (isResourceForm) {
+      const titleEl = document.getElementById('tagPickerResourceTitle');
+      if (titleEl) titleEl.textContent = resourceType === 'note' ? '笔记' : '资料';
+      const contentEl = document.getElementById('tagPickerResourceContent');
+      if (contentEl && mode === 'manual' && pendingManual) contentEl.value = pendingManual.content || '';
+      renderPickerResourceSummary();
+    }
+  }
   const nameInput = document.getElementById('tagPickerName');
   const extChip = document.getElementById('tagPickerNameExt');
   const nameTip = document.getElementById('tagPickerNameTip');
@@ -227,6 +250,152 @@ function closeTagPicker() {
   pendingUploadFile = null;
   pendingAnswerFile = null;
   pendingManual = null;
+  const outlineInput = document.getElementById('tagPickerOutline');
+  if (outlineInput) outlineInput.value = '';
+  pendingMindmapJson = '';
+  const resourceContent = document.getElementById('tagPickerResourceContent');
+  if (resourceContent) resourceContent.value = '';
+  renderPickerResourceSummary();
+  const mindmapInput = document.getElementById('tagPickerMindmapFile');
+  if (mindmapInput) mindmapInput.value = '';
+  renderPickerMindmapSummary();
+}
+
+// 资料 / 笔记的统一入口：一个按钮直接进弹窗，附件在弹窗里选
+function openResourceCreate(type) {
+  pendingUploadFile = null;
+  pendingManual = null;
+  pendingMindmapJson = '';
+  return openTagPicker('upload', type, null);
+}
+
+// ===== 上传弹窗里的思维导图 =====
+let pendingMindmapJson = '';
+
+function renderPickerMindmapSummary() {
+  const box = document.getElementById('tagPickerMindmapSummary');
+  const clear = document.getElementById('tagPickerMindmapClear');
+  if (!box) return;
+  if (!pendingMindmapJson) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    if (clear) clear.style.display = 'none';
+    return;
+  }
+  let count = 0;
+  try { count = countMindmapNodes(JSON.parse(pendingMindmapJson)); } catch { count = 0; }
+  box.className = 'mistake-create-file';
+  box.style.display = 'flex';
+  box.innerHTML = `<span class="mistake-create-file-icon">🗺️</span><div><strong>已关联思维导图</strong><small>${count} 个节点 · 保存后可在详情页查看</small></div>`;
+  if (clear) clear.style.display = 'inline-flex';
+}
+
+function importPickerMindmap(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const map = JSON.parse(String(reader.result || ''));
+      if (!Array.isArray(map.nodes) || !map.nodes.length) throw new Error('JSON 里没有 nodes');
+      pendingMindmapJson = JSON.stringify(map);
+      renderPickerMindmapSummary();
+      showToast(`已导入导图，共 ${countMindmapNodes(map)} 个节点`);
+    } catch (err) {
+      pendingMindmapJson = '';
+      renderPickerMindmapSummary();
+      showToast('这个文件不是导图 JSON：' + err.message);
+    }
+  };
+  reader.onerror = () => showToast('文件读取失败');
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function generatePickerMindmap() {
+  const outline = (document.getElementById('tagPickerOutline')?.value || '').trim();
+  if (!outline) { showToast('先在上面填写大纲，或者先自动生成大纲'); return; }
+  const title = (document.getElementById('tagPickerName')?.value || '').trim() || '思维导图';
+  const map = outlineToMindmap(outline, title);
+  pendingMindmapJson = JSON.stringify(map);
+  renderPickerMindmapSummary();
+  showToast(`已生成导图，共 ${countMindmapNodes(map)} 个节点`);
+}
+
+function clearPickerMindmap() {
+  pendingMindmapJson = '';
+  renderPickerMindmapSummary();
+}
+
+// ===== 资料 / 笔记 的「文件 + 正文」卡片 =====
+function renderPickerResourceSummary() {
+  const box = document.getElementById('tagPickerResourceFileSummary');
+  const remove = document.getElementById('tagPickerResourceRemove');
+  if (!box) return;
+  if (!pendingUploadFile) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    if (remove) remove.style.display = 'none';
+    return;
+  }
+  box.style.display = 'flex';
+  box.innerHTML = `<span class="mistake-create-file-icon">📎</span><div><strong>${escapeHtml(pendingUploadFile.name)}</strong><small>${escapeHtml(pendingUploadFile.type || '附件')} · 保存后上传</small></div>`;
+  if (remove) remove.style.display = 'inline-flex';
+}
+
+function choosePickerResourceFile(input) {
+  pendingUploadFile = input.files?.[0] || null;
+  renderPickerResourceSummary();
+  const nameInput = document.getElementById('tagPickerName');
+  if (pendingUploadFile && nameInput && !nameInput.value.trim()) {
+    const parts = splitNameExt(pendingUploadFile.name || '');
+    nameInput.value = parts.base;
+    const chip = document.getElementById('tagPickerNameExt');
+    if (chip) { chip.textContent = parts.ext || ''; chip.style.display = parts.ext ? 'inline-block' : 'none'; }
+  }
+}
+
+function clearPickerResourceFile() {
+  pendingUploadFile = null;
+  const input = document.getElementById('tagPickerResourceUpload');
+  if (input) input.value = '';
+  renderPickerResourceSummary();
+}
+
+function updatePickerResourceClear() {
+  const button = document.getElementById('tagPickerResourceClear');
+  const content = document.getElementById('tagPickerResourceContent');
+  if (button) button.style.display = content?.value.trim() ? 'inline-flex' : 'none';
+}
+
+function clearPickerResourceContent() {
+  const content = document.getElementById('tagPickerResourceContent');
+  if (content) content.value = '';
+  updatePickerResourceClear();
+}
+
+// 从手动输入的正文提炼大纲（本地规则，不依赖模型）
+async function generatePickerOutline() {
+  const content = pendingManual?.content || '';
+  if (!content.trim()) { showToast('没有可用于提炼的正文'); return; }
+  const button = document.getElementById('tagPickerOutlineGen');
+  const original = button ? button.textContent : '';
+  if (button) { button.disabled = true; button.textContent = '提炼中…'; }
+  try {
+    const response = await requestApi(`${API}/ai/outline`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: content }),
+    });
+    const data = await response.json();
+    const input = document.getElementById('tagPickerOutline');
+    if (input) input.value = data.outline || '';
+    showToast('已生成大纲，可继续手动修改');
+  } catch (err) {
+    showToast(err.message);
+  } finally {
+    if (button) { button.disabled = false; button.textContent = original; }
+  }
 }
 
 // 选择器打开时锁住背景页面，别让它跟着一起滚。
@@ -305,9 +474,11 @@ async function confirmTagPicker() {
         if (!title && !file) { showToast('请输入名称'); return; }
         saved = await doCreateMistake(file, nodeIds, title, content);
       } else {
-        if (!file) return;
-        if (resourceType === 'material') saved = await doUploadMaterial(file, nodeIds, title);
-        else saved = await doUploadNote(file, nodeIds, title);
+        const content = (document.getElementById('tagPickerResourceContent')?.value || '').trim();
+        if (!file && !content) { showToast('请上传附件或填写正文'); return; }
+        const finalTitle = title.trim() || content.slice(0, 20) || (file ? file.name : '');
+        if (resourceType === 'material') saved = await doUploadMaterial(file, nodeIds, finalTitle, content);
+        else saved = await doUploadNote(file, nodeIds, finalTitle, content);
       }
     } else if (mode === 'manual') {
       if (!manual) return;

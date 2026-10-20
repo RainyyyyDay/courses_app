@@ -8,7 +8,7 @@
 const { db } = require('./connection');
 
 // ===== 当前程序支持的数据库版本 =====
-const CURRENT_DB_VERSION = 20;
+const CURRENT_DB_VERSION = 22;
 
 // 判断某张表是否已经存在
 function tableExists(name) {
@@ -613,6 +613,43 @@ migrateReviewModes();
 migrateQuestionFormatConfirmation();
 migrateReviewEvidence();
 migrateReviewArtifacts();
+
+// ===== v20 → v21：资料/笔记的「重点总结 / 大纲」 =====
+// 用来生成思维导图预览。纯文本，缩进表示层级；旧数据默认空字符串。
+function migrateOutlineField() {
+  if (getUserVersion() !== 20) return;
+  db.exec('BEGIN');
+  try {
+    for (const table of ['materials', 'notes']) {
+      const columns = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+      if (!columns.has('outline')) db.exec(`ALTER TABLE ${table} ADD COLUMN outline TEXT NOT NULL DEFAULT ''`);
+    }
+    setUserVersion(21);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+migrateOutlineField();
+
+// ===== v21 → v22：资料/笔记关联的思维导图（功能包导出的 map.json） =====
+function migrateMindmapField() {
+  if (getUserVersion() !== 21) return;
+  db.exec('BEGIN');
+  try {
+    for (const table of ['materials', 'notes']) {
+      const columns = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+      if (!columns.has('mindmap_json')) db.exec(`ALTER TABLE ${table} ADD COLUMN mindmap_json TEXT NOT NULL DEFAULT ''`);
+    }
+    setUserVersion(22);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+migrateMindmapField();
 
 // ===== 建表：Phase 0 的基础结构（version 1）=====
 // 每一张“子表”都用 course_id 指向 courses(id)，

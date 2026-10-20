@@ -58,17 +58,21 @@ async function uploadNote() {
 }
 
 // 真正上传笔记：file + source + nodeIds（title 是用户改过的名字）
-async function doUploadNote(file, nodeIds, title) {
+async function doUploadNote(file, nodeIds, title, content = '') {
   const uploadBtn = document.querySelector('#pane-notes .upload-btn');
   const originalText = uploadBtn.textContent;
   uploadBtn.textContent = '上传中…';
   uploadBtn.disabled = true;
 
   const fd = new FormData();
-  fd.append('file', file);
+  if (file) fd.append('file', file);
   if (title) fd.append('title', title);
+  if (content) fd.append('content', content);
   fd.append('source', '手动上传');
   fd.append('nodeIds', JSON.stringify(nodeIds));
+  const outline = document.getElementById('tagPickerOutline')?.value || '';
+  if (outline.trim()) fd.append('outline', outline);
+  if (pendingMindmapJson) fd.append('mindmapJson', pendingMindmapJson);
 
   try {
     const res = await fetch(`${API}/courses/${currentCourseId}/notes`, {

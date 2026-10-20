@@ -58,16 +58,20 @@ async function uploadMaterial() {
 }
 
 // 真正上传资料：file + nodeIds（title 是用户改过的名字，为空则后端用文件名）
-async function doUploadMaterial(file, nodeIds, title) {
+async function doUploadMaterial(file, nodeIds, title, content = '') {
   const uploadBtn = document.querySelector('#pane-materials .upload-btn');
   const originalText = uploadBtn.textContent;
   uploadBtn.textContent = '上传中…';
   uploadBtn.disabled = true;
 
   const fd = new FormData();
-  fd.append('file', file);
+  if (file) fd.append('file', file);
   if (title) fd.append('title', title);
+  if (content) fd.append('content', content);
   fd.append('nodeIds', JSON.stringify(nodeIds));
+  const outline = document.getElementById('tagPickerOutline')?.value || '';
+  if (outline.trim()) fd.append('outline', outline);
+  if (pendingMindmapJson) fd.append('mindmapJson', pendingMindmapJson);
 
   try {
     const res = await fetch(`${API}/courses/${currentCourseId}/materials`, {

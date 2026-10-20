@@ -10,7 +10,7 @@ const { findKnowledgeNode, SUBTREE_CTE } = require('./knowledge');
 
 // ==================== 资料 ====================
 
-const MATERIAL_COLUMNS = 'id, course_id, title, file_url, file_type, content, created_at, review_status, favorite';
+const MATERIAL_COLUMNS = 'id, course_id, title, file_url, file_type, content, outline, mindmap_json, created_at, review_status, favorite';
 
 // 资料列表：字段和原来一样，额外给每条补一个 nodes 数组（标签节点）
 function listMaterials(courseId) {
@@ -36,14 +36,14 @@ function setMaterialFavorite(id, courseId, favorite) {
 
 // 新建资料；nodeIds 可选，不传就是原来那条“没有标签”的资料
 // content 是“手动输入”的正文；上传文件录入时传空字符串
-function createMaterial(courseId, title, fileUrl, fileType, nodeIds, content) {
+function createMaterial(courseId, title, fileUrl, fileType, nodeIds, content, outline, mindmapJson) {
   db.exec('BEGIN');
   try {
     const info = db
       .prepare(
-        'INSERT INTO materials (course_id, title, file_url, file_type, content, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO materials (course_id, title, file_url, file_type, content, outline, mindmap_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
       )
-      .run(courseId, title, fileUrl, fileType, content || '', nowText());
+      .run(courseId, title, fileUrl, fileType, content || '', outline || '', mindmapJson || '', nowText());
     const id = Number(info.lastInsertRowid);
 
     const insert = db.prepare(
