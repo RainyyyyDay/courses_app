@@ -14,7 +14,7 @@
 | reading | 原阅读器及工作台均只记曝光/处理完成，不自动写 grade 或完成掌握型计划任务；可保存阅读标记/总结。 |
 | retry | 已定为动作，不是新引擎。旧错题通过原步骤机 restart 重开当前流程；工作台内已运行模式可复用同一材料再开轮次。已完成会话需从“再次复习”创建新会话，禁止重复记分。 |
 
-模式工作台入口在普通内容详情“准备复习材料”和总复习/考前计划运行时的“复习模式 / 手动材料”。材料准备不算复习，也不自动覆盖已确认的本地 AI 复习建议。当前新模式按本次会话项目显式选择；可明确采用保存的 AI 建议，但必须检查材料并开始本轮，不自动改变旧流程或所有后续会话的默认模式。
+模式工作台入口在普通内容详情“准备复习材料”和总复习/考前计划运行时的“复习模式 / 手动材料”。材料准备不算复习，也不覆盖已确认的本地 AI 复习建议。当前入口按“本次明确选择 → 已确认采用的 AI 建议 → 分类和已确认题型规则”选模式。模式建议不等于材料；缺材料可在当前会话点击“手动创建材料”，或“切换到可用模式”。已有题目和答案的错题直接复用 standard/retry，无需补一套材料。
 
 ## 迁移与数据保护
 
@@ -106,3 +106,36 @@ review-sprint 复用并运行原题型/错题/迁移回归，另覆盖 P0/P1/P2 
 - 浏览器是实际 Chrome，普通 index.html + 临时本地 HTTP 后端，1280×960 和 390×844 两种视口。检查真实 DOM、单/多选、行内空位、对比矩阵、讲解与核对、阅读勾选、前后答案可见性、retry 新轮次/历史、AI 采用到实际 modeId/评分、刷新恢复及会话归属；不是 demo 页面或仅检查按钮名称。
 - 未读取 .env、现有 data/uploads、未调用真实模型或生产库。长文自动分块、真实 AI/语义判分、完整历史明细页面仍是原有限制；原数据库运行、整站完整回归、真实手机触摸/软键盘没有验证。
 - 最终执行 `node --test tests/review-sprint.cjs tests/review-mode-rules.cjs tests/mistake-ai.cjs`：29/29 通过，无跳过，包含上述两个真实浏览器视口。所有变更 JavaScript 语法检查、git diff --check 通过。初轮曾发现切换时清空非空耗时字段导致 500，修正为 0；随后旧夹具的 OCR 默认 HTTP 导致 502，固定测试 Mock 后完整复测通过，不隐去过程失败。
+
+## 后续：一键模式切换与真实 OCR 配置
+
+- 页面为 index.html 的 mistakeDetailPage，运行入口 renderCenterReviewItem；原标准走 openMistakeDetail / renderMistakeReview / submitMistakeReview。工作台走 openReviewWorkbench / startWorkbenchAttempt / renderWorkbenchAttempt / submitWorkbenchAttempt，确认时实际传 reviewWorkbench.mode 为 modeId，不复制判分逻辑。
+- 已确认建议存本浏览器 mistake-ai-method:<courseId>:<mistakeId>；当前原生模式由 review_item_modes 与 mistake_review_progress 返回，工作台实际模式由 review_mode_attempts.mode_id 保存；本次选择复用 review-mode-selection:<courseId>:mistake:<id>:<sessionItemId>。一键控件使用 centerReview.quickMode.modeId，确认后同步到已有工作台，区分候选和实际执行。
+- 可运行建议默认选中；单击切标准，再单击切回。确认时复查材料，恢复已有轮次须同步 active 指针；无效/缺材料回退标准，说明缺项。手动模式与材料入口保留，草稿和已输入讲解按原轮次恢复，无新数据库字段。
+- 浏览器新增 tests/review-quick-mode-checks.cjs，接入原临时虚构库真实 Chrome 双视口；验证 AI 默认、标准确认、切回恢复、清空内存缓存后本地选择恢复、无建议/无效/缺材料回退及选择题目附件后 OCR 按钮实际出现。不会发送用户附件。
+- start-local.ps1 保持 AI=mock，OCR_PROVIDER=http、OCR_API_BASE=http://127.0.0.1:8001；先 OCR 健康再开业务后端。ocr-service/start.ps1 去除个人绝对路径，按 .venv / py -3 / PATH 选 Python，输出缺依赖和日志路径，不自动安装或切 Mock。
+- 本机所选 Python 为 Python314/python.exe（3.14.6），缺 fastapi、uvicorn、python-multipart、pillow、pymupdf、paddlepaddle、paddleocr。OCR 与主启动的检查均以退出码 1 明确拒绝；没有启动现有数据库、真实 OCR 或下载模型。因此不能宣称真实图片识别成功，也没有 8001 真实识别请求日志可展示。
+- 最终相关测试命令加入 tests/start-local.cjs 后 31/31 通过，无跳过；首轮曾发现切回已有 AI 轮次未恢复 active 指针，修复后复测通过。完整 Python/整站回归未运行；真实 OCR 端到端待用户批准准备环境后验收。
+- 正常网站的 3002 静态脚本 GET 已核对与磁盘一致；已有 3000/3002 进程保留，Node AI 健康接口确认 mock。8001 健康检查失败；实际主启动尝试因缺依赖退出 1，未新开业务服务。当前网站可能仍保留旧 Node 的 OCR 环境，只有准备好依赖并重启后才应用新启动配置。
+
+后续按用户要求，将一键入口中的 OCR 改为可选：缺依赖或启动失败只警告，网站/AI Mock 仍可启动，并在打开浏览器后再尝试 OCR。后端 OCR_PROVIDER 继续使用 http，不切 Mock；恢复 OCR 后无需重启通过新脚本启动的后端。上述严格 OCR 门禁及退出码 1 是先前版本记录。变更仅涉及启动脚本、启动回归与相关说明，不更改复习业务逻辑。
+## 此前：后端分支内部冲突整合及页面内作答
+
+当前后端分支恢复本地修改产生冲突。合并保留规则推荐、课程隔离、原生进度校验、新模式交互、AI/标准切换和可选 OCR 启动；OCR 启动脚本保留为可移植入口，而非个人绝对路径。
+
+复习会话中的作答与手动补材料均嵌入原复习页，用同一套工作台 DOM 与判分流程，不再打开 dialog。原生标准/选择题与工作台区域互斥；顶部按钮直接切换 AI/标准，设置在页内展开；普通详情的独立材料准备入口仍保留。兼容读取双方已发布的本地模式选择键，切换保留轮次、输入及历史证据。
+
+本轮最终执行 `node --test tests/start-local.cjs tests/review-sprint.cjs tests/review-mode-rules.cjs tests/mistake-ai.cjs`：31/31 通过，无跳过。实际 Chrome 普通网站入口、隔离 HTTP/SQLite 夹具，1280×960 与 390×844 均验证七种交互及单击立即切换；查看了两种视口截图，作答区在原页面内，无复习遮罩或重复原生作答区。初轮两处旧提示文字断言失败，按当前语义更新后完整复测通过。变更 JavaScript、两个 PowerShell 脚本语法检查与暂存/工作区 `git diff --check` 通过。
+
+当时的 10 个冲突文件已标记解决并暂存，未提交；该记录指后端分支内恢复修改的过程，不是下述后端合入 main 的状态。选择键为 `review-mode-selection:<courseId>:<sessionItemId>:<type>:<id>`，兼容只读旧布局；已有 active 指针在两种布局同步。未新增数据库字段，评分引擎、历史事件与已确认 AI 建议不改写。
+
+本轮未读取 .env、现有数据库或用户上传内容，未调用真实模型或启动/下载 OCR 模型。启动回归使用假进程和隔离测试服务，不代表真实 OCR 已识别成功。尝试只读请求 3002 的静态资源未能连接，未自动启动用户的业务服务；用户应运行项目一键入口后 Ctrl+F5 验证实际网站。独立材料准备窗口仅保留在非复习会话的普通详情入口。
+
+## 2026-10-20：后端分支合入 main 的 14 个文件冲突
+
+本次在 main（031288a）合入后端（17d0e01）时解决 14 个文件冲突。交付时保留合并状态，解决结果暂存，等待 GitHub Desktop 的 Continue merge 完成本地合并提交；没有推送远程。
+
+- 统一采用支持双存储键兼容与页内挂载的复习工作台，保留 main 的最新行为：有已保存 AI 建议就直接显示对应模式，缺材料显示准备入口；点击可切回原复习，再切回时恢复原轮次与草稿。未准备材料不创建作答轮次、不评分。没有有效建议沿用原生流程。保留错题列表、总复习和考前计划入口。
+- 合入确认题型检查、规则候选、会话模式同步与可选 OCR 启动。main 的 PaddleOCR 3.x app.py、固定依赖、浏览器 OCR、PDF 资源准备脚本保持原样；OCR 启动使用便携的解释器选择，文档不再依赖组员电脑路径。
+- 合并双方测试；缺材料的旧“自动改成标准”断言按 main 最新约定改为“显示建议、提示缺材料、允许切回原流程”。首轮相关测试 31/31 通过，无跳过；补充错题列表 AI 入口、原生 retry 恢复与切回后，两个真实 Chrome 视口再次通过。PowerShell 语法及差异格式检查通过。
+- 测试使用隔离 HTTP/SQLite 夹具与虚构启动进程，没有执行依赖安装或真实 OCR 识别。

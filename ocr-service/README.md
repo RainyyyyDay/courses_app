@@ -4,31 +4,27 @@
 
 服务本身不区分用户。用户身份、文件归属、配额、限流都由业务后端/网关负责，所以一套服务可以供所有用户共用。识别结果只用于前端校对，用户确认后才写入题干/选项/答案。
 
-## 已经装好的环境
+## 准备独立环境
 
-本机已建好独立虚拟环境（不污染 Anaconda base）：
-
-```
-C:\Users\LENOVO\anaconda3\envs\ocr
-```
-
-版本：Python 3.11.3、paddlepaddle 3.3.1、paddleocr 3.7.0、pymupdf 1.24.10。
-
-重建环境：
+参考环境为 Python 3.11、paddlepaddle 3.3.1、paddleocr 3.7.0、pymupdf 1.24.10；具体固定版本见 requirements.txt。安装命令需要手动执行，启动脚本不会安装依赖：
 
 ```powershell
-C:\Users\LENOVO\anaconda3\python.exe -m venv C:\Users\LENOVO\anaconda3\envs\ocr
-C:\Users\LENOVO\anaconda3\envs\ocr\Scripts\python.exe -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+Set-Location D:\GitCourcesWeb\courses_app\ocr-service
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
 ## 启动
 
 ```powershell
-cd D:\捞捞\courses_app\ocr-service
-C:\Users\LENOVO\anaconda3\envs\ocr\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8001
+Set-Location D:\GitCourcesWeb\courses_app\ocr-service
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -CheckOnly
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\start.ps1
 ```
 
-第一次真正识别时会自动下载模型（检测 + 识别约 70MB，需要联网），之后直接走缓存。模型缓存在 `%USERPROFILE%\.paddlex`。
+启动脚本按项目 `.venv` → `py -3` → PATH Python 选择解释器，检查依赖后后台启动，并输出 PID 和日志路径。默认只监听本机，`-Lan` 才监听局域网。健康检查不触发识别；第一次真正识别时可能联网下载模型。缓存由 `app.py` 选择 ASCII 路径，默认 `%USERPROFILE%\.paddlex`，用户名含中文时退到系统盘 `paddlex-cache`。
+
+主启动入口保持 AI=mock、OCR=http。OCR 缺失或失败只影响识别，网站仍可启动；已有后端需重启才能使用新环境配置。
 
 自检：
 
@@ -81,7 +77,7 @@ OCR_API_BASE=http://127.0.0.1:8001
 $env:OCR_PROVIDER = "mock"; npm run dev --prefix back
 ```
 
-前端始终只调后端的 `POST /api/ocr`，不直连 OCR 服务。OCR 只监听 `127.0.0.1`，不要暴露到公网。
+浏览器端识别优先使用 `fronted/vendor/ocr/` 的运行时资源；资源准备见 `docs/ocr-browser.md`。需要服务端回退时，前端调用业务后端的 `POST /api/ocr`，不直连 OCR 服务。OCR 默认只监听 `127.0.0.1`。
 
 出错时后端会透传原因：服务没起是 `无法连接 OCR 服务（…请先运行 ocr-service/start.ps1）`，图里没有文字是 `没有识别到文字，请换一张更清晰的文件`。
 

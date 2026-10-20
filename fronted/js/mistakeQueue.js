@@ -227,7 +227,8 @@ async function startMistakeQueue() {
       sessionId:session.id,sessionItems:reviewSessionMap(session) };
     dismissMistakeReviewPicker();
     saveMistakeQueue(); mistakeSelection = null;
-    await openMistakeDetail(mistakeQueue.ids[0], true);
+    if(selected.some(row=>readMistakeAiMethod({courseId:selection.courseId,id:row.id})))await enterCenterReview(session);
+    else await openMistakeDetail(mistakeQueue.ids[0], true);
   } catch (err) {
     if (mistakeReviewPicker) document.getElementById('mistakeReviewPickerError').textContent = err.message;
   } finally { mistakeQueueLoading = false; updateMistakeSelectionControls(); renderMistakeReviewPicker(); renderMistakeQueueBanner(); }
@@ -236,6 +237,7 @@ async function resumeMistakeQueue() {
   const saved = readMistakeQueue();
   if (!saved || saved.finished) return;
   if(saved.sessionId)await resumeRecordedReview(saved.sessionId);
+  if(saved.sessionId&&saved.ids.some(id=>readMistakeAiMethod({courseId:currentCourseId,id})))return resumeReviewRecord(saved.sessionId);
   mistakeQueue = saved; mistakeSelection = null;
   if (saved.index === saved.ids.length) { await showMistakeQueueComplete(); return; }
   await openMistakeDetail(saved.ids[saved.index], true);
