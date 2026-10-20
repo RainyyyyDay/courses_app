@@ -289,12 +289,27 @@ function renderMistakeEditFiles() {
     const fileType = file ? file.type : config.oldFileType;
     const previewUrl = file ? mistakeEditPreviewUrl(file) : (oldUrl ? base + oldUrl : '');
 
+    // 和上传弹窗保持同一种呈现：图标 + 文件名 + 类型/状态
     if (previewUrl) {
-      box.style.display = 'block';
-      box.innerHTML = isImageFile(fileType, previewUrl)
-        ? '<a href="' + escapeHtml(previewUrl) + '" target="_blank" rel="noopener"><img class="mistake-edit-thumb" src="' + escapeHtml(previewUrl) + '" alt="' + escapeHtml(config.label) + '" /></a>'
-        : '<a class="detail-link" href="' + escapeHtml(previewUrl) + '" target="_blank" rel="noopener">打开' + escapeHtml(config.label) + '</a>';
+      const rawName = decodeURIComponent(String(oldUrl || '').split('/').pop() || '');
+      const rawExt = (rawName.split('.').pop() || '').toLowerCase();
+      const baseName = config.displayName || config.label;
+      // 服务器存的是「时间戳-随机数.扩展名」，原文件名没保留，只能用标题/卡片名代替
+      const name = file
+        ? file.name
+        : (rawExt && !baseName.toLowerCase().endsWith('.' + rawExt) ? `${baseName}.${rawExt}` : baseName);
+      const ext = (name.split('.').pop() || '').toLowerCase();
+      const icon = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'].includes(ext)
+        ? '🖼'
+        : (ext === 'pdf' ? '📄' : '📎');
+      const typeText = (fileType || ext || '附件').toString();
+      box.className = 'edit-file-preview mistake-create-file';
+      box.style.display = 'flex';
+      box.innerHTML = `<span class="mistake-create-file-icon">${icon}</span><div>`
+        + `<strong><a class="detail-link" href="${escapeHtml(previewUrl)}" target="_blank" rel="noopener">${escapeHtml(name)}</a></strong>`
+        + `<small>${escapeHtml(typeText)} · ${file ? '保存后上传' : '已保存'}</small></div>`;
     } else {
+      box.className = 'edit-file-preview';
       box.style.display = 'none';
       box.innerHTML = '';
     }
@@ -310,14 +325,14 @@ function renderMistakeEditFiles() {
   paint({
     boxId: 'mistakeEditQuestionFile', removeId: 'mistakeEditQuestionRemove', uploadId: 'mistakeEditQuestionUploadBtn',
     ocrId: 'mistakeEditQuestionOcrBtn',
-    labelId: 'mistakeEditQuestionUploadLabel', label: '题目附件', uploadText: '上传新内容',
+    labelId: 'mistakeEditQuestionUploadLabel', label: '题目附件', displayName: row.title, uploadText: '上传新内容',
     oldUrl: row.image_url, oldFileType: row.file_type,
     removedFlag: pending.questionRemoved, file: pending.questionFile
   });
   paint({
     boxId: 'mistakeEditAnswerFile', removeId: 'mistakeEditAnswerRemove', uploadId: 'mistakeEditAnswerUploadBtn',
     ocrId: 'mistakeEditAnswerOcrBtn',
-    labelId: 'mistakeEditAnswerUploadLabel', label: '答案附件', uploadText: '上传新内容',
+    labelId: 'mistakeEditAnswerUploadLabel', label: '答案附件', displayName: '答案附件', uploadText: '上传新内容',
     oldUrl: row.answer_image_url, oldFileType: row.answer_file_type,
     removedFlag: pending.answerRemoved, file: pending.answerFile
   });
@@ -365,7 +380,8 @@ function updateMistakeEditOcrActions() {
 
 async function recognizeMistakeEditFile(kind) {
   const pending = mistakeEditPending;
-  const row = mistakeDetailState && mistakeDetailState.row;
+  // 以编辑态自己保存的行数据为准：详情页状态可能是旧快照
+  const row = pending?.row || (mistakeDetailState && mistakeDetailState.row);
   const isQuestion = kind === 'question';
   const newFile = isQuestion ? pending?.questionFile : pending?.answerFile;
   const removed = isQuestion ? pending?.questionRemoved : pending?.answerRemoved;

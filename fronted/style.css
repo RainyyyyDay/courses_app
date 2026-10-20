@@ -1640,6 +1640,33 @@ body.mistake-edit-open { overflow: hidden; }
 .edit-open-answer-fields { display: grid; gap: 10px; }
 .edit-choice-config { display: grid; gap: 10px; margin-top: 4px; padding-top: 10px; border-top: 1px dashed #e5e9f1; }
 .edit-choice-config > label, .edit-choice-fields label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #667187; }
+/* 题型那一条要和上传弹窗对齐：标签在上、下拉占满，确认框单独一行靠左 */
+#mistakeEditModal .edit-choice-config > .mistake-format-confirm {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin: 0;
+  font-size: 13px;
+  color: #667187;
+  cursor: pointer;
+}
+#mistakeEditModal .mistake-format-confirm input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: #4a6cf7;
+}
+#mistakeEditModal .edit-format-hint {
+  display: block;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #8a93a5;
+}
 .edit-choice-fields { display: grid; gap: 10px; }
 .choice-option-editor { display: grid; gap: 8px; }
 .choice-option-list { display: grid; gap: 8px; }

@@ -596,8 +596,8 @@
                   <option value="choice">选择题</option>
                 </select>
               </label>
-              <label class="mistake-format-confirm"><input type="checkbox" id="mistakeEditFormatConfirmed" onchange="refreshMistakeEditDirty()" />已确认此题型</label>
-              <small>改变题型、选项或答案会按原规则重新开始本题复习；历史评分和复习记录保留。仅确认原题型不影响复习进度。</small>
+              <label class="mistake-format-confirm"><input type="checkbox" id="mistakeEditFormatConfirmed" onchange="refreshMistakeEditDirty()" /><span>已确认此题型</span></label>
+              <small class="edit-format-hint">改变题型、选项或答案会按原规则重新开始本题复习；历史评分和复习记录保留。仅确认原题型不影响复习进度。</small>
               <div id="mistakeEditChoiceFields" class="edit-choice-fields" style="display:none;">
                 <label class="mistake-create-field">选择方式
                   <select id="mistakeEditChoiceType" onchange="changeMistakeChoiceType('Edit');refreshMistakeEditDirty()">
