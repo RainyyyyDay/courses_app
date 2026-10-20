@@ -957,9 +957,6 @@ body.mistake-review-open { overflow: hidden; }
 .review-workbench { position:fixed;inset:0;margin:auto;padding:0;border:0;border-radius:12px;width:min(720px,calc(100% - 24px));max-height:calc(100dvh - 24px);overflow:hidden; }
 .review-workbench[open] { display:flex;flex-direction:column; }
 .review-workbench::backdrop { background:rgba(17,25,40,.45); }
-.review-workbench.is-inline { position:static;inset:auto;margin:16px 0;width:100%;max-height:none;overflow:visible;border:1px solid #dbe0ea;box-sizing:border-box; }
-.review-workbench.is-inline .review-workbench-body { overflow:visible; }
-.review-workbench.is-inline header .btn-cancel { display:none; }
 .review-workbench header,.review-workbench footer { flex:0 0 auto;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap; }
 .review-workbench h2 { margin:0;font-size:18px; }
 .review-workbench-body { padding:16px;overflow:auto;min-height:0; }
@@ -968,6 +965,12 @@ body.mistake-review-open { overflow: hidden; }
 .review-workbench textarea { resize:vertical; }
 .review-workbench .detail-content,.review-workbench p { white-space:pre-wrap;overflow-wrap:anywhere; }
 .review-workbench button { min-height:40px;max-width:100%;white-space:normal; }
+.review-workbench-content { display:flex;flex-direction:column;min-height:0;max-height:inherit;width:100%; }
+.review-workbench-inline { position:static;inset:auto;display:block;margin:16px 0;width:100%;max-height:none;overflow:visible;border:1px solid #e1e6ef;box-sizing:border-box;background:#fff; }
+.review-workbench-inline .review-workbench-content { max-height:none; }
+.review-workbench-inline .review-workbench-body { overflow:visible; }
+.review-workbench summary { cursor:pointer;font-size:14px;color:#52627f;margin-bottom:12px; }
+#reviewWbInline[hidden],#reviewWbHeader[hidden],#mistakeReviewPanel[hidden],#materialReviewActions[hidden],#materialReviewContent[hidden],#materialReviewPreview[hidden] { display:none!important; }
 .review-cloze-text { white-space:pre-wrap;font-size:18px;line-height:2.5;overflow-wrap:anywhere; }
 .review-workbench .review-inline-blank { display:inline-block;margin:0 5px;max-width:100%;vertical-align:baseline; }
 .review-workbench .review-inline-blank input { width:180px;max-width:100%;border-bottom:2px solid #5673bc; }

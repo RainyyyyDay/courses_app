@@ -149,7 +149,9 @@ function choiceIsUsable(mistake) {
 
 function modeForMistake(mistake) {
   const available = [];
-  if (choiceIsUsable(mistake)) available.push(MODE_DEFINITIONS.choice_reproduction);
+  // v17 fixtures predate confirmation. In current data an explicit pending flag
+  // must never be interpreted as a confirmed choice question.
+  if (mistake.question_format_confirmed !== 0 && choiceIsUsable(mistake)) available.push(MODE_DEFINITIONS.choice_reproduction);
   available.push(MODE_DEFINITIONS.standard);
   return available;
 }

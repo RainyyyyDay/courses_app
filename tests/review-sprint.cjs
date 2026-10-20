@@ -92,6 +92,8 @@ test('shared scheduling calculations remain mode-independent',testReviewScheduli
 test('shared scheduling API regression',{timeout:90000},async()=>fixture(async({base,ids})=>testReviewSchedulingApi({base,course:{id:ids.courseId}}),{legacy:false}));
 
 const {reviewInteractionChecks}=require('./review-interactions.cjs');
+const {reviewQuickModeChecks}=require('./review-quick-mode-checks.cjs');
+const {reviewModeChecks}=require('./review-mode-checks.cjs');
 function scenario(base,courseId){return `window.COURSES_API_BASE=${JSON.stringify(base)};window.addEventListener('load',async()=>{
   const check=(v,m)=>{if(!v)throw Error(m);};const wait=async(fn)=>{for(let i=0;i<200;i++){if(fn())return;await new Promise(r=>setTimeout(r,30));}throw Error('UI wait timeout');};
   const api=async(method,url,body)=>{const res=await requestApi(API+url,{method,...(body===undefined?{}:{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})});return res.json();};
@@ -144,6 +146,7 @@ function scenario(base,courseId){return `window.COURSES_API_BASE=${JSON.stringif
       for(const multiple of [false,true]){
         const choice=await api('POST','/courses/${courseId}/mistakes',{title:'选择复现保留 '+multiple,content:'选择正确项',mistakeType:'knowledge',questionFormat:'choice',choiceType:multiple?'multiple':'single',options:[{id:'A',text:'甲'},{id:'B',text:'乙'}],correctOption:multiple?['A','B']:'B'});
         const next=await createReviewRecord('total',[{type:'mistake',id:choice.id}]);await enterCenterReview(next);await wait(()=>mistakeDetailState?.progress?.stage==='question');
+        await openReviewWorkbench('mistake',choice.id,{sessionItemId:next.items[0].id,sessionId:next.id});await loadReviewWorkbenchMode('choice_reproduction');await runExistingReviewMode();
         check(!document.getElementById('mistakeReviewAnswer')&&mistakeDetailState.progress.choice.correctOption===undefined,'existing choice UI hides answer before submission');
         check(!document.getElementById('mistakeFirstAnswer')&&document.querySelectorAll('input[name="mistakeChoiceOption"][type="'+(multiple?'checkbox':'radio')+'"]').length===2,'choice uses correct objective controls, not generic text');
         document.querySelector('input[name="mistakeChoiceOption"]').click();
@@ -155,6 +158,8 @@ function scenario(base,courseId){return `window.COURSES_API_BASE=${JSON.stringif
         const score=await api('GET','/courses/${courseId}/review-items/mistake/'+choice.id+'/state');check(score.lastGrade===3,'objective choice remains Good after post-submit answer display');closeReviewCompleteModal();
       }
       await (${reviewInteractionChecks.toString()})(${courseId});
+      await (${reviewModeChecks.toString()})(${courseId});
+      await (${reviewQuickModeChecks.toString()})(${courseId});
       out.dataset.result='passed';out.textContent='sprint UI seven distinct interactions, AI adoption, fallback, edit, draft, attempt, reload, session passed';document.body.append(out);return;
     }
     const note=await api('POST','/courses/${courseId}/notes',{title:'手动挖空 UI',content:'首都为北京。'});
@@ -181,6 +186,8 @@ function scenario(base,courseId){return `window.COURSES_API_BASE=${JSON.stringif
 for(const viewport of [[1280,960],[390,844]])test('sprint normal-page manual workflow, mock drafts, HTTP and reload '+viewport.join('x'),{timeout:90000},async()=>fixture(async({base,ids,temp,serve})=>{
   const chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].find(fs.existsSync);assert.ok(chrome);
   new (require('node:vm').Script)(scenario(base,ids.courseId));
-  const html=await runBrowser({chrome,profile:path.join(temp,'sprint-profile'),url:await serve(),viewport,blockedUrls:['http://localhost:3000/*','http://127.0.0.1:3000/*'],initScript:scenario(base,ids.courseId)});
+  const screenshot=path.join(require('node:os').tmpdir(),'courses-review-inline-'+viewport.join('x')+'.png');
+  const html=await runBrowser({chrome,profile:path.join(temp,'sprint-profile'),url:await serve(),viewport,screenshot,blockedUrls:['http://localhost:3000/*','http://127.0.0.1:3000/*'],initScript:scenario(base,ids.courseId)});
+  console.log('INLINE_SCREENSHOT '+screenshot);
   const result=html.match(/<pre id="regressionResult"[^>]*>[\s\S]*?<\/pre>/)?.[0];assert.match(result||'',/data-result="passed"/,result||html.slice(-2000));
 },{legacy:false}));

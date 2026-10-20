@@ -93,9 +93,9 @@ function rememberReviewCenterLocation(location) {
   mistakeStorageSet('review-center-location:'+currentCourseId,location);
 }
 function clearCenterReviewUi() {
-  if(typeof reviewWorkbench!=='undefined'&&reviewWorkbench?.inline)closeReviewWorkbench();
+  if(typeof reviewWorkbench!=='undefined'&&reviewWorkbench?.inline)closeReviewWorkbench(false);
   const bar=document.getElementById('centerReviewToolbar');if(bar)bar.style.display='none';
-  for(const id of ['mistakeReviewPanel','materialReviewActions']){const panel=document.getElementById(id);if(panel)panel.hidden=false;}
+  for(const id of ['mistakeReviewPanel','materialReviewActions','materialReviewContent','materialReviewPreview']){const panel=document.getElementById(id);if(panel)panel.hidden=false;}
 }
 
 // v13 前没有可信的开始时间/完整事件，旧浏览器队列只备份导航，不伪造历史。
@@ -268,6 +268,7 @@ function centerReviewHasPendingSave() {
 }
 async function renderCenterReviewItem() {
   const s=centerReview,item=currentCenterItem();if(!item)return;
+  s.quickMode=null;
   clearCenterReviewUi();
   if(mistakeQueue?.centerContext)mistakeQueue=null;
   if(item.source_deleted || !item.reviewable) {
@@ -294,54 +295,37 @@ async function renderCenterReviewItem() {
     else await controller.startItems([item.item_id]);
   }
   if(centerReview===s){
+    await prepareCenterQuickMode(item,s.session);
+    if(centerReview!==s)return;
     renderCenterReviewToolbar();
-    const context=centerWorkbenchContext(item,s.session),active=mistakeStorageGet(reviewSelectionKey(context)+':active');
-    const selection=workbenchSelection(context),suggestion=item.item_type==='mistake'?readMistakeAiMethod(context):null;
-    const nativeAi=mistakeStorageGet(reviewSelectionKey(context)+':native-ai');
-    if(item.status==='pending'&&(active?.mode||(suggestion&&selection.mode!=='standard'&&nativeAi!==selection.mode)))
-      await openReviewWorkbench(item.item_type,item.item_id,{...context,...(active?.mode?{mode:active.mode}:{}),inline:!!suggestion});
+    await routeCenterReviewMode(item,s.session);
   }
 }
 function renderCenterReviewToolbar() {
   const item=currentCenterItem(),bar=document.getElementById('centerReviewToolbar');if(!item || !bar)return;
   const host=document.querySelector((currentView.type==='mistake' ? '#mistakeDetailPage' : '#materialReviewPage')+' .tab-content');host.prepend(bar);bar.style.display='block';
-  const s=centerReview,busy=s.busy || mistakeReviewBusy || activeReadingReview.busy || (typeof reviewWorkbench!=='undefined'&&reviewWorkbench?.busy),blocked=busy || centerReviewHasPendingSave();
+  const s=centerReview,busy=s.busy || s.quickMode?.busy || mistakeReviewBusy || activeReadingReview.busy || reviewWorkbench?.busy,blocked=busy || centerReviewHasPendingSave();
   bar.innerHTML=`<strong>${escapeHtml(s.session.name)} · 第 ${s.position+1} / ${s.session.total} 项</strong><p>已完成 ${s.session.passed || 0} · 未通过 ${s.session.failed || 0} · 仅曝光 ${s.session.exposed || 0} · 跳过 ${s.session.skipped}</p><div class="mistake-toolbar"><button onclick="moveCenterReview(-1)" ${blocked || s.position===0 ? 'disabled' : ''}>上一项</button><button onclick="moveCenterReview(1)" ${blocked ? 'disabled' : ''}>下一项</button><button onclick="skipCenterReviewItem()" ${blocked || item.status!=='pending' ? 'disabled' : ''}>跳过</button><button onclick="pauseCenterReview()" ${busy ? 'disabled' : ''}>暂停，稍后继续</button></div>`;
   const context=centerWorkbenchContext(item,s.session),selection=workbenchSelection(context);
-  const active=mistakeStorageGet(reviewSelectionKey(context)+':active');
+  const active=readReviewActive(context);
   const workbenchActive=item.status==='pending'&&!!active?.mode;
+  const inlineVisible=!!(reviewWorkbench?.inline&&reviewWorkbench.sessionItemId===item.id&&!wb('Inline')?.hidden);
+  const q=s.quickMode?.itemId===item.id?s.quickMode:null;
   const nativePanel=document.getElementById(item.item_type==='mistake'?'mistakeReviewPanel':'materialReviewActions');
-  const inline=typeof reviewWorkbench!=='undefined'&&reviewWorkbench?.inline&&reviewWorkbench.sessionItemId===item.id;
-  if(nativePanel)nativePanel.hidden=workbenchActive||inline;
-  if(workbenchActive)bar.insertAdjacentHTML('afterbegin',`<p>当前实际执行：${escapeHtml(AI_REVIEW_METHODS[active.mode])}。${inline?'请在下方继续本轮作答；':'请打开下方模式入口继续本轮；'}原流程已暂停，避免误记两次结果。</p>`);
-  const suggestion=item.item_type==='mistake'?readMistakeAiMethod(context):null;
-  if(suggestion){
-    const nativeAi=mistakeStorageGet(reviewSelectionKey(context)+':native-ai');
-    const controls=document.createElement('div');controls.className='mistake-toolbar';controls.dataset.aiReviewMode='';
-    const label=document.createElement('span');label.textContent=inline||nativeAi?'AI 建议模式：'+AI_REVIEW_METHODS[inline?reviewWorkbench.mode:nativeAi]:'当前使用原复习 · AI 建议：'+AI_REVIEW_METHODS[suggestion];
-    const toggle=document.createElement('button');toggle.type='button';toggle.textContent=inline||nativeAi?'切换原复习':'切回 AI 建议模式';toggle.disabled=blocked||item.status!=='pending';toggle.onclick=()=>toggleCenterAiReviewMode();
-    controls.append(label,toggle);bar.append(controls);
+  if(nativePanel)nativePanel.hidden=inlineVisible||workbenchActive||!!q?.busy||!!(q&&q.modeId!==mistakeDetailState?.progress?.mode?.id&&q.modeId!=='retry');
+  if(item.item_type!=='mistake')for(const id of ['materialReviewContent','materialReviewPreview']){const original=document.getElementById(id);if(original)original.hidden=inlineVisible||workbenchActive;}
+  if(workbenchActive){
+    bar.insertAdjacentHTML('afterbegin',`<p>当前实际执行：${escapeHtml(AI_REVIEW_METHODS[active.mode])} · 在本页直接作答</p>`);
+    if(item.item_type==='mistake'&&mistakeDetailState?.progress){const p=mistakeDetailState.progress;document.getElementById('mistakeDetailMeta').textContent=`${MISTAKE_TYPES[p.mistakeType]} · ${AI_REVIEW_METHODS[active.mode]} · ${mistakeStatusText(p.reviewStatus)}`;}
   }
   const modeButton=document.createElement('button');modeButton.type='button';modeButton.textContent='复习模式 / 手动材料 · '+({user:'本次选择',ai:'已确认建议',rule:'默认推荐'}[selection.source])+'：'+AI_REVIEW_METHODS[selection.mode];modeButton.disabled=blocked||item.status!=='pending';
-  modeButton.onclick=()=>openReviewWorkbench(item.item_type,item.item_id,{...context,...(workbenchActive?{mode:active.mode}:{}),inline:!!suggestion});bar.querySelector('.mistake-toolbar').append(modeButton);
-}
-async function toggleCenterAiReviewMode(){
-  const item=currentCenterItem();if(!item||item.status!=='pending'||centerReview.busy||mistakeReviewBusy||centerReviewHasPendingSave())return;
-  const context=centerWorkbenchContext(item,centerReview.session),suggestion=readMistakeAiMethod(context);
-  if(!suggestion||reviewWorkbench?.busy)return;
-  if(!reviewWorkbench?.inline&&mistakeStorageGet(reviewSelectionKey(context)+':native-ai')){
-    const original=mistakeStorageGet(reviewSelectionKey(context)+':original-mode')||'standard';
-    await openReviewWorkbench(item.item_type,item.item_id,{...context,mode:original,inline:true,restoringOriginal:true});
-    await runExistingReviewMode();return;
+  modeButton.onclick=openCenterReviewSettings;bar.querySelector('.mistake-toolbar').append(modeButton);
+  if(q){
+    const selectedAi=!!q.aiMode&&q.modeId===q.aiMode;
+    const quick=document.createElement('div');quick.className='mistake-toolbar';quick.dataset.quickMode=q.modeId;
+    quick.innerHTML=`<button type="button" data-quick-toggle aria-pressed="${selectedAi}" onclick="toggleCenterQuickMode()" ${blocked||q.busy||!q.aiMode?'disabled':''}>${selectedAi?'AI 建议模式：'+escapeHtml(AI_REVIEW_METHODS[q.aiMode])+'（切换原复习）':'原复习：'+escapeHtml(AI_REVIEW_METHODS[q.modeId])+'（切回 AI 建议）'}</button><button type="button" data-quick-start onclick="confirmCenterQuickMode()" ${blocked||q.busy?'disabled':''}>${q.busy?'正在确认…':'确认开始：'+escapeHtml(AI_REVIEW_METHODS[q.modeId])}</button><small data-quick-reason>${escapeHtml(q.reason)}</small>`;
+    bar.append(quick);
   }
-  if(reviewWorkbench?.inline){
-    if(reviewWorkbench.pending||mistakeStorageGet(reviewWorkbenchKey()+':pending')){wb('Error').textContent='有提交待确认，请先重试当前操作，再切换模式。';return;}
-    rememberReviewSelection(context,'standard');mistakeStorageSet(reviewSelectionKey(context)+':active',null);mistakeStorageSet(reviewSelectionKey(context)+':native-ai',null);closeReviewWorkbench();
-  }else{
-    rememberReviewSelection(context,suggestion);
-    await openReviewWorkbench(item.item_type,item.item_id,{...context,mode:suggestion,inline:true});
-  }
-  renderCenterReviewToolbar();
 }
 async function moveCenterReview(delta) {
   const s=centerReview;if(!s || s.busy || mistakeReviewBusy || activeReadingReview.busy || centerReviewHasPendingSave())return;
