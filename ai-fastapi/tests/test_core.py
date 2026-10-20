@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 import unittest
 from unittest.mock import patch
+from analysis_fixtures import result as analysis_result
 
 from src.ai_mistake import (AIError, Classifier, Config, DEFAULT_RULES, DeepSeekProvider,
                             MockProvider, _read_body, _validate_rules, _with_disconnect,
@@ -221,12 +222,13 @@ class UpstreamTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(str(request.url), "https://api.deepseek.com/chat/completions")
             self.assertEqual(request.headers["authorization"], "Bearer synthetic-fake-key")
             body = json.loads(request.content)
-            self.assertEqual(body["max_tokens"], 512)
+            self.assertEqual(body["max_tokens"], 1600)
+            self.assertNotIn('knowledge_gap→cloze', body['messages'][0]['content'])
             self.assertEqual(body["thinking"], {"type": "disabled"})
             self.assertEqual(body["response_format"], {"type": "json_object"})
             self.assertEqual(json.loads(body["messages"][1]["content"]), FULL)
             return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(
-                {"review_method": "retry", "reason": "mock upstream", "needs_review": False})}}]})
+                {**analysis_result('retry'), "reason": "mock upstream", "needs_review": False})}}]})
         result, source = await self.invoke(handler)
         self.assertEqual((result["needs_review"], source), (True, "provider"))
 

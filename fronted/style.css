@@ -1014,6 +1014,25 @@ body.mistake-review-open { overflow: hidden; }
 .mistake-ai-panel[hidden], #mistakeAiResult[hidden] { display: none; }
 .mistake-ai-note { color: #667085; font-size: 13px; line-height: 1.7; }
 .mistake-ai-panel fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.mistake-ai-key-settings[hidden] { display:none; }
+.mistake-ai-analysis[hidden] { display:none; }
+.mistake-answer-ai[hidden],.mistake-answer-ai section[hidden] { display:none; }
+.mistake-answer-ai { border:1px solid #dbe0ea;padding:12px;margin-top:12px;border-radius:8px;overflow-wrap:anywhere; }
+.mistake-answer-ai fieldset { min-width:0;border:0;padding:0; }
+.mistake-answer-ai label { display:block;margin:10px 0; }
+.mistake-answer-ai select,.mistake-answer-ai textarea { width:100%;box-sizing:border-box; }
+.mistake-answer-ai label:has(input[type=checkbox]) { display:flex;flex-direction:row;align-items:flex-start;gap:8px; }
+.mistake-answer-ai input[type=checkbox] { width:auto;flex:0 0 auto;margin-top:5px; }
+.mistake-answer-ai .modal-actions { flex-wrap:wrap; }
+#tagPickerModal .mistake-answer-ai .modal-actions button,
+#mistakeEditModal .mistake-answer-ai .modal-actions button { flex:1 1 130px;min-width:0;white-space:normal;word-break:keep-all; }
+.mistake-answer-ai button { min-height:40px; }
+.mistake-ai-analysis { overflow-wrap:anywhere;padding:12px;border:1px solid #dbe0ea;border-radius:8px;margin:12px 0; }
+.mistake-ai-analysis h4 { margin:12px 0 6px;font-size:14px; }
+.mistake-ai-analysis ul { margin:0;padding-left:20px; }
+.mistake-ai-key-settings input[type=password] { width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:5px;font:inherit; }
+.mistake-ai-key-settings label:has(input[type=checkbox]) { display:flex;align-items:flex-start;gap:8px; }
+.mistake-ai-key-settings input[type=checkbox] { width:auto;flex:0 0 auto;margin-top:5px; }
 .mistake-ai-panel label { display: block; margin: 12px 0 6px; font-size: 14px; }
 .mistake-ai-panel textarea, .mistake-ai-panel select { display: block; box-sizing: border-box; width: 100%; max-width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; background: #fff; font: inherit; }
 .mistake-ai-panel textarea { resize: vertical; }
@@ -2160,3 +2179,11 @@ body.plan-modal-open { overflow: hidden; }
 @media(max-width:540px) {
   #tagPickerModal .tag-picker-name.mistake-create-card .tag-picker-name-fields { grid-template-columns: 1fr; }
 }
+/* Shared AI controls stay outside the page-specific forms. */
+.courses-ai-open { position:fixed; right:16px; bottom:16px; z-index:1001; padding:10px 16px; border:1px solid #b8c5ee; border-radius:20px; background:#fff; color:#304b90; box-shadow:0 2px 12px #0002; }
+.courses-ai-settings { width:min(620px, calc(100vw - 32px)); max-height:85dvh; margin:auto; box-sizing:border-box; overflow:auto; border:1px solid #d9dfeb; border-radius:16px; padding:20px; }
+.courses-ai-settings::backdrop { background:#0006; }
+.courses-ai-settings label { display:block; margin:12px 0; line-height:1.6; }
+.courses-ai-settings select, .courses-ai-settings input[type=password] { display:block; width:100%; box-sizing:border-box; padding:10px; }
+.courses-ai-settings p { overflow-wrap:anywhere; }
+.courses-ai-settings button { min-height:40px; }

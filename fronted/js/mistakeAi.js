@@ -3,6 +3,59 @@ let mistakeAiState = null;
 const mistakeAiElement = name => document.getElementById('mistakeAi' + name);
 const mistakeAiStorageKey = detail => 'mistake-ai-method:' + detail.courseId + ':' + detail.id;
 
+function renderMistakeAiAnalysis(prefix, result) {
+  const host=document.getElementById(prefix+'Analysis');host.replaceChildren();host.hidden=!result.analysis;
+  if(!result.analysis)return;
+  const a=result.analysis;
+  const section=(title,lines)=>{
+    const heading=document.createElement('h4');heading.textContent=title;host.append(heading);
+    const list=document.createElement('ul');
+    for(const line of lines){const item=document.createElement('li');item.textContent=line;list.append(item);}host.append(list);
+  };
+  section('答案观察（AI 初步判断，需核对）',[({correct:'未发现作答错误，不应强行归因。',incorrect:'作答存在错误或差异。',uncertain:'现有信息不足，暂不能判断对错。'})[a.answer_status],...a.observations]);
+  section('参考答案核验',[a.reference_check]);
+  section('候选错因（不是已确认分类）',a.possible_causes.length?a.possible_causes.map(c=>
+    `${({knowledge:'知识方面',thinking:'思路方面',execution:'执行方面',unclassified:'待确定'})[c.category]} · ${c.support==='supported'?'有具体线索，仍待复核':'可能，尚不能确诊'}：${c.explanation}；依据／局限：${c.evidence}`):['暂不归因；正确作答或现有证据不足时，不制造错误原因。']);
+  if(a.follow_up_questions.length)section('可补充的问题（写进过程或补充说明后，可手动再次分析）',a.follow_up_questions);
+  section('建议的练习动作',[(AI_REVIEW_METHODS[result.review_method]||'暂无可用模式，请人工选择')+'：'+result.reason]);
+  if(a.alternatives.length)section('可选的其他模式',a.alternatives.map(x=>AI_REVIEW_METHODS[x.mode_id]+'：'+x.reason));
+  section('材料需求（尚未检查是否已有）',a.material_requirements);
+}
+
+function addMistakeAiEvidence(input, row, steps) {
+  if(steps.trim())input.solution_steps=steps.trim();
+  if(row){
+    input.mistake_category=['knowledge','thinking','execution'].includes(row.mistake_type)?row.mistake_type:'unclassified';
+    input.question_format=row.question_format_confirmed===1&&['choice','open'].includes(row.question_format)?row.question_format:'unknown';
+  }
+}
+
+function clearMistakeAiKey(prefix, resetProvider=false) {
+  const node=name=>document.getElementById(prefix+name);
+  if(node('ApiKey'))node('ApiKey').value='';
+  if(node('Cost'))node('Cost').checked=false;
+  const shared=node('Provider')?.querySelector('option[value="shared"]');
+  if(shared&&typeof coursesAiSettings!=='undefined')shared.textContent=coursesAiSettings.label();
+  if(resetProvider&&node('Provider')){node('Provider').value=typeof coursesAiSettings!=='undefined'&&coursesAiSettings.status().configured?'shared':'default';node('Model').value='deepseek-flash';node('KeySettings').hidden=true;}
+}
+function changeMistakeAiProvider(prefix) {
+  clearMistakeAiKey(prefix);
+  document.getElementById(prefix+'KeySettings').hidden=document.getElementById(prefix+'Provider').value!=='deepseek';
+}
+function readMistakeAiKey(prefix) {
+  const node=name=>document.getElementById(prefix+name);
+  if(node('Provider').value==='shared')return coursesAiSettings.read();
+  if(node('Provider').value!=='deepseek')return null;
+  if(!/^[\x21-\x7e]{1,512}$/.test(node('ApiKey').value))throw mistakeAiError('INVALID_API_KEY');
+  if(!node('Cost').checked)throw mistakeAiError('COST_CONFIRMATION_REQUIRED');
+  return {apiKey:node('ApiKey').value,model:node('Model').value,confirmCost:true};
+}
+addEventListener('pagehide',()=>{
+  clearMistakeAiKey('mistakeAi',true);clearMistakeAiKey('mistakeCreateAi',true);
+  mistakeAiState?.controller?.abort();
+  if(typeof tagPickerState!=='undefined')tagPickerState?.aiCreate?.controller?.abort();
+});
+
 function readMistakeAiRecord(detail) {
   const saved = mistakeStorageGet(mistakeAiStorageKey(detail));
   if (!saved || typeof saved.method !== 'string') return null;
@@ -75,10 +128,12 @@ function resetMistakeAi() {
   panel.setAttribute('aria-busy', 'false');
   mistakeAiElement('Toggle').setAttribute('aria-expanded', 'false');
   mistakeAiElement('Form').reset();
+  clearMistakeAiKey('mistakeAi',true);
   mistakeAiElement('Inputs').disabled = false;
   mistakeAiElement('Submit').disabled = false;
   mistakeAiElement('Submit').textContent = '获取 AI 建议';
   mistakeAiElement('Result').hidden = true;
+  mistakeAiElement('Analysis').replaceChildren();mistakeAiElement('Analysis').hidden=true;
   mistakeAiElement('Confirm').disabled = true;
   mistakeAiElement('Method').disabled = false;
   for (const name of ['Status', 'Error', 'Suggested', 'Reason', 'Confirmation']) mistakeAiElement(name).textContent = '';
@@ -103,6 +158,7 @@ function toggleMistakeAi() {
 }
 
 function startMistakeAi(detail, options = {}) {
+  clearMistakeAiKey('mistakeAi',true);
   mistakeAiState = { detail, busy: false, result: null, controller: null, ...options };
   const row = detail.row;
   if (globalThis.COURSES_AI_LOCAL_MOCK) mistakeAiElement('Status').textContent = '本地 Mock 演示：按明确的错误原因返回固定规则建议，不调用真实模型。';
@@ -142,10 +198,14 @@ async function requestMistakeAi() {
     context: mistakeAiElement('Context').value.trim()
   };
   mistakeAiElement('Error').textContent = '';
-  if (!input.question || !input.student_answer || !input.error_type) {
-    mistakeAiElement('Error').textContent = '请填写题目、学生作答并选择已明确的错误原因。';
+  if (!input.question || !input.student_answer) {
+    mistakeAiElement('Error').textContent = '请填写题目和学生作答；错误原因与过程可留空，由真实 AI 辅助分析。';
     return;
   }
+  let deepseek;
+  try { deepseek=readMistakeAiKey('mistakeAi'); }
+  catch(err){mistakeAiElement('Error').textContent=err.message;return;}
+  addMistakeAiEvidence(input,deepseek?state.detail.row:null,mistakeAiElement('Steps').value);
   state.busy = true;
   state.controller = new AbortController();
   mistakeAiElement('Inputs').disabled = true;
@@ -153,19 +213,22 @@ async function requestMistakeAi() {
   mistakeAiElement('Confirm').disabled = true;
   mistakeAiElement('Method').disabled = true;
   mistakeAiElement('Panel').setAttribute('aria-busy', 'true');
-  mistakeAiElement('Status').textContent = '正在分类，请稍候…';
+  mistakeAiElement('Status').textContent = deepseek?'正在请求 DeepSeek 官方（可能计费），不会自动重试…':'正在分类，请稍候…';
   try {
-    const result = await classifyMistakeWithAi(input, { signal: state.controller.signal });
+    const pending=classifyMistakeWithAi(input, { signal: state.controller.signal, deepseek });
+    clearMistakeAiKey('mistakeAi');if(deepseek)deepseek.apiKey='';
+    const result = await pending;
     if (!mistakeAiIsCurrent(state)) return;
     state.result = result;
     delete state.confirmedMethod;
     const usable = Object.hasOwn(AI_REVIEW_METHODS, result.review_method);
     mistakeAiElement('Suggested').textContent = mistakeAiSuggestionText(result);
     mistakeAiElement('Reason').textContent = '分类理由：' + result.reason;
+    renderMistakeAiAnalysis('mistakeAi',result);
     mistakeAiElement('Method').value = usable ? result.review_method : '';
     mistakeAiElement('Confirmation').textContent = '';
     mistakeAiElement('Result').hidden = false;
-    mistakeAiElement('Status').textContent = usable ? '建议已生成，请人工复核。原错题分类未改变。'
+    mistakeAiElement('Status').textContent = usable ? (deepseek?'DeepSeek 官方建议已生成，请人工复核。临时输入已清空，共享 Key 遵循 AI 设置。原错题分类未改变。':'建议已生成，请人工复核。原错题分类未改变。')
       : 'AI 暂未给出可用建议，请人工选择';
   } catch (err) {
     if (!mistakeAiIsCurrent(state) || err.name === 'AbortError') return;
@@ -218,15 +281,19 @@ function confirmMistakeAiSuggestion() {
 const mistakeCreateAiElement = name => document.getElementById('mistakeCreateAi' + name);
 
 function cancelMistakeCreateAi() {
+  if(typeof resetMistakeAnswerAi==='function')resetMistakeAnswerAi('Create');
   tagPickerState?.aiCreate?.controller?.abort();
+  clearMistakeAiKey('mistakeCreateAi',true);
 }
 
 function prepareMistakeCreateAi(state) {
+  if(typeof resetMistakeAnswerAi==='function')resetMistakeAnswerAi('Create');
+  clearMistakeAiKey('mistakeCreateAi',true);
   state.aiCreate = {selectedMethod:'', result:null, busy:false, controller:null};
   const panel = mistakeCreateAiElement('Panel');
   panel.open = false;
   panel.setAttribute('aria-busy','false');
-  for (const name of ['StudentAnswer','ErrorType','Suggested','Reason','Status','Error']) {
+  for (const name of ['StudentAnswer','Steps','ErrorType','Suggested','Reason','Status','Error']) {
     const node = mistakeCreateAiElement(name);
     if ('value' in node) node.value = ''; else node.textContent = '';
   }
@@ -236,6 +303,7 @@ function prepareMistakeCreateAi(state) {
   mistakeCreateAiElement('Get').disabled = false;
   mistakeCreateAiElement('Adopt').disabled = true;
   mistakeCreateAiElement('Result').hidden = true;
+  mistakeCreateAiElement('Analysis').replaceChildren();mistakeCreateAiElement('Analysis').hidden=true;
 }
 
 function changeMistakeCreateAiMethod() {
@@ -269,29 +337,42 @@ async function requestMistakeCreateAi() {
     context:document.getElementById('mistakeCreateExplanation').value.trim()
   };
   mistakeCreateAiElement('Error').textContent = '';
-  if (!input.question || !input.student_answer || !input.error_type) {
-    mistakeCreateAiElement('Error').textContent = '获取建议前请填写题干、学生作答并选择明确错误原因；这些信息不影响直接添加错题。';
+  if (!input.question || !input.student_answer) {
+    mistakeCreateAiElement('Error').textContent = '获取建议前请填写题干和学生作答；错误原因可留空，也可直接添加错题。';
     return;
   }
+  let deepseek;
+  try { deepseek=readMistakeAiKey('mistakeCreateAi'); }
+  catch(err){mistakeCreateAiElement('Error').textContent=err.message;return;}
+  addMistakeAiEvidence(input,null,mistakeCreateAiElement('Steps').value);
+  if(deepseek){
+    input.question_format=document.getElementById('mistakeCreateFormat').value==='choice'?'choice':'open';
+    input.mistake_category='unclassified';
+  }
   draft.busy = true; draft.controller = new AbortController();
+  mistakeCreateAiElement('Fields').disabled = true;
   mistakeCreateAiElement('Get').disabled = true;
   mistakeCreateAiElement('Adopt').disabled = true;
   mistakeCreateAiElement('Panel').setAttribute('aria-busy','true');
-  mistakeCreateAiElement('Status').textContent = '正在获取建议…';
+  mistakeCreateAiElement('Status').textContent = deepseek?'正在请求 DeepSeek 官方（可能计费），不会自动重试…':'正在获取建议…';
   try {
-    const result = await classifyMistakeWithAi(input,{signal:draft.controller.signal});
+    const pending=classifyMistakeWithAi(input,{signal:draft.controller.signal,deepseek});
+    clearMistakeAiKey('mistakeCreateAi');if(deepseek)deepseek.apiKey='';
+    const result = await pending;
     if (!current()) return;
     draft.result = result;
     mistakeCreateAiElement('Suggested').textContent = mistakeAiSuggestionText(result);
     mistakeCreateAiElement('Reason').textContent = result.reason;
+    renderMistakeAiAnalysis('mistakeCreateAi',result);
     mistakeCreateAiElement('Result').hidden = false;
     // Never preselect or overwrite an explicit manual selection from an AI response.
-    mistakeCreateAiElement('Status').textContent = '建议仅供参考；采用建议或手动选择后，才会随错题保存。';
+    mistakeCreateAiElement('Status').textContent = (deepseek?'DeepSeek 官方建议；临时输入已清空，共享 Key 遵循 AI 设置。':'')+'建议仅供参考；采用建议或手动选择后，才会随错题保存。';
   } catch (err) {
     if (current() && err.name!=='AbortError') mistakeCreateAiElement('Error').textContent = err.message;
   } finally {
     if (current()) {
       draft.busy = false; draft.controller = null;
+      mistakeCreateAiElement('Fields').disabled = false;
       mistakeCreateAiElement('Get').disabled = false;
       mistakeCreateAiElement('Adopt').disabled = !Object.hasOwn(AI_REVIEW_METHODS,draft.result?.review_method);
       mistakeCreateAiElement('Panel').setAttribute('aria-busy','false');

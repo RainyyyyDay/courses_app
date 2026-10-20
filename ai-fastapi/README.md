@@ -1,5 +1,81 @@
 # AI 错题分类 FastAPI 移植模块
 
+## 第二轮补充：统一设置（2026-10-21）
+
+正常网站右下角新增“AI 设置”，错题建议与答案/解析草稿共用标签页内临时 Key。保留 Key 和保存新错题后的自动分析均需显式同意；自动分析默认关闭，只生成待确认的内存草稿。未实现账户登录、永久 Key 或主后端整合，Python 继续复用已有权限依赖。范围、安全边界、宿主身份钩子及验收见 [第二轮说明](../docs/ai-settings-round-two.md)。下文“未做统一设置”等为此前记录，以本节为当前状态。
+
+## 可选按钮：生成参考答案与解析草稿（2026-10-21）
+
+入口在新增错题、编辑错题的“解析 / 错因”输入区下方，按钮为“AI 生成答案与解析（可选）”。默认折叠，不要求使用；展开后选 DeepSeek 官方、输入临时 Key 并确认费用，再点击“生成草稿（不保存）”。Mock 只演示流程，明确不提供本题答案，不能把它当成真实解答。图片题先手工或 OCR 校对题干，不自动读取/上传附件。修改了 Python 路由，使用前须重启 3002，再 Ctrl+F5。
+
+草稿先独立预览，可编辑答案/解析并查看待核实点。勾选人工核实确认后，才能“仅填空白字段”“替换答案”或“替换解析”；填入后仍须点击原保存按钮。支持撤回上次填入，若此后又手动编辑，为保护新输入拒绝自动撤回。题干、题型、单/多选或选项改变会拒绝旧草稿；取消、关闭、切题或保存关闭时清空临时 Key/草稿并取消或丢弃晚到响应。请求中手工输入不被覆盖，失败保留原内容/已有草稿，不自动重试或回退 Mock。
+
+选择题先提供完整选项，AI 只返回所给选项 ID 的候选答案，不得新增选项；候选不会自动选中正确答案，必须人工核实并明确填入，保存仍复用原校验与题目修改规则。原历史记录和评分不被生成/采用操作改写。开放题给参考要点；所有 AI 内容未必正确，不能因成功生成就当作客观判分依据。普通复习页未新增生成入口，不提前泄露答案。来源提示仅在当前草稿界面展示，未增加永久来源审计字段或数据库结构。
+
+新增自包含路由模块 `src/ai_answer_draft.py`（复用同目录 ai_mistake.py 的 HTTP/限流/取消基础），通过 `register(app, dependencies=[Depends(宿主真实权限依赖)])` 注册 `POST /api/ai/answer-draft`。不传依赖拒绝使用，不写数据库或读 .env。JSON 请求为 `{provider:mock/deepseek,input:{question,question_format:open/choice,choice_type:single/multiple,options:[{id:A,text:...}],existing_answer?,existing_explanation?},api_key?,model?,confirm_cost?}`，仅 DeepSeek 必须提供本次凭据/费用同意；不接受自定义地址或额外字段。成功返回 `{provider,draft:{answer,explanation,choice_answer,caveats,needs_more_information,needs_review:true}}`。条件不足允许空答案并列出缺失信息，不编造；原题/已有答案均为待核对输入。草稿模块独立于模式分析，复用固定官方传输、1600 token上限、15秒超时、每应用/worker的本功能每分钟10次与并发2个限制；线上用户/全局配额仍由宿主负责。没有新增第三方依赖。
+
+新增前端 `fronted/js/mistakeAnswerAi.js`，在原新增/编辑流程内挂载，不改原手工字段和保存接口。新增 Python/浏览器测试 `tests/test_answer_draft.py`、仓库 `tests/mistake-answer-ai.cjs`，全部虚构 Key、假上游和临时数据库。真实模型的参考答案/解析质量、延迟和费用仍待用户人工验收，未做真实请求。正常AI学习分析、临时Key测试和手动复习继续保留。
+
+最终Python59/59、Node集中40/40通过，无跳过；最后专项8/8复测通过，已查看桌面/手机截图，JS语法和git diff --check通过。首轮夹具与Windows浏览器临时目录清理问题及实际命令见冲刺文档末节。没有真实调用、依赖安装、原数据库读取或Git提交；不能把假上游成功当成真实答案正确。
+
+## 第一轮：真实学习分析与 Mock 分离（2026-10-21）
+
+错误原因不再必填，默认“不确定，请 AI 辅助分析”；正常面板、列表、新增错题和独立测试工具均允许只提供题目与学生答案。增加可选解题过程；已有分类只是用户线索，题型仅在已有记录确认后传入，否则 unknown。临时 Key、安全门禁和人工确认流程不变，本轮不做统一账户/Key 设置或自动调用。
+
+真实 DeepSeek 提示词不再接收 DEFAULT_RULES 的演示映射，只接收七模式定义、分析要求和用户证据。允许提出有依据的候选错因，但必须区分观察、推测、过程证据和局限；未知错因不再阻止调用。特别要求核验可能有误的参考答案、对正确作答不制造错误、对缺少过程的单次错误不直接断言知识缺漏或粗心。JSON 结构校验不是语义准确性的保证。
+
+保留 `review_method/reason/needs_review`，真实结果新增必需的 `analysis`：`answer_status`、`observations`、`possible_causes`（category/support/explanation/evidence）、`follow_up_questions`、`reference_check`、`alternatives`（mode_id/reason）。服务端严格限长、限条数并丢弃未知字段，按模式附加可信的 `material_requirements`，不接受模型声称材料已经创建；题型未确认时拒绝选择复现建议。正确作答却同时编造候选错因的结构也拒绝。普通 Mock 保留原三字段演示输出，未提供标签时明确说明未做真实分析。
+
+前端把分析各项分区、以 textContent 显示；候选错因不等于错题分类，观察也标注需核对。补充问题可通过“解题过程/补充说明”手动提供后再次请求；没有自动追加对话或收费。只在用户明确确认时按旧方式保存模式 ID，不存分析、理由或 Key；既有材料、评分、会话、排期不自动改变。真实响应缺少分析或格式无效，普通 classify 接口按既有合同返回人工兜底，临时 Key 入口明确返回 INVALID_RESPONSE，不伪装成真实分析或回退 Mock。
+
+真实响应输出上限由 512 调至 1600 tokens，以容纳结构化分析；可能增加输出费用，仍需用户逐次明确同意。超时、并发、地址限制和凭据处理沿用现有机制，没有新增依赖。修改 Python 后必须重启本地 3002，再 Ctrl+F5；页面/脚本版本号为 20261021-analysis-1，仅刷新不能更新正在运行的 Python 模块。
+
+真实质量验收清单：[六组虚构题目与人工判据](../docs/ai-analysis-acceptance.md)。本轮只跑假上游/本地临时夹具，不发送真实模型请求；自动化通过不等于 DeepSeek 的真实准确性、延迟、稳定性或费用已验收。
+
+本轮回归 Python 51/51、Node集中40/40，通过且无跳过；JS语法和git diff --check通过。新增9项分析提示词/结构回归，原网页双视口整链路也验证了错误原因留空、分析分区、明确确认、评分/会话保护及不保存分析或Key。已查看桌面/手机截图。只使用虚构Key、httpx.MockTransport和临时SQLite，没有真实调用、依赖安装、原数据库访问或Git提交。完整命令和边界见冲刺文档末节。
+
+## 网站 AI 面板已接入临时 DeepSeek Key（2026-10-21）
+
+若切换时报 `changeMistakeAiProvider is not defined`：本轮核对 3002 直接 GET 的脚本与磁盘一致且包含函数、语法通过，但旧静态响应没有缓存控制，现象最符合新 HTML 与旧缓存脚本混用。已给两个 AI 脚本和样式加 `v=20261021-byok-2`，当前运行中的 3002 已能返回带版本入口和正确函数；普通重新加载即可使用新资源，不需要清空浏览器数据（会丢失本地建议）。本地 FastAPI 页面及 JS/CSS 还设置 no-store，后者需重启 3002 后生效，不影响生产宿主缓存策略。实际 Chrome 先载入并缓存不含新函数的旧脚本，再导航新首页，桌面/手机均能通过真实 onchange 展开临时 Key 区域。修复后 Node AI 测试 15/15、Python 42/42 通过，JS 语法与 git diff --check 通过；没有调用真实模型或修改实际数据库。
+
+不必先到独立测试台：打开正常网站 `http://127.0.0.1:3002/`，从错题列表的 AI 建议、错题详情的 AI 分类，或新增错题的 AI 复习建议中，将“本次 AI 来源”改成“DeepSeek 官方（临时 Key）”。填写本次 Key、模型，勾选发送内容/费用确认，再点原来的“获取 AI 建议”。使用更新前已运行的 3002 服务时先重启该服务，再 Ctrl+F5。
+
+未明确选择 DeepSeek 时仍走原网站接口（本地 Mock）。明确选择后 Key 缺失/无效或未确认费用会拒绝请求，不能悄悄回退 Mock。Key 发送后立即清空；重试必须重新填写和确认。取消、关闭、新开面板、切回默认来源和页面离开也会清空。凭据只在本次请求中传递，不进入建议状态、错题数据或浏览器存储。普通 HTTP 远端和跨来源接口不接收临时 Key；本机回环 HTTP 或同源 HTTPS 才允许，生产宿主需同源路由和真实授权依赖。
+
+前端复用 `POST /api/ai/test` 的 classify 动作及现有真实 Provider，将结果归一为原 `{review_method, reason, needs_review}`。返回后继续原人工复核/确认保存流程，只保存最终模式，不保存 Key。原建议驱动的页内复习、材料检查、评分、历史和计划保持不变；请求失败保留上次建议/确认选择。新增错题仍须先明确采用，再创建成功才关联保存。没有新增数据库字段、登录或主后端集成。
+
+相关前端为 `fronted/index.html`、`fronted/js/ai.js`、`fronted/js/mistakeAi.js` 和少量样式；Python 继续使用下方的两个可选模块。独立测试页仍可使用，两条入口共用同一个后端，不会各造一套模型调用逻辑。下节 41/15 项为此前独立工具测试记录，网站接入验证另记于本节。
+
+网站接入最终回归：Python `unittest discover -s tests -v` 42/42，通过且无跳过；Node `node --test tests/start-local.cjs tests/review-sprint.cjs tests/review-mode-rules.cjs tests/mistake-ai.cjs tests/ai-proxy.cjs` 38/38，通过且无跳过。Python 新增的整链路用例调用真实 Chrome 桌面/手机视口、原网站首页与原 AI 面板、临时独立 Node/SQLite 业务夹具及假 DeepSeek 上游，验证原按钮→建议→明确确认→原页内 self_explain→原评分与会话完成，且每个会话只记录一次 Hard、计划不变。另测新增错题明确采用、列表取消、缺 Key/未同意拒绝、失败保留旧建议、默认 Mock、同源限制与凭据不入存储。初轮修正了夹具的创建状态码预期和跨测试共享限流桶问题，再完整复测。JS 语法和 git diff --check 通过。没有读取 .env、用户原数据库/上传内容，没有真实模型调用、依赖安装或 Git 提交。真实账户、额度、网络仍需用户自行填写 Key 验证；普通浏览器面板已接线，不是仅独立测试台成功。
+
+## 新增：DeepSeek 官方临时 Key 测试台（2026-10-21）
+
+本地启动后打开 `http://127.0.0.1:3002/ai-test`，或独立运行下面的 uvicorn 命令后打开同一地址。这里无需 Node 或数据库；不要为测试启动原数据库。使用一键入口时仍会按原行为启动网站业务后端。
+
+1. 在密码框输入自己的 DeepSeek 官方 Key（不要把 Key 发给他人或提交 Git）。
+2. 选择模型，勾选费用/内容发送确认。默认 deepseek-flash；可选 deepseek-v4-pro。地址、模型依据 [DeepSeek 官方接口文档](https://api-docs.deepseek.com/api/create-chat-completion/) 核对，不接受任意 URL 或中转站。
+3. 点击“测试连接”仅发送固定虚构题目，但仍可能计费；“测试复习建议”发送页面中的题目和作答，验证实际建议格式。两个按钮复用已有 DeepSeek Provider 与结果校验，不是只验证 HTTP 200。
+4. 请求发出后 Key 和费用勾选立即清空，再次请求须重新输入和确认。页面不自动发送请求、不自动重试、不自动回退 Mock；错误只显示脱敏信息。
+
+新增 `src/ai_deepseek_test.py` 导出独立的 `register(app, dependencies=...)`，注册 `POST /api/ai/test`。它复用同目录 `ai_mistake.py`，因此交接这个可选功能需要两个 Python 文件；没有新增第三方依赖。现有 `register`、环境变量方式和普通网站 Mock 不变，结果不自动保存/应用到错题，不改变材料、评分、会话或进度。临时 Key 不写数据库、文件、环境变量或浏览器存储，不放到共享 Provider；按请求隔离，应用内共享每分钟 10 次、同时 2 个调用限制。此限制不是分布式用户配额。
+
+测试页文件为 `deepseek-test.html`、`deepseek-test.js`，由开发入口显式提供，不在生产环境自动挂载。正常网站 AI 面板默认走原 Mock/宿主接口，临时 Key 的可选接入见上节；独立测试页的结果仍仅展示，不覆盖已保存建议。这不是永久 Key 设置功能。`test_app.py` 的普通分类接口始终 Mock，但新增测试路由会在明确点击并提供临时 Key 后调用官方服务，不应再把整个开发服务理解为绝对不会发模型请求。
+
+可选模块接入（宿主提供真实鉴权/AI 权限依赖，不导入本地 test_app）：
+
+```python
+from src.ai_deepseek_test import register as register_deepseek_test
+register_deepseek_test(app, dependencies=[Depends(require_ai_permission)])
+```
+
+不传依赖时拒绝请求，不能用空依赖函数绕过生产鉴权。本机入口以回环、Host/Origin/转发头限制代替开发身份，仅可本机使用；不能公开、反向代理或用于线上。线上应使用 HTTPS、宿主授权和请求体/日志/异常跟踪脱敏；服务器必然接触本次 Key，不能承诺服务器无法看到，清空字段也不保证安全擦除内存或浏览器插件不会保存。
+
+JSON 请求只接受 `api_key`、`model`、`action`（connection/classify）、`confirm_cost: true` 和 `input`。classify 的 input 沿用下文扩展契约，其中仅 question/student_answer 必填非空；错误原因可省略。connection 忽略 input，用固定虚构题目。成功返回 `{ok, provider, model, action, elapsed_ms}`，classify 另有 `result`（建议和结构化分析）。连接成功不等于真实教学质量已验收。额外错误：400 COST_CONFIRMATION_REQUIRED/INVALID_API_KEY、502 INVALID_RESPONSE；其他沿用原 Provider 的超时、鉴权、余额、上游错误映射。
+
+测试台以人工输入 Key 为本次明确授权，不使用环境变量 Key，也不需要全局 AI_ENABLE_REAL 开关；不会更改原模块的 AI_KEY_MODE=development 限制。这是隔离的可选入口，不是将用户密钥偷偷放进服务器统一凭据。
+
+本轮验证：`python -B -m unittest discover -s tests -v` 41/41 通过（原有 29 项与新增 12 项，无跳过）；`node --test tests/mistake-ai.cjs tests/ai-proxy.cjs` 15/15 通过。新增浏览器测试实际访问本地 FastAPI 测试页，覆盖 1280×960、390×844，逐次点击连接/建议/失败分支，断言两种视口总共只有 6 次假上游请求，未勾选不请求、Key 即时清空、无浏览器存储、结果按纯文本显示；已检查两种视口截图。另验证按请求隔离、固定官方地址、费用确认、输入限制、默认拒绝、跨来源拒绝、超时、限流/共享并发和普通 Mock 不变。JS 语法与 git diff --check 通过。全部使用虚构 Key/httpx.MockTransport，无真实模型请求、.env、数据库或依赖安装，未提交 Git。真实账户、网络与模型可用性待用户在本机手动测试；不能把假上游通过当成真实调用成功。
+
 这是交给主网站后端集成的模块，不是新网站或部署方案。只新增本目录，Node 服务和 SCF 准备包保持不变。Python >=3.11。
 
 ## 交付给大组什么
@@ -50,7 +126,7 @@ register(app, dependencies=[
 
 ## JSON 契约，复用现有业务规则
 
-请求头必须 `Content-Type: application/json`，可带 charset。五个字段均可省略，但已提供值必须是字符串；每字段最多 4000 个 JavaScript UTF-16 单元，总请求体最多 16384 字节。拒绝未知字段、图片、用户 ID、模型/Provider/Key 等客户端配置；拒绝压缩请求体。
+请求头必须 `Content-Type: application/json`，可带 charset。原 question/student_answer/error_type/correct_answer/context 五字段保持兼容，增加可选 solution_steps、mistake_category（knowledge/thinking/execution/unclassified）、question_format（choice/open/unknown）。已提供值必须是字符串；每字段最多 4000 个 JavaScript UTF-16 单元，总请求体最多 16384 字节。只有题目、学生答案是调用门槛；其他可省略。拒绝未知字段、图片、用户 ID、模型/Provider/Key 等客户端配置；拒绝压缩请求体。
 
 ```json
 {"question":"1+1=?","student_answer":"3","error_type":"careless","correct_answer":"2","context":"虚构联调题目"}
@@ -62,11 +138,11 @@ mock 成功响应：
 {"review_method":"retry","reason":"Mock：按已提供的错误类型匹配临时示例规则，未推断错误原因。","needs_review":true}
 ```
 
-确定的 mock 演示映射：knowledge_gap → cloze；reasoning_gap → self_explain；careless → retry；其他 → unclassified。题目、学生答案、明确的 error_type 缺少任一项时不调用 Provider，返回 `unclassified` 人工兜底。correct_answer/context 不能替代上述门槛。
+确定的 Mock 演示映射仍为 knowledge_gap → cloze、reasoning_gap → self_explain、careless → retry、其他 → unclassified，只限 Mock。题目或学生答案缺少时不调用 Provider，返回 `unclassified` 人工兜底。没有 error_type 仍可调用：Mock 标注未做分析，真实 DeepSeek 按证据分析。correct_answer/context 不能替代题目和学生答案。
 
-`error_type` 是调用方明确提供的证据标签，不是模型自动诊断；不要直接把主网站的 knowledge/thinking/execution 当作这些标签。`needs_review=true` 固定表示需要人工复核，不表示学生掌握程度或是否完成复习。规则版本为 review-modes-2，仅为可测试的演示映射，不是已确定的教学依据。
+`error_type` 是可选的用户自述，不是诊断事实；knowledge/thinking/execution 是已有错题分类线索，通过独立的 mistake_category 传入，不混同题型或模式。`needs_review=true` 固定表示需要人工复核，不表示学生掌握程度或是否完成复习。review-modes-2 演示规则仅供 Mock，不再作为真实分析提示。
 
-输出严格检查类别白名单、非空且最多 500 UTF-16 单元的 reason 和布尔 needs_review；额外字段丢弃，返回的 needs_review 总为 true。结构/类别不合法返回 200 人工兜底；上游非法 JSON、截断和 HTTP 故障返回错误，不伪装成分类成功。前端请使用 textContent 渲染 reason。
+输出严格检查模式白名单、非空且最多 500 UTF-16 单元的 reason 和布尔 needs_review；返回 needs_review 总为 true。真实 Provider 还必须有上述 analysis，各条文本最多300 UTF-16单元，观察1–4条、候选错因/追问/备选各0–3条；未知字段丢弃。结构不合法由 classify 返回200人工兜底，临时 Key 入口返回502 INVALID_RESPONSE；上游非法 JSON、截断和 HTTP 故障返回错误，不伪装成分析成功。前端分析和理由均使用 textContent，不执行 HTML。
 
 响应头：X-AI-Provider、X-AI-Result-Source（provider/input_fallback/validation_fallback/error）、服务端随机 X-Request-ID、Cache-Control: no-store、X-Content-Type-Options: nosniff。入口前的错误不一定含结果来源头。
 
@@ -88,7 +164,7 @@ mock 成功响应：
 
 不读取或修改宿主 HOST、PORT、NODE_ENV；没有本地服务/SCF 的监听配置。无配置、无 Key 时默认 mock，不能因为已有 Key 自动变成真实调用。密钥只由部署负责人在宿主的服务端环境变量界面填写，不放到前端、源码、命令行参数或聊天中。本轮没有启用真实模式。
 
-真实传输复用原固定 URL、模型请求格式（max_tokens=512、非流式、JSON Output、关闭 thinking）和错误映射。httpx 禁止重定向、禁用隐式环境代理，不自动重试；整个 Provider 调用含响应体读取受分类总超时约束，响应解码后最多 65536 字节。网络代理/证书需求由宿主另外审查。
+真实传输复用原固定 URL、非流式 JSON Output、关闭 thinking 和错误映射，结构化分析的 max_tokens 上限为1600。httpx 禁止重定向、禁用隐式环境代理，不自动重试；整个 Provider 调用含响应体读取受分类总超时约束，响应解码后最多 65536 字节。网络代理/证书需求由宿主另外审查。
 
 每个注册应用创建一个执行器，进程内全局默认每分钟 30 次、同时两个 Provider。超时或客户端取消会取消任务；若 Provider 吞掉取消，仍占容量直到真正结束，避免抛弃任务无限增长。实际部署应按 worker 数和实例数计算总并发，并由大组提供共享配额。取消不保证真实上游不计费。本版本不记录原始请求、响应、异常或 Key；大组平台日志仍需配置脱敏。
 

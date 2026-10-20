@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>课内</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=20261021-settings-2" />
 </head>
 <body>
 
@@ -296,17 +296,30 @@
         <span id="mistakeAiHome" hidden></span>
         <section id="mistakeAiPanel" class="mistake-ai-panel" aria-labelledby="mistakeAiTitle" hidden>
           <h2 id="mistakeAiTitle">AI 分类 · 复习方式建议</h2>
-          <p class="mistake-ai-note">当前为演示规则，结果需人工复核，不会自动修改原错题分类。只发送下方文字，不上传附件；请勿填写个人敏感信息。</p>
+          <p class="mistake-ai-note">默认沿用网站 AI（本地为 Mock）；也可明确选择 DeepSeek 官方并填写本次 Key。结果需人工复核，不会自动修改原错题分类。只发送下方文字，不上传附件；请勿填写个人敏感信息。</p>
           <form id="mistakeAiForm" class="edit-card" onsubmit="event.preventDefault();requestMistakeAi()">
             <h3 class="tag-sheet-section-title">题目信息</h3>
             <fieldset id="mistakeAiInputs">
+              <label for="mistakeAiProvider">本次 AI 来源</label>
+              <button type="button" onclick="coursesAiSettings.open()">打开共用 AI 设置</button>
+              <select id="mistakeAiProvider" onchange="changeMistakeAiProvider('mistakeAi')"><option value="shared">共用 AI 设置（右下角可配置）</option><option value="default">网站默认（本地为 Mock）</option><option value="deepseek">DeepSeek 官方（临时 Key）</option></select>
+              <div id="mistakeAiKeySettings" class="mistake-ai-key-settings" hidden>
+                <label for="mistakeAiApiKey">本次 API Key（不保存）</label>
+                <input id="mistakeAiApiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512">
+                <label for="mistakeAiModel">DeepSeek 模型</label>
+                <select id="mistakeAiModel"><option>deepseek-flash</option><option>deepseek-v4-pro</option></select>
+                <label><input id="mistakeAiCost" type="checkbox">同意本次将下方文字发送至 DeepSeek 官方，知晓可能产生费用。</label>
+                <p class="mistake-ai-note">Key 经过本网站后端，仅用于本次请求，发送后清空；重试需重新填写并确认。不自动重试或回退 Mock。不保证浏览器插件不会保存输入。</p>
+              </div>
               <label for="mistakeAiQuestion">题目文字（必填；图片题请补充文字）</label>
               <textarea id="mistakeAiQuestion" maxlength="4000" required rows="3"></textarea>
               <label for="mistakeAiStudentAnswer">学生作答（必填，不是参考答案）</label>
               <textarea id="mistakeAiStudentAnswer" maxlength="4000" required rows="2"></textarea>
-              <label for="mistakeAiErrorType">已明确的错误原因（必选，不由 AI 推断）</label>
-              <select id="mistakeAiErrorType" required>
-                <option value="">请选择已明确的原因</option>
+              <label for="mistakeAiSteps">解题过程（可选；不清楚也可以留空）</label>
+              <textarea id="mistakeAiSteps" maxlength="4000" rows="3" placeholder="写下当时怎么想、怎么算，帮助 AI 区分候选错因"></textarea>
+              <label for="mistakeAiErrorType">我认为的错误原因（可选线索，不是诊断结论）</label>
+              <select id="mistakeAiErrorType">
+                <option value="">不确定，请 AI 辅助分析</option>
                 <option value="knowledge_gap">知识缺漏</option><option value="reasoning_gap">推理障碍</option>
                 <option value="careless">粗心失误</option><option value="other">其他 / 尚不明确</option>
               </select>
@@ -322,6 +335,7 @@
             <h3 class="tag-sheet-section-title">AI 建议结果</h3>
             <p id="mistakeAiSuggested"></p>
             <p id="mistakeAiReason" class="detail-content"></p>
+            <section id="mistakeAiAnalysis" class="mistake-ai-analysis" aria-label="AI 学习分析" hidden></section>
             <label for="mistakeAiMethod">人工复核：可修改建议</label>
             <select id="mistakeAiMethod" onchange="changeMistakeAiSuggestion()">
               <option value="" disabled selected>请选择复习模式</option>
@@ -330,7 +344,7 @@
               <option value="reading">阅读标记</option><option value="contrast">对比辨析</option>
               <option value="retry">重新作答</option>
             </select>
-            <p class="mistake-ai-note">这里只保存复习建议，不会启用或切换实际复习流程；待做模式尚无对应引擎。</p>
+            <p class="mistake-ai-note">这里只保存复习建议；进入总复习或计划后可使用，专属材料仍需另行准备和确认，不自动评分。</p>
             <p class="mistake-ai-note">确认后的复习方式保存在本浏览器，刷新后重新打开 AI 面板可恢复；清除浏览器数据后会丢失，不跨浏览器同步。输入和 AI 理由不保存。如需修改原错题分类，请使用上方“编辑”。</p>
           </div>
           <span id="mistakeAiActionsHome" hidden></span>
@@ -678,6 +692,8 @@
           </div>
           <div class="edit-card-body">
             <textarea id="mistakeEditExplanation" rows="3" placeholder="解析 / 错误原因" oninput="refreshMistakeEditDirty()"></textarea>
+            <button type="button" class="btn-cancel" onclick="toggleMistakeAnswerAi('Edit')">AI 生成答案与解析（可选）</button>
+            <section id="mistakeEditAnswerAiHost" class="mistake-answer-ai" hidden></section>
           </div>
         </section>
       </div>
@@ -889,17 +905,32 @@
             </div>
             <div class="edit-card-body">
               <textarea id="mistakeCreateExplanation" rows="2" placeholder="解析 / 错误原因" oninput="updateMistakeCreateExplanationClear()"></textarea>
+              <button type="button" class="btn-cancel" onclick="toggleMistakeAnswerAi('Create')">AI 生成答案与解析（可选）</button>
+              <section id="mistakeCreateAnswerAiHost" class="mistake-answer-ai" hidden></section>
             </div>
           </section>
           <details id="mistakeCreateAiPanel" class="mistake-create-ai">
             <summary>AI 复习建议（可选）</summary>
             <p class="mistake-ai-note">不使用也可以直接添加错题。仅主动获取时请求 AI；本地 mock 返回演示结果。选择复习方式不会改变错题分类或实际复习流程。</p>
             <fieldset id="mistakeCreateAiFields" class="edit-card-body">
+              <label for="mistakeCreateAiProvider">本次 AI 来源</label>
+              <button type="button" onclick="coursesAiSettings.open()">打开共用 AI 设置</button>
+              <select id="mistakeCreateAiProvider" onchange="changeMistakeAiProvider('mistakeCreateAi')"><option value="shared">共用 AI 设置（右下角可配置）</option><option value="default">网站默认（本地为 Mock）</option><option value="deepseek">DeepSeek 官方（临时 Key）</option></select>
+              <div id="mistakeCreateAiKeySettings" class="mistake-ai-key-settings" hidden>
+                <label for="mistakeCreateAiApiKey">本次 API Key（不保存）</label>
+                <input id="mistakeCreateAiApiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512">
+                <label for="mistakeCreateAiModel">DeepSeek 模型</label>
+                <select id="mistakeCreateAiModel"><option>deepseek-flash</option><option>deepseek-v4-pro</option></select>
+                <label><input id="mistakeCreateAiCost" type="checkbox">同意本次将题目和作答发送至 DeepSeek 官方，知晓可能产生费用。</label>
+                <p class="mistake-ai-note">Key 仅本次使用，发送后清空；取消或关闭也会清空。不保存、不自动重试或回退 Mock。</p>
+              </div>
               <label for="mistakeCreateAiStudentAnswer">学生作答（仅获取建议时填写）</label>
               <textarea id="mistakeCreateAiStudentAnswer" rows="2" placeholder="填写当时的实际作答，不要填参考答案"></textarea>
-              <label for="mistakeCreateAiErrorType">错误原因（仅获取建议时选择）</label>
+              <label for="mistakeCreateAiSteps">解题过程（可选）</label>
+              <textarea id="mistakeCreateAiSteps" maxlength="4000" rows="3" placeholder="不知道原因时，可以补充当时的计算或思考过程"></textarea>
+              <label for="mistakeCreateAiErrorType">我认为的错误原因（可选线索）</label>
               <select id="mistakeCreateAiErrorType">
-                <option value="">请选择错误原因</option>
+                <option value="">不确定，请 AI 辅助分析</option>
                 <option value="knowledge_gap">知识点不熟</option>
                 <option value="reasoning_gap">推理过程有误</option>
                 <option value="careless">粗心失误</option>
@@ -909,11 +940,12 @@
               <div id="mistakeCreateAiResult" hidden>
                 <p id="mistakeCreateAiSuggested"></p>
                 <p id="mistakeCreateAiReason" class="mistake-ai-note"></p>
+                <section id="mistakeCreateAiAnalysis" class="mistake-ai-analysis" aria-label="AI 学习分析" hidden></section>
                 <button type="button" class="btn-cancel" id="mistakeCreateAiAdopt" onclick="adoptMistakeCreateAi()" disabled>采用建议</button>
               </div>
               <label for="mistakeCreateAiMethod">最终复习方式</label>
               <select id="mistakeCreateAiMethod" onchange="changeMistakeCreateAiMethod()"><option value="">不选择</option></select>
-              <small class="mistake-ai-note">只有采用建议或手动选择后，点击底部“保存”才会在错题创建成功后保存到本浏览器。部分模式的实际复习流程尚未实现。</small>
+              <small class="mistake-ai-note">只有采用建议或手动选择后，点击底部“保存”才会在错题创建成功后保存到本浏览器。需要专属材料的模式仍须准备并确认材料后使用。</small>
             </fieldset>
             <p id="mistakeCreateAiStatus" class="mistake-ai-note" role="status"></p>
             <p id="mistakeCreateAiError" class="mistake-inline-error" role="alert"></p>
@@ -1072,7 +1104,8 @@
   <script src="js/config.js"></script>
   <script src="js/state.js"></script>
   <script src="js/utils.js"></script>
-  <script src="js/ai.js"></script>
+  <script src="js/ai.js?v=20261021-settings-2"></script>
+  <script src="js/aiSettings.js?v=20261021-settings-2"></script>
 
   <!-- 课程 -->
   <script src="js/courses.js"></script>
@@ -1090,7 +1123,7 @@
 
   <!-- 录入流程：手动输入 + 选标签 -->
   <script src="js/manualEntry.js"></script>
-  <script src="js/tagPicker.js"></script>
+  <script src="js/tagPicker.js?v=20261021-settings-2"></script>
   <script src="js/tagPickerView.js"></script>
 
   <!-- 详情页 -->
@@ -1099,8 +1132,9 @@
   <script src="js/resourceDetail.js"></script>
   <script src="js/materialReview.js"></script>
   <script src="js/noteReview.js"></script>
-  <script src="js/mistakeDetail.js"></script>
-  <script src="js/mistakeAi.js"></script>
+  <script src="js/mistakeDetail.js?v=20261021-answer-1"></script>
+  <script src="js/mistakeAi.js?v=20261021-settings-2"></script>
+  <script src="js/mistakeAnswerAi.js?v=20261021-settings-2"></script>
   <script src="js/reviewWorkbench.js"></script>
   <dialog id="mistakeAiDialog" aria-labelledby="mistakeAiDialogTitle" oncancel="event.preventDefault();resetMistakeAi()" onclick="if(event.target===this)resetMistakeAi()">
     <header class="mistake-ai-dialog-head"><div><h2 id="mistakeAiDialogTitle" tabindex="-1">AI 复习建议</h2><p id="mistakeAiDialogQuestionTitle" class="mistake-ai-note"></p></div><button type="button" class="tag-sheet-close" onclick="resetMistakeAi()" aria-label="关闭 AI 复习建议">×</button></header>

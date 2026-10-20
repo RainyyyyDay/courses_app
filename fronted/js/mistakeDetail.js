@@ -208,6 +208,7 @@ function syncMistakeEditNameExt(file) {
 function openMistakeEdit(row = mistakeDetailState?.row) {
   if (!row) return;
   if (mistakeEditPending?.saving) return;
+  if(typeof resetMistakeAnswerAi==='function')resetMistakeAnswerAi('Edit');
   ++mistakeEditRequest;
   mistakeEditPending = {
     row, id: row.id, courseId: currentCourseId, view: currentView,
@@ -259,6 +260,7 @@ function openMistakeEdit(row = mistakeDetailState?.row) {
 function closeMistakeEdit() {
   const pending = mistakeEditPending;
   if (pending?.saving) return;
+  if(typeof resetMistakeAnswerAi==='function')resetMistakeAnswerAi('Edit');
   ++mistakeEditRequest;
   const modal = document.getElementById('mistakeEditModal');
   if (modal) modal.classList.remove('show');

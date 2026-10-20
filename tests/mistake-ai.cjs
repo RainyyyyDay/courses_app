@@ -13,11 +13,57 @@ const input = {question:'1+1=?',student_answer:'3',error_type:'careless'};
 const output = {review_method:'retry',reason:'Mock only',needs_review:true};
 
 function adapter(fetch, globals = {}) {
-  const ctx = vm.createContext({fetch,AbortController,TextEncoder,setTimeout,clearTimeout,...globals});
+  const ctx = vm.createContext({fetch,AbortController,TextEncoder,URL,setTimeout,clearTimeout,...globals});
   vm.runInContext("const API='https://example.invalid/api';" + fs.readFileSync(path.join(root,'fronted/js/ai.js'),'utf8'),ctx);
   return (body=input,options={}) => {ctx.body=body;ctx.options=options;return vm.runInContext('classifyMistakeWithAi(body,options)',ctx);};
 }
 const reply = (data,status=200) => new Response(JSON.stringify(data),{status});
+
+const localKeyGlobals={COURSES_AI_API_BASE:'/api',location:{href:'http://127.0.0.1:3002/',origin:'http://127.0.0.1:3002'}};
+const temporaryKey={apiKey:'synthetic-adapter-key',model:'deepseek-flash',confirmCost:true};
+const analysisOutput={answer_status:'incorrect',observations:['答案不同，错因暂不能确定。'],possible_causes:[],follow_up_questions:['请补充过程。'],reference_check:'参考答案待核对。',alternatives:[],material_requirements:['原题与核对要点。']};
+test('temporary official Key uses the existing test endpoint and normalizes its result',async()=>{
+  let captured;
+  const expected={...output,analysis:analysisOutput};
+  const classify=adapter(async(url,options)=>{captured={url,...options};return reply({ok:true,provider:'deepseek',model:'deepseek-flash',action:'classify',result:expected});},localKeyGlobals);
+  assert.equal(JSON.stringify(await classify(input,{deepseek:temporaryKey})),JSON.stringify(expected));
+  assert.equal(captured.url,'http://127.0.0.1:3002/api/ai/test');
+  assert.deepEqual(JSON.parse(captured.body),{api_key:temporaryKey.apiKey,model:temporaryKey.model,action:'classify',confirm_cost:true,input});
+});
+test('temporary Key rejects unsafe origins, invalid consent/key/model without fetching',async()=>{
+  let calls=0;const fetch=async()=>{calls++;return reply({});};
+  for(const [deepseek,code]of [[{...temporaryKey,apiKey:''},'INVALID_API_KEY'],[{...temporaryKey,confirmCost:false},'COST_CONFIRMATION_REQUIRED'],[{...temporaryKey,model:'arbitrary'},'INVALID_INPUT']]){
+    await assert.rejects(adapter(fetch,localKeyGlobals)(input,{deepseek}),{code});
+  }
+  for(const globals of [{...localKeyGlobals,COURSES_AI_API_BASE:'https://other.invalid/api'},
+    {COURSES_AI_API_BASE:'/api',location:{href:'http://remote.invalid/',origin:'http://remote.invalid'}}]){
+    await assert.rejects(adapter(fetch,globals)(input,{deepseek:temporaryKey}),{code:'AI_TEMP_KEY_ORIGIN'});
+  }
+  assert.equal(calls,0);
+});
+test('temporary Key failures never fall back to Mock or expose upstream body',async()=>{
+  let calls=0;
+  const classify=adapter(async()=>{calls++;return reply({error:'AI_AUTH_FAILED',message:'synthetic-secret'},502);},localKeyGlobals);
+  await assert.rejects(classify(input,{deepseek:temporaryKey}),err=>err.code==='AI_AUTH_FAILED'&&!err.message.includes('synthetic-secret'));
+  assert.equal(calls,1);
+  for(const envelope of [{ok:true,provider:'mock',model:'deepseek-flash',action:'classify',result:output},
+    {ok:true,provider:'deepseek',model:'other',action:'classify',result:output},
+    {ok:true,provider:'deepseek',model:'deepseek-flash',action:'classify',result:{...output,needs_review:false}}]){
+    await assert.rejects(adapter(async()=>reply(envelope),localKeyGlobals)(input,{deepseek:temporaryKey}),{code:'INVALID_RESPONSE'});
+  }
+});
+
+test('analysis is bounded and whitelisted; unknown user cause and optional process are allowed',async()=>{
+  const data={...output,analysis:{...analysisOutput,raw_response:'discard',api_key:'discard'}};
+  const result=await adapter(async()=>reply(data))({...input,error_type:'',solution_steps:'先数一个，再加一个。',question_format:'unknown'});
+  assert.equal(result.analysis.observations[0],analysisOutput.observations[0]);
+  assert.ok(!JSON.stringify(result).includes('discard'));
+  for(const analysis of [{...analysisOutput,observations:['x'.repeat(301)]},{...analysisOutput,answer_status:'definitely'},
+    {...analysisOutput,possible_causes:[{category:'secret',support:'supported',explanation:'x',evidence:'x'}]},
+    {...analysisOutput,alternatives:[{mode_id:'invented',reason:'x'}]}]){
+    await assert.rejects(adapter(async()=>reply({...output,analysis}))(),{code:'INVALID_RESPONSE'});
+  }
+});
 
 test('file/configuration errors are distinct from local mock connection failures', async () => {
   let calls=0;
@@ -122,4 +168,58 @@ for(const viewport of [[1280,960],[390,844]]) test('real detail UI mock regressi
     // temp 是本测试 mkdtemp 的明确返回值，且 profile 只在此目录中。
     fs.rmSync(temp,{recursive:true,force:true,maxRetries:8,retryDelay:200});
   }
+});
+
+test('new AI selector works after navigating from cached legacy scripts',{timeout:90000},async()=>{
+  const chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].find(fs.existsSync);
+  assert.ok(chrome);
+  const front=path.join(root,'fronted');
+  const html=fs.readFileSync(path.join(front,'index.html'),'utf8').replace('<script src="app.js"></script>','')
+    .replace('<div class="course-list" id="courseList"></div>','<div class="course-list" id="courseList">缓存回归虚构课程</div>');
+  const oldHits={ai:0,panel:0},newHits={ai:0,panel:0};
+  const server=http.createServer((req,res)=>{
+    if(req.url==='/__legacy_cache'){
+      res.setHeader('Content-Type','text/html; charset=utf-8');
+      res.end('<script src="/js/ai.js"></script><script src="/js/mistakeAi.js"></script><script>location.replace("/")</script>');return;
+    }
+    if(req.url==='/'){res.setHeader('Content-Type','text/html; charset=utf-8');res.end(html);return;}
+    const bare=req.url.split('?')[0];
+    const kind=bare==='/js/ai.js'?'ai':bare==='/js/mistakeAi.js'?'panel':null;
+    if(kind&&!req.url.includes('?')){
+      oldHits[kind]++;res.setHeader('Content-Type','text/javascript');res.setHeader('Cache-Control','public, max-age=3600');
+      res.end('/* synthetic old cached script: no temporary-Key helpers */');return;
+    }
+    if(kind)newHits[kind]++;
+    const file=path.resolve(front,decodeURIComponent(bare).slice(1));
+    if(!file.startsWith(front+path.sep)||! /\.(js|css|svg|png)$/.test(file)||!fs.existsSync(file)){res.writeHead(404).end();return;}
+    res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'image/svg+xml');res.end(fs.readFileSync(file));
+  });
+  try{
+    await new Promise(r=>server.listen(0,'127.0.0.1',r));
+    const initScript=`addEventListener('load',()=>{
+      if(location.pathname!=='/')return;
+      const out=document.createElement('pre');out.id='regressionResult';
+      const check=(v,m)=>{if(!v)throw Error(m);};
+      try{
+        check(typeof changeMistakeAiProvider==='function','new selector handler loaded, not old cached script');
+        currentCourseId=42;currentView={type:'mistake',id:11};
+        const row={id:11,course_id:42,title:'虚构缓存验证',content:'1+1=?',answer_content:'2',mistake_type:'knowledge',knowledge:[]};
+        mistakeDetailState={id:11,courseId:42,review:false,row};showPageOnly('mistakeDetailPage');renderMistakeDetail(row,false);
+        document.getElementById('mistakeAiToggle').click();
+        const provider=mistakeAiElement('Provider');provider.value='deepseek';provider.dispatchEvent(new Event('change'));
+        check(!mistakeAiElement('KeySettings').hidden,'actual onchange expands Key fields');
+        check(mistakeAiElement('ApiKey').type==='password'&&!mistakeAiElement('ApiKey').value,'empty masked Key');
+        resetMistakeAi();out.dataset.result='passed';out.textContent='passed';
+      }catch(e){out.dataset.result='failed';out.textContent=e.stack;}document.body.append(out);
+    });`;
+    for(const viewport of [[1280,960],[390,844]]){
+      const profile=fs.mkdtempSync(path.join(os.tmpdir(),'courses-old-ai-cache-'));
+      try{
+        const doc=await runBrowser({chrome,profile,url:'http://127.0.0.1:'+server.address().port+'/__legacy_cache',viewport,initScript});
+        const result=doc.match(/<pre id="regressionResult"[^>]*>[\s\S]*?<\/pre>/)?.[0];
+        assert.match(result||'',/data-result="passed"/,result||doc.slice(-1500));
+      }finally{fs.rmSync(profile,{recursive:true,force:true,maxRetries:20,retryDelay:100});}
+    }
+    assert.deepEqual(oldHits,{ai:2,panel:2});assert.deepEqual(newHits,{ai:2,panel:2});
+  }finally{await new Promise(r=>server.close(r));}
 });
