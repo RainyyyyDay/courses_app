@@ -965,6 +965,25 @@ body.mistake-review-open { overflow: hidden; }
 .review-workbench textarea { resize:vertical; }
 .review-workbench .detail-content,.review-workbench p { white-space:pre-wrap;overflow-wrap:anywhere; }
 .review-workbench button { min-height:40px;max-width:100%;white-space:normal; }
+.review-workbench-content { display:flex;flex-direction:column;min-height:0;max-height:inherit;width:100%; }
+.review-workbench-inline { position:static;inset:auto;display:block;margin:16px 0;width:100%;max-height:none;overflow:visible;border:1px solid #e1e6ef;box-sizing:border-box;background:#fff; }
+.review-workbench-inline .review-workbench-content { max-height:none; }
+.review-workbench-inline .review-workbench-body { overflow:visible; }
+.review-workbench summary { cursor:pointer;font-size:14px;color:#52627f;margin-bottom:12px; }
+#reviewWbInline[hidden],#reviewWbHeader[hidden],#mistakeReviewPanel[hidden],#materialReviewActions[hidden],#materialReviewContent[hidden],#materialReviewPreview[hidden] { display:none!important; }
+.review-cloze-text { white-space:pre-wrap;font-size:18px;line-height:2.5;overflow-wrap:anywhere; }
+.review-workbench .review-inline-blank { display:inline-block;margin:0 5px;max-width:100%;vertical-align:baseline; }
+.review-workbench .review-inline-blank input { width:180px;max-width:100%;border-bottom:2px solid #5673bc; }
+.review-blank-result { display:inline;background:#edf1f8;padding:3px; }
+.review-reading-body { max-width:760px;margin:18px auto;white-space:pre-wrap;font-size:18px;line-height:1.8;overflow-wrap:anywhere; }
+.review-contrast-scroll { overflow-x:auto; }
+.review-contrast-scroll table { border-collapse:collapse;width:100%; }
+.review-contrast-scroll th,.review-contrast-scroll td { border:1px solid #dbe0ea;padding:8px;vertical-align:top;min-width:115px; }
+.review-contrast-scroll caption { text-align:left;margin-bottom:10px; }
+.review-workbench .review-check { display:flex;align-items:flex-start;gap:10px; }
+.review-workbench .review-check input { width:auto;flex:0 0 auto;margin-top:3px; }
+.review-workbench fieldset { min-width:0;border:1px solid #dbe0ea; }
+.review-workbench .sr-only { position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap; }
 .edit-choice-config > .mistake-format-confirm { flex-direction: row; }
 .mistake-choice-options { display: flex; flex-direction: column; gap: 9px; margin: 14px 0 10px; }
 .mistake-choice-option { display: flex; align-items: flex-start; gap: 10px; padding: 11px 14px; border: 1px solid #e1e6ef; border-radius: 10px; background: #fff; color: #34415a; cursor: pointer; transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease; }

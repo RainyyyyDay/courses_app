@@ -40,14 +40,20 @@ function Get-Tool([string]$Name) {
     return $command.Source
 }
 
-function Set-MockEnvironment {
+function Set-LocalEnvironment {
     # Override inherited provider/preload settings; never load a dotenv file.
     $env:AI_PROVIDER = 'mock'
     $env:AI_ENABLE_REAL = 'false'
-    $env:OCR_PROVIDER = 'mock'
+    $env:OCR_PROVIDER = 'http'
+    $env:OCR_API_BASE = 'http://127.0.0.1:8001'
     $env:PYTHONPATH = $dependencyPath
     Remove-Item Env:NODE_OPTIONS -ErrorAction SilentlyContinue
     Remove-Item Env:NPM_CONFIG_NODE_OPTIONS -ErrorAction SilentlyContinue
+}
+
+function Test-LocalOcrHealth {
+    try { $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8001/health' -TimeoutSec 2; return ($health.status -eq 'ok' -and $health.provider -eq 'paddleocr') }
+    catch { return $false }
 }
 
 function Start-ServiceWindow([string]$Name) {
@@ -60,16 +66,15 @@ function Start-ServiceWindow([string]$Name) {
 if ($Service -ne 'Main') {
     $workerExitCode = 0
     try {
-        Set-MockEnvironment
+        Set-LocalEnvironment
         $port = if ($Service -eq 'Node') { 3000 } else { 3002 }
         $Host.UI.RawUI.WindowTitle = "课程网站 - $Service - 端口 $port"
         if ((Get-OccupiedPorts) -contains $port) { throw "端口 $port 已占用，未启动重复服务。" }
         if ($Service -eq 'Node') {
+            if (-not (Test-LocalOcrHealth)) { Write-Warning 'OCR 暂不可用，网站继续启动；只有“识别文字”受影响，不会使用 Mock 假识别。稍后可单独启动 ocr-service\start.ps1。' }
             Set-Location -LiteralPath $backendPath
             $nodePath = Get-Tool 'node.exe'
-            Write-Host '启动本地 Node 后端（会使用 back/data/app.db）…'
-            # The local launcher has its own fixed-mock contract. npm start may
-            # load .env or change independently; invoke the known entry directly.
+            Write-Host '启动本地 Node 后端（AI=mock，OCR=http -> 127.0.0.1:8001；不加载 .env；会使用 back/data/app.db）…'
             & $nodePath server.js
         } else {
             Set-Location -LiteralPath $aiPath
@@ -112,7 +117,16 @@ try {
     }
     $nodePath = Get-Tool 'node.exe'
     $pythonPath = Get-Tool 'python.exe'
-    Set-MockEnvironment
+    Set-LocalEnvironment
+    $ocrScript = Join-Path $projectRoot 'ocr-service\start.ps1'
+    $ocrCanStart = $false
+    if (Test-Path -LiteralPath $ocrScript -PathType Leaf -ErrorAction SilentlyContinue) {
+        try {
+            & (Join-Path $PSHOME 'powershell.exe') -NoLogo -NoProfile -ExecutionPolicy Bypass -File $ocrScript -CheckOnly
+            $ocrCanStart = ($LASTEXITCODE -eq 0)
+        } catch { Write-Warning 'OCR 检查失败；不会影响网站启动。' }
+    }
+    if (-not $ocrCanStart) { Write-Warning 'OCR 环境暂未就绪；网站和 AI Mock 可照常使用，仅文字识别暂不可用。不会安装依赖或退回 Mock。' }
 
     Push-Location -LiteralPath $backendPath
     try {
@@ -147,11 +161,24 @@ try {
         if (-not $ready) { throw '服务未在等待时间内就绪，未自动打开页面。请查看 Node/AI 窗口；已启动的服务不会被自动终止，排错后请先停止再重试。' }
         Start-Process -FilePath 'http://127.0.0.1:3002/' | Out-Null
         Write-Host '两个服务已就绪，已打开本地网站 http://127.0.0.1:3002/ 。' -ForegroundColor Green
+        Write-Host '服务状态：网页/AI http://127.0.0.1:3002/（AI=mock）；业务后端 http://127.0.0.1:3000（OCR_PROVIDER=http）。'
+        # Open the website first: optional OCR startup must never gate website readiness.
+        if ($ocrCanStart) {
+            try {
+                & (Join-Path $PSHOME 'powershell.exe') -NoLogo -NoProfile -ExecutionPolicy Bypass -File $ocrScript
+                if ($LASTEXITCODE -ne 0) { Write-Warning 'OCR 启动失败；网站已打开，其他功能仍可使用。' }
+            } catch { Write-Warning 'OCR 启动异常；网站保持运行，未切换 Mock。' }
+        }
+        if (Test-LocalOcrHealth) {
+            Write-Host 'OCR：http://127.0.0.1:8001（Provider=paddleocr，健康检查通过）；日志/PID 见 OCR 启动输出。' -ForegroundColor Green
+        } else {
+            Write-Warning 'OCR：http://127.0.0.1:8001 暂不可用；网站可继续使用。之后单独运行 ocr-service\start.ps1 即可恢复识别，无需重启本次以 OCR_PROVIDER=http 启动的后端。'
+        }
         Write-Host 'AI 独立演示：http://127.0.0.1:3002/demo'
         Write-Host '请使用上面的 HTTP 地址，AI 已同源接入固定 mock；不要直接双击 HTML 文件。'
-        Write-Host '停止：分别在 Node、AI 两个窗口按 Ctrl+C；如 npm 询问终止批处理，输入 Y。关闭本启动窗口不会停止服务。'
+        Write-Host '停止：分别在 Node、AI 两个窗口按 Ctrl+C；OCR 是独立后台进程，需按上方 PID 单独停止。关闭本启动窗口不会停止服务。'
     } else {
-        Write-Host '仅检查完成：没有启动服务、打开网页或连接数据库。'
+        Write-Host '网站环境检查完成（OCR 为可选项）：没有启动服务、打开网页或连接数据库。'
     }
 } catch {
     Write-Host "启动未完成：$($_.Exception.Message)" -ForegroundColor Red

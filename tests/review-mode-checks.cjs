@@ -30,7 +30,9 @@ async function reviewModeChecks(courseId){
   const adviceKey=mistakeAiStorageKey({courseId,id:row.id});
   saveMistakeAiMethod({courseId,id:row.id},'cloze');const adviceBefore=localStorage.getItem(adviceKey);
   session=await enter(row);
-  check(wb('Dialog').open&&reviewWorkbench.mode==='cloze','confirmed AI suggestion dispatches to its actual engine');
+  check(centerReview.quickMode.modeId==='standard'&&!centerReview.quickMode.ready,'missing AI material defaults to safe native flow');
+  await open(row,session);
+  check(reviewWorkbench.inline&&!wb('Dialog').open&&reviewWorkbench.mode==='cloze','manual AI entry renders in the original page');
   check(wb('Editor').textContent.includes('空位')&&wb('Editor').textContent.includes('AI 建议'),'AI mode ID is not treated as prepared material');
   const originalProgress=JSON.stringify(mistakeDetailState.progress);
   wb('Actions').querySelectorAll('button')[1].click();await wait(()=>reviewWorkbench.mode==='standard');await runExistingReviewMode();
@@ -44,7 +46,7 @@ async function reviewModeChecks(courseId){
   // engine. The only shared part for self-explain/contrast is open-answer grading.
   for(const mode of ['cloze','self_explain','contrast','reading']){
     session=await enter(row);await open(row,session);await loadReviewWorkbenchMode(mode);
-    check(wb('Actions').textContent.includes('手动创建材料'),'missing '+mode+' has a working manual action');
+    check(wb('Actions').textContent.includes('手动'),'missing '+mode+' has a working manual action');
     const scoreBefore=JSON.stringify(await state(row.id));
     wb('Actions').querySelector('button').click();await wait(()=>wb('Prompt')&&!reviewWorkbench.busy);
     wb('Prompt').value=mode==='cloze'?'两个二相加为【b1】':'请'+(mode==='reading'?'阅读本片段，记录疑问':'独立说明两个二相加');
@@ -70,7 +72,7 @@ async function reviewModeChecks(courseId){
       check(reviewWorkbench.attempt.grade===3&&reviewWorkbench.attempt.result.results[0].correct,'cloze checks alias objectively');
     }else{
       if(mode==='self_explain'){
-        check(wb('Answer').closest('label').textContent.includes('自己的话'),'self-explain asks for explanation');
+        check(wb('Answer').rows===10&&wb('Attempt').textContent.includes('自己的话'),'self-explain asks for explanation');
         wb('Answer').value='旧轮次的首次讲解';await submitWorkbenchAttempt('submit');
         const old=reviewWorkbench.attempt.id;closeReviewWorkbench();await open(row,session);
         await loadReviewWorkbenchMode('retry');await runExistingReviewMode();
@@ -78,11 +80,14 @@ async function reviewModeChecks(courseId){
         const evidence=await api('GET',prefix+'/review-items/mistake/'+row.id+'/attempts/'+old);
         check(evidence.firstAnswer==='旧轮次的首次讲解','retry retains previous evidence');
         const retryId=reviewWorkbench.attempt.id;closeReviewWorkbench();await enterCenterReview(await api('GET',prefix+'/review-sessions/'+session.id));
-        check(wb('Dialog').open&&reviewWorkbench.mode==='retry','returning to session preserves retry instead of falling into native standard');
+        check(reviewWorkbench.inline&&!wb('Dialog').open&&reviewWorkbench.mode==='self_explain','returning to session resumes actual retry engine inline');
         await loadReviewWorkbenchMode('self_explain');check(reviewWorkbench.attempt.id===retryId,'existing retry attempt is resumable without creating another one');
       }
-      if(mode==='contrast')check(wb('Attempt').textContent.includes('加法')&&wb('Attempt').textContent.includes('适用范围')&&wb('Answer').closest('label').textContent.includes('差异'),'contrast presents objects/dimensions and asks for differences');
-      wb('Answer').value=mode==='reading'?'已读，需再看':'我的独立讲解、异同与核对要点';
+      if(mode==='contrast'){
+        check(wb('Attempt').querySelectorAll('tbody textarea').length===4&&!wb('Answer'),'contrast uses the structured object/dimension matrix');
+        for(const field of wb('Attempt').querySelectorAll('[data-contrast-field]'))field.value='我的独立比较';
+      }else wb('Answer').value=mode==='reading'?'已读，需再看':'我的独立讲解、异同与核对要点';
+      if(mode==='reading')wb('ReadComplete').click();
       await submitWorkbenchAttempt(mode==='reading'?'complete':'submit');
       if(mode==='reading'){
         check(reviewWorkbench.attempt.grade===null&&reviewWorkbench.attempt.result.exposureOnly,'reading only records exposure');
@@ -113,7 +118,7 @@ async function reviewModeChecks(courseId){
   session=await createReviewRecord('total',[{type:'note',id:note.id}]);await enterCenterReview(session);
   await openReviewWorkbench('note',note.id,centerWorkbenchContext(session.items[0],session));await loadReviewWorkbenchMode('self_explain');closeReviewWorkbench();
   await enterCenterReview(await api('GET',prefix+'/review-sessions/'+session.id));
-  check(wb('Dialog').open&&reviewWorkbench.mode==='self_explain','note explicit mode survives session reentry');
+  check(reviewWorkbench.inline&&!wb('Dialog').open&&reviewWorkbench.mode==='self_explain','note explicit mode survives session reentry inline');
   await switchWorkbenchToAvailableMode();
   check(!wb('Dialog').open&&currentView.type==='readingReview'&&activeReadingReview.row.id===note.id,'note missing-material escape returns to existing reader');
   const beforeReading=JSON.stringify(await api('GET',prefix+'/review-items/note/'+note.id+'/state'));

@@ -682,6 +682,8 @@ function mistakeChoiceHtml(p) {
 
 function renderMistakeReview(state) {
   const p = state.progress;
+  const roundKey=p.round+':'+p.mode?.id;
+  if(state.renderedRoundKey!==roundKey){state.firstAnswerDraft='';document.getElementById('mistakeFirstAnswer')?.remove();state.renderedRoundKey=roundKey;}
   const typedAnswer=document.getElementById('mistakeFirstAnswer')?.value || state.firstAnswerDraft || '';
   state.firstAnswerDraft=typedAnswer;
   const panel = document.getElementById('mistakeReviewPanel');
