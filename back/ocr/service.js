@@ -90,7 +90,10 @@ async function httpRecognize(file) {
 
 async function recognize(file) {
   if (!file) throw Object.assign(new Error('请上传要识别的文件'), { status: 400, code: 'INVALID_ARGUMENT' });
-  const provider = process.env.OCR_PROVIDER || 'mock';
+  // 默认走真实服务：.env 不进版本库，组员刚拉下来的仓库不会有它。
+  // 没起 OCR 服务时报"无法连接 OCR 服务"，比悄悄返回假数据好排查。
+  // 想调试界面再显式设 OCR_PROVIDER=mock。
+  const provider = process.env.OCR_PROVIDER || 'http';
   return provider === 'http' ? httpRecognize(file) : mockRecognize(file);
 }
 
