@@ -27,6 +27,43 @@ function workbenchSelection(s){
 }
 
 const REVIEW_MATERIAL_NEEDS=WORKBENCH_REQUIREMENTS;
+// Preparation feedback only; the existing server remains the final material validator.
+function workbenchMaterialMissing(mode,m={}){
+  const missing=[],has=v=>typeof v==='string'&&!!v.trim();
+  if(!has(m.prompt))missing.push(mode==='reading'?'阅读正文':'任务题面');
+  if(mode==='cloze'){
+    const blanks=Array.isArray(m.blanks)?m.blanks:[],ids=new Set();
+    if(!blanks.length||blanks.length>20)missing.push('1 到 20 个空位及答案');
+    for(const b of blanks){
+      if(!/^[A-Za-z][A-Za-z0-9_]{0,29}$/.test(b.id)||ids.has(b.id))missing.push('有效且不重复的空位编号');
+      ids.add(b.id);
+      if((m.prompt||'').split('【'+b.id+'】').length!==2)missing.push('题面中恰好一处【'+b.id+'】');
+      if(!has(b.answer)||!b.answer.replace(/[\s\u3000，。；：、,.!?！？；：""''（）()\[\]【】]/g,''))missing.push('空位 '+(b.id||'未编号')+' 的有效答案');
+    }
+    for(const [,id]of (m.prompt||'').matchAll(/【([A-Za-z][A-Za-z0-9_]*)】/g))if(!ids.has(id))missing.push('空位 '+id+' 的答案设置');
+  }else if(mode!=='reading'&&!has(m.reference))missing.push('参考答案或核对要点');
+  if(mode==='contrast'){
+    if((m.objects||[]).filter(has).length<2)missing.push('至少两个比较对象');
+    if(!(m.dimensions||[]).some(has))missing.push('至少一个比较维度');
+  }
+  return [...new Set(missing)];
+}
+function renderWorkbenchReadiness(kind,message,missing=[]){
+  const host=wb('Readiness');if(!host)return;
+  host.dataset.materialState=kind;
+  host.innerHTML='<strong>'+escapeHtml(message)+'</strong>'+(missing.length?'<ul>'+missing.map(v=>'<li>'+escapeHtml(v)+'</li>').join('')+'</ul>':'');
+}
+function updateWorkbenchPreparation(){
+  const s=reviewWorkbench;if(!s||!wb('Prompt'))return;
+  const missing=workbenchMaterialMissing(s.mode,readWorkbenchMaterial());
+  renderWorkbenchReadiness('draft',missing.length?'还缺以下材料（当前输入只是草稿）':'草稿已填写；确认保存后才可以开始',missing);
+}
+async function prepareCenterSuggestedMaterial(){
+  const owner=centerReview,item=currentCenterItem(),q=owner?.quickMode;
+  if(!item||!q?.aiMode||q.busy||reviewWorkbench?.busy||centerReviewHasPendingSave()||quickModeHasPending(item,owner.session))return;
+  await openReviewWorkbench(item.item_type,item.item_id,{...centerWorkbenchContext(item,owner.session),mode:q.aiMode});
+  if(reviewWorkbench?.sessionItemId===item.id&&reviewWorkbench.mode===q.aiMode&&!q.ready&&wb('Actions').querySelector('[data-prepare-material]'))await editWorkbenchMaterial();
+}
 // Read both released key layouts; only explicit actions update the current key.
 function legacyReviewSelectionKey(s){return `review-mode-selection:${s.courseId}:${s.type}:${s.id}:${s.sessionItemId||'prepare'}`;}
 function reviewSelectionKey(s){return reviewModeSelectionKey(s);}
@@ -63,9 +100,9 @@ async function prepareCenterQuickMode(item,session){
     if(item.item_type!=='mistake'&&aiMode==='reading')q.ready=true;
     else if(item.item_type==='mistake'&&['standard','retry'].includes(aiMode))q.ready=!!mistakeDetailState?.progress?.reviewable;
     else if(aiMode==='choice_reproduction')q.ready=mistakeDetailState?.row?.question_format_confirmed===1&&mistakeDetailState.progress.mode.availableModes.some(m=>m.id===aiMode);
-    else try{const data=await(await requestApi(reviewWorkbenchBase(context)+'/materials/'+aiMode+'?view=practice')).json();q.ready=data.version>0&&!!data.material;}catch{q.reason='无法确认建议材料，暂用标准复习；可从手动材料入口重试。';}
-    if(q.ready)q.reason='建议材料可用；点击确认开始后执行，不会自动评分。';
-    else if(!q.reason.startsWith('无法'))q.reason=`${AI_REVIEW_METHODS[aiMode]}所需材料或题型不完整；请在本页准备材料，或切换原复习。`;
+    else try{const materialMode=aiMode==='retry'?(readReviewActive(context)?.mode||'standard'):aiMode;const data=await(await requestApi(reviewWorkbenchBase(context)+'/materials/'+materialMode+'?view=practice')).json();q.ready=data.version>0&&!!data.material;}catch{q.reason='无法确认建议材料，暂用原复习；可从手动材料入口重试。';}
+    if(q.ready)q.reason='可以直接开始：建议材料可用；点击确认开始后执行，不会自动评分。';
+    else if(!q.reason.startsWith('无法'))q.reason=`${AI_REVIEW_METHODS[aiMode]}材料不完整：还需${REVIEW_MATERIAL_NEEDS[aiMode]||'原题、答案或已保存的可重做任务'}。可在本页手动准备，无需 AI。`;
   }
   const explicit=readReviewModeChoice(context);
   const active=readReviewActive(context);
@@ -139,9 +176,10 @@ function ensureReviewWorkbench(){
     <div class="review-workbench-body"><details id="reviewWbSettings" open><summary>复习设置 / 模式选择</summary><p id="reviewWbInfo" class="mistake-ai-note"></p>
     <div id="reviewWbSuggestion"></div><label>本次待使用的模式<select id="reviewWbMode" onchange="loadReviewWorkbenchMode(this.value)"></select></label>
     </details>
-    <div id="reviewWbEditor"></div><div id="reviewWbAttempt"></div><p id="reviewWbError" role="alert" class="mistake-inline-error"></p></div>
+    <section id="reviewWbReadiness" role="status" aria-live="polite"></section><div id="reviewWbEditor"></div><div id="reviewWbAttempt"></div><p id="reviewWbError" role="alert" class="mistake-inline-error"></p></div>
     <footer id="reviewWbActions" class="modal-actions"></footer></div>`;
   document.body.append(dialog);dialog.addEventListener('cancel',event=>{event.preventDefault();closeReviewWorkbench();});
+  wb('Editor').addEventListener('input',updateWorkbenchPreparation);
 }
 function saveWorkbenchAnswerDraft(){
   const s=reviewWorkbench;if(!s?.attempt||s.attempt.stage!=='question')return;
@@ -196,8 +234,9 @@ function wbBlank(blank){return `<div class="edit-card review-blank"><label>编�
 function addReviewBlank(){
   const ids=[...wb('Blanks').querySelectorAll('[data-blank="id"]')].map(n=>n.value);let n=1;while(ids.includes('b'+n))n++;
   wb('Blanks').insertAdjacentHTML('beforeend',wbBlank({id:'b'+n}));
+  updateWorkbenchPreparation();
 }
-function removeReviewBlank(button){const row=button.closest('.review-blank'),id=row.querySelector('[data-blank="id"]').value,answer=row.querySelector('[data-blank="answer"]').value;wb('Prompt').value=wb('Prompt').value.split('【'+id+'】').join(answer);row.remove();}
+function removeReviewBlank(button){const row=button.closest('.review-blank'),id=row.querySelector('[data-blank="id"]').value,answer=row.querySelector('[data-blank="answer"]').value;wb('Prompt').value=wb('Prompt').value.split('【'+id+'】').join(answer);row.remove();updateWorkbenchPreparation();}
 function readWorkbenchMaterial(){
   const s=reviewWorkbench;
   return {prompt:wb('Prompt').value,reference:wb('Reference')?.value||'',rubric:wb('Rubric')?.value||'',
@@ -213,10 +252,24 @@ async function loadReviewWorkbenchMode(mode,explicit=true){
   s.aiDraft=null;s.beforeAi=null;
   s.mode=mode;s.startRequestId=null;s.attempt=null;s.pending=null;wb('Error').textContent='';wb('Editor').innerHTML='';wb('Attempt').innerHTML='';wb('Actions').innerHTML='';
   wb('Mode').value=mode==='choice_reproduction'?'retry':mode;renderWorkbenchInfo(s);
+  renderWorkbenchReadiness('checking','正在检查材料；不会创建轮次或评分…');
   if(mode==='retry'||mode==='choice_reproduction'||(mode==='standard'&&s.type==='mistake')){
     const incompatible=mode==='choice_reproduction'&&!recommendReviewMode(s.type,s.row||{}).alternatives.includes(mode);
+    renderWorkbenchReadiness(incompatible?'missing':mode==='retry'&&s.type!=='mistake'?'checking':'ready',incompatible?'还缺已确认的选择题选项和正确答案':mode==='retry'&&s.type!=='mistake'?'开始前将检查已有任务；不会用通用输入框代替缺失材料':'使用已有原题和答案，无需额外创建材料');
+    if(s.type==='mistake'&&mistakeDetailState?.id===s.id&&!mistakeDetailState.progress?.reviewable)renderWorkbenchReadiness('missing','还需在错题详情补齐原题、参考答案或题型信息；不需要另建专属材料');
     wb('Editor').textContent=incompatible?'当前缺少已确认且完整的选择题选项和正确答案。请在错题详情编辑题型，或明确切换标准复习。':mode==='retry'?'将隐藏旧作答、答案和解析，开启新轮次。复用已有流程和判分，旧轮次证据保留；不会覆盖历史。':'使用原题和答案，不需要额外材料。进入后先独立作答，再揭示答案并自评。切换原生模式会重新开始本轮，但不改变记忆状态。';
-    wb('Actions').innerHTML=incompatible?'<button onclick="loadReviewWorkbenchMode(\'standard\')">切换标准复习</button>':s.sessionItemId?'<button onclick="runExistingReviewMode()">确认并进入本轮流程</button>':'<p>请从总复习或考前计划中运行。</p>';return;
+    wb('Actions').innerHTML=incompatible?'<button onclick="loadReviewWorkbenchMode(\'standard\')">切换标准复习</button>':s.sessionItemId?'<button onclick="runExistingReviewMode()">确认并进入本轮流程</button>':'<p>请从总复习或考前计划中运行。</p>';
+    if(mode==='retry'&&s.type!=='mistake'){
+      s.busy=true;wb('Mode').disabled=true;
+      try{
+        const target=s.lastExecutableMode||'standard',data=await(await requestApi(reviewWorkbenchBase(s)+'/materials/'+target+'?view=practice')).json();
+        if(reviewWorkbench!==s)return;
+        renderWorkbenchReadiness(data.version?'ready':'missing',data.version?'可以直接开始：复用已确认的'+AI_REVIEW_METHODS[target]+'材料':'还缺可重新作答的任务；可手动准备标准任务，或返回原阅读');
+        if(!data.version){wb('Editor').textContent='尚无可重新作答的任务；不会把阅读当作成功作答。';wb('Actions').innerHTML='<button onclick="loadReviewWorkbenchMode(\'standard\')">手动准备标准复习任务</button><button onclick="switchWorkbenchToAvailableMode()">返回原阅读流程</button>';}
+      }catch(err){if(reviewWorkbench===s){renderWorkbenchReadiness('error','无法确认已有任务；可重试或返回原阅读');wb('Error').textContent=err.message;wb('Actions').innerHTML='<button onclick="loadReviewWorkbenchMode(\'retry\',false)">重试检查</button><button onclick="switchWorkbenchToAvailableMode()">返回原阅读流程</button>';}}
+      finally{if(reviewWorkbench===s){s.busy=false;wb('Mode').disabled=false;}}
+    }
+    return;
   }
   s.busy=true;wb('Mode').disabled=true;
   if(s.inline)renderCenterReviewToolbar();
@@ -225,28 +278,33 @@ async function loadReviewWorkbenchMode(mode,explicit=true){
     if(s.sessionItemId&&!s.editing){
       const saved=mistakeStorageGet(reviewWorkbenchKey(s));
       if(saved?.attemptId){try{s.attempt=await (await requestApi(reviewWorkbenchBase(s)+'/attempts/'+encodeURIComponent(saved.attemptId))).json();}catch(err){if(!err.message.includes('404'))throw err;}}
-      if(s.attempt){s.lastExecutableMode=s.attempt.modeId;renderWorkbenchAttempt();}
+      if(s.attempt){s.lastExecutableMode=s.attempt.modeId;renderWorkbenchReadiness('active','已有复习轮次，继续作答；新材料不会覆盖本轮快照');renderWorkbenchAttempt();}
       else {wb('Editor').textContent=data.version?'材料已准备，确认开始后将使用此模式的新轮次。':`缺少${AI_REVIEW_METHODS[mode]}正式材料：${REVIEW_MATERIAL_NEEDS[mode]}。保存 AI 建议不会创建这些材料。`;
-        wb('Actions').innerHTML=(data.version?'<button onclick="startWorkbenchAttempt()">确认模式并开始本轮复习</button>':'')+'<button onclick="editWorkbenchMaterial()">手动准备材料</button><button onclick="switchWorkbenchToAvailableMode()">'+(s.type==='mistake'?'切换标准复习（使用原题）':'返回现有阅读流程')+'</button>';}
+        renderWorkbenchReadiness(data.version?'ready':'missing',data.version?'可以直接开始：已确认的正式材料可用':'还缺正式材料；保存建议不等于准备完成',data.version?[]:[REVIEW_MATERIAL_NEEDS[mode]]);
+        wb('Actions').innerHTML=(data.version?'<button onclick="startWorkbenchAttempt()">确认模式并开始本轮复习</button>':'')+'<button data-prepare-material onclick="editWorkbenchMaterial()">手动准备材料</button><button onclick="switchWorkbenchToAvailableMode()">'+(s.type==='mistake'?'切换标准复习（使用原题）':'返回现有阅读流程')+'</button>';}
     }else{
       const draft=mistakeStorageGet(reviewWorkbenchKey(s)+':draft');
       const saved=data.material||{prompt:s.sourceText||'',reference:s.referenceText||'',rubric:'',blanks:[]};const m=draft||saved;
       wb('Editor').innerHTML=(draft?'<p class="mistake-ai-note">已恢复本浏览器未确认草稿，尚未覆盖正式材料。</p>':'')+wbInput(mode==='cloze'?'题面（空位写为【b1】、【b2】）':'任务 / 阅读正文','Prompt',m.prompt,5)
         +(mode==='cloze'?`<div id="reviewWbBlanks">${(m.blanks||[]).map(wbBlank).join('')}</div><button type="button" onclick="addReviewBlank()">添加空位</button>`:mode==='reading'?'':wbInput('参考要点 / 关键异同','Reference',m.reference)+wbInput('核对标准 / 评分量规','Rubric',m.rubric))
         +(mode==='contrast'?wbInput('对比对象（每行一个，至少两个）','Objects',(m.objects||[]).join('\n'))+wbInput('对比维度（每行一个）','Dimensions',(m.dimensions||[]).join('\n')):'')
-        +'<details><summary>AI 辅助（可选，固定 Mock 草稿）</summary><button type="button" onclick="requestWorkbenchDraft()">生成独立草稿</button><div id="reviewWbDraft"></div></details>';
-      wb('Actions').innerHTML='<button onclick="saveWorkbenchMaterial()">确认并保存正式材料</button>';
+        +'<details><summary>AI 一键生成材料（可选，不影响手动填写）</summary><p>使用共用 AI 设置；DeepSeek 会发送当前题面及参考文字，可能计费。先生成可编辑草稿，不覆盖、不保存、不评分。</p><button type="button" onclick="coursesAiSettings.open()">打开 AI 设置</button><button type="button" data-material-ai-generate onclick="requestWorkbenchDraft(true)">AI 一键生成材料（共用设置）</button><button type="button" onclick="requestWorkbenchDraft()">Mock 演示草稿（非真实 AI）</button><button type="button" onclick="reviewWorkbench?.draftController?.abort()">取消生成</button><p id="reviewWbDraftStatus" role="status"></p><div id="reviewWbDraft"></div></details>';
+      wb('Actions').innerHTML='<button onclick="saveWorkbenchMaterial()">确认并保存正式材料</button>'+(s.sessionItemId?'<button data-save-start onclick="saveWorkbenchMaterial(true)">确认保存并开始本轮复习</button><button onclick="switchWorkbenchToAvailableMode()">'+(s.type==='mistake'?'切换标准复习（保留草稿）':'返回原阅读（保留草稿）')+'</button>':'');
+      updateWorkbenchPreparation();
     }
-  }catch(err){if(reviewWorkbench===s){wb('Error').textContent=err.message;wb('Actions').innerHTML='<button onclick="loadReviewWorkbenchMode(reviewWorkbench.mode)">重新加载</button>';}}
+  }catch(err){if(reviewWorkbench===s){renderWorkbenchReadiness('error','暂时无法确认材料；请重试，或使用原复习流程');wb('Error').textContent=err.message;wb('Actions').innerHTML='<button onclick="loadReviewWorkbenchMode(reviewWorkbench.mode,false)">重新加载</button><button onclick="switchWorkbenchToAvailableMode()">返回原复习流程</button>';}}
   finally{if(reviewWorkbench===s){s.busy=false;wb('Mode').disabled=false;if(s.inline)renderCenterReviewToolbar();}}
 }
-async function saveWorkbenchMaterial(){
+async function saveWorkbenchMaterial(startAfterSave=false){
   const s=reviewWorkbench;if(!s||s.busy||(s.sessionItemId&&!s.editing))return;s.busy=true;wb('Error').textContent='';const material=readWorkbenchMaterial();mistakeStorageSet(reviewWorkbenchKey(s)+':draft',material);
+  const missing=workbenchMaterialMissing(s.mode,material);
+  if(missing.length){s.busy=false;updateWorkbenchPreparation();wb('Error').textContent='请先补齐上方材料；输入已保留，尚未保存或开始。';return;}
   try{
     const data=await (await requestApi(reviewWorkbenchBase(s)+'/materials/'+s.mode,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({expectedVersion:s.version,confirmed:true,material})})).json();
     if(reviewWorkbench!==s)return;s.version=data.version;mistakeStorageSet(reviewWorkbenchKey(s)+':draft',null);showToast('正式材料已保存；未更改 AI 建议或评分');
-    if(s.sessionItemId&&s.type==='mistake'&&currentCenterItem()?.id===s.sessionItemId)await prepareCenterQuickMode(currentCenterItem(),centerReview.session);
-    if(s.sessionItemId){s.editing=false;s.busy=false;await loadReviewWorkbenchMode(s.mode,false);}
+    if(s.sessionItemId&&currentCenterItem()?.id===s.sessionItemId)await prepareCenterQuickMode(currentCenterItem(),centerReview.session);
+    renderWorkbenchReadiness('ready','正式材料已保存，可以开始；尚未作答或评分');
+    if(s.sessionItemId){s.editing=false;s.busy=false;wb('Editor').innerHTML='';await loadReviewWorkbenchMode(s.mode,false);if(startAfterSave&&reviewWorkbench===s&&!s.attempt&&s.version)await startWorkbenchAttempt();}
   }catch(err){if(reviewWorkbench===s)wb('Error').textContent=err.message+'；输入已保留，未声称保存成功。';}
   finally{if(reviewWorkbench===s)s.busy=false;}
 }
@@ -288,6 +346,7 @@ function workbenchCheckpoints(p){
 }
 function saveWorkbenchCheckpoints(){const s=reviewWorkbench;if(s?.attempt)mistakeStorageSet(reviewWorkbenchKey(s)+':checkpoints:'+s.attempt.id,[...wb('Attempt').querySelectorAll('[data-review-checkpoint]:checked')].map(n=>Number(n.dataset.reviewCheckpoint)));}
 function renderWorkbenchAttempt(){
+  renderWorkbenchReadiness('active','当前执行已确认材料的复习轮次；评分仍使用原有规则');
   const s=reviewWorkbench,p=s.attempt,m=p.material;wb('Editor').innerHTML='';
   let pending=mistakeStorageGet(reviewWorkbenchKey(s)+':pending')||s.pending;
   if(pending&&pending.expectedVersion<p.version){mistakeStorageSet(reviewWorkbenchKey(s)+':pending',null);s.pending=null;pending=null;}
@@ -380,36 +439,53 @@ async function runExistingReviewMode(){
     s.busy=false;closeReviewWorkbench();
   }catch(err){wb('Error').textContent=err.message;}finally{if(reviewWorkbench===s)s.busy=false;}
 }
-async function requestWorkbenchDraft(){
+async function requestWorkbenchDraft(useShared=false){
   const s=reviewWorkbench;if(!s||s.busy||(s.sessionItemId&&!s.editing))return;s.busy=true;wb('Error').textContent='';
+  let credentials;
   try{
     const input=readWorkbenchMaterial();let source=input.prompt;
     if(s.mode==='cloze'){
       for(const blank of input.blanks)if(blank.answer.trim())source=source.split('【'+blank.id+'】').join(blank.answer);
       if(/【[A-Za-z][A-Za-z0-9_]*】/.test(source))throw new Error('请先补齐空位答案，或使用原文生成草稿；手动编辑仍可继续');
     }
-    const draft=await(await requestApi(API+'/ai/review-draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({modeId:s.mode,text:source}),signal:AbortSignal.timeout(20000)})).json();
+    if(useShared&&(!source.trim()||source.length>4000||input.reference.length>4000))throw new Error('请先选择并校对不超过 4000 字符的题面和参考文字；不会读取附件或静默截断。');
+    const realInput={kind:s.type,mode_id:s.mode,content:source,reference:input.reference};
+    if(useShared&&new TextEncoder().encode(JSON.stringify(realInput)).length>15000)throw new Error('本次文字过多，请缩小材料片段后生成。');
+    if(useShared)credentials=coursesAiSettings.read();
+    wb('DraftStatus').textContent=credentials?'正在请求 DeepSeek 官方（可能计费）；不会自动采用，请稍候…':'正在生成 Mock 演示草稿，不调用真实模型…';
+    s.draftController=new AbortController();
+    let draft;
+    if(credentials){
+      const pending=fetchReviewMaterialDraft(realInput,credentials,s.draftController.signal);credentials.apiKey='';draft=await pending;
+    }else draft=await(await requestApi(API+'/ai/review-draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({modeId:s.mode,text:source}),signal:AbortSignal.any([s.draftController.signal,AbortSignal.timeout(20000)])})).json();
     if(reviewWorkbench!==s)return;
+    if(s.draftController.signal.aborted)throw new Error('生成已取消，未采用任何内容');
     // Independent editable preview. Nothing in the user's form is replaced automatically.
-    s.aiDraft=draft.material;
-    wb('Draft').innerHTML=`<p>Mock 演示草稿，尚未采用或保存。采用后可在正常表单任意修改、删除。</p><div class="detail-content">${escapeHtml(draft.material.prompt)}</div>
-      <p>${escapeHtml(draft.material.blanks.map(b=>b.id+'：'+b.answer).join('；')||draft.material.reference)}</p>
-      <button type="button" onclick="adoptWorkbenchDraft(false)">仅补充空白字段</button><button type="button" onclick="adoptWorkbenchDraft(true)">替换表单（保留原稿供撤回）</button>`;
-  }catch(err){if(reviewWorkbench===s)wb('Error').textContent=err.message+'；手动输入保留，可直接手动保存。';}
-  finally{if(reviewWorkbench===s)s.busy=false;}
+    s.aiDraft=draft.material;s.aiDraftReal=!!credentials;s.beforeAi=null;
+    renderEditableReviewDraft(s,draft);
+    wb('DraftStatus').textContent=draft.material?'草稿已生成，原材料未改动；请编辑、核实后明确采用。':'信息不足，未生成可采用材料；请补充文字或手动准备。';
+    if(!draft.material)wb('Error').textContent='信息不足，未生成可采用材料；请按提示补充，或继续手动准备。';
+  }catch(err){if(reviewWorkbench===s){wb('Error').textContent=err.message+'；手动输入保留，可直接手动保存。';wb('DraftStatus').textContent='生成未完成，不自动重试或回退 Mock；原输入和已有草稿保留。';}}
+  finally{if(credentials)credentials.apiKey='';if(reviewWorkbench===s){s.busy=false;s.draftController=null;}}
 }
 async function adoptWorkbenchDraft(replace){
   const s=reviewWorkbench;if(!s?.aiDraft||s.busy)return;
+  if(s.aiDraftReal&&!wb('DraftAccept')?.checked){wb('Error').textContent='请先核实或编辑 AI 草稿并勾选确认；原输入未改变。';return;}
+  const edited=readEditedReviewDraft(s);
+  if(!validReviewMaterialDraft(s.mode,edited)){wb('Error').textContent='草稿格式或必需材料不完整，请核对题面、空位与参考要点；原输入未改变。';return;}
   if(replace&&!await showConfirm('将替换当前表单但不保存。原表单将保留，可撤回。是否继续？','采用 AI 草稿'))return;
   if(reviewWorkbench!==s)return;
-  const m=s.aiDraft;s.beforeAi=readWorkbenchMaterial();
+  const m=edited;s.beforeAi=readWorkbenchMaterial();
   for(const [name,value] of [['Prompt',m.prompt],['Reference',m.reference],['Rubric',m.rubric],['Objects',(m.objects||[]).join('\n')],['Dimensions',(m.dimensions||[]).join('\n')]])if(wb(name)&&(replace||!wb(name).value.trim()))wb(name).value=value||'';
   // Blank rows must match the adopted prompt; never append unmatched blanks to user text.
   if(wb('Blanks')&&(replace||!s.beforeAi.prompt.trim()))wb('Blanks').innerHTML=(m.blanks||[]).map(wbBlank).join('');
   wb('Draft').insertAdjacentHTML('beforeend','<button type="button" onclick="undoWorkbenchDraft()">撤回采用，恢复原稿</button>');
+  updateWorkbenchPreparation();
+  if(wb('DraftAccept'))wb('DraftAccept').checked=false;
 }
 function undoWorkbenchDraft(){
   const s=reviewWorkbench,m=s?.beforeAi;if(!m)return;
   for(const [name,value] of [['Prompt',m.prompt],['Reference',m.reference],['Rubric',m.rubric],['Objects',(m.objects||[]).join('\n')],['Dimensions',(m.dimensions||[]).join('\n')]])if(wb(name))wb(name).value=value||'';
   if(wb('Blanks'))wb('Blanks').innerHTML=m.blanks.map(wbBlank).join('');s.beforeAi=null;
+  updateWorkbenchPreparation();
 }

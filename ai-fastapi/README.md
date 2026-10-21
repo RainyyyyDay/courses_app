@@ -1,5 +1,13 @@
 # AI 错题分类 FastAPI 移植模块
 
+## 复习材料草稿（2026-10-21）
+
+新增 `src/ai_material_draft.py`，复用现有 `ai_mistake.py` 的 DeepSeekProvider/Classifier/请求保护，不新增依赖、不读写数据库。宿主可通过 `from src.ai_material_draft import register`，再调用 `register(app, dependencies=[Depends(宿主真实权限依赖)])` 挂载；不提供权限依赖时拒绝请求。
+
+`POST /api/ai/material-draft` 请求为 `{provider:"deepseek",api_key,model,confirm_cost:true,input:{kind:"mistake/material/note",mode_id:"standard/cloze/self_explain/contrast/reading",content,reference?}}`。kind/mode_id 为枚举中的单个值；不接受自定义地址或 retry。正文及参考文字各最多4000 UTF-16单元，整个JSON最多16384字节。返回 `{provider,mode_id,draft:{material,needs_more_information,caveats,needs_review:true}}`；信息不足时 material=null，并说明缺项。返回结果不保存、评分或执行复习。
+
+正常网站材料编辑器读取共用 AI 设置；真实返回材料经过结构/空位对应校验，用户可独立编辑预览，明确确认后补空白或替换，再走原正式材料保存及开始流程。独立测试页是 `/ai-test`，网站 AI 设置中的本地链接可打开；它不会继承网站标签页的 Key。原 Mock 材料演示仍独立保留，真实调用失败不回退 Mock。详见 `docs/review-material-readiness.md`。
+
 ## 资料／笔记复习建议（2026-10-21）
 
 新增可选模块 `src/ai_review_suggestion.py`，用 `register(app, dependencies=[Depends(宿主真实权限依赖)])` 挂载 `POST /api/ai/review-suggestion`，缺权限依赖默认拒绝。JSON `{provider:mock/deepseek,input:{kind:material/note,title?,content,goal?:remember/understand/compare/practice/read/空字符串,recall?},api_key?,model?,confirm_cost?}`；各输入字符串最多4000 UTF-16单元，总体16KB，真实凭据和费用确认沿用现有约束。响应 `{provider,result:{review_method,reason,needs_review:true}}`，六种公开模式，不操作数据库。复用 ai_mistake 的 HTTP/并发/超时/取消基础，无新增第三方依赖。已注册本地开发服务，使用前重启 3002。正常网页入口和验收见 [资料笔记/OCR修正](../docs/review-resources-ocr-fixes.md)。

@@ -56,6 +56,38 @@ async function reviewQuickModeChecks(courseId){
   await renderCenterReviewItem();check(!reviewWorkbench&&centerReview.quickMode.modeId==='retry','native AI progress survives reentry without reopening preparation');
   await toggleCenterQuickMode();check(!reviewWorkbench&&centerReview.quickMode.modeId===centerReview.quickMode.originalMode,'native AI switches back to original mode');
   await pauseCenterReview();
+  // Advice -> inline preparation -> confirmed material -> existing attempt, for all content types.
+  for(const [type,mode]of [['mistake','cloze'],['material','self_explain'],['note','contrast']]){
+    const created=await api('POST','/'+({mistake:'mistakes',material:'materials',note:'notes'}[type]),{title:'就地材料 '+type,content:'中国的首都是北京',...(type==='mistake'?{answerContent:'北京',questionFormat:'open',mistakeType:'knowledge'}:{})});
+    const identity={courseId,type,id:created.id};
+    if(type==='mistake')saveMistakeAiMethod(identity,mode);else mistakeStorageSet(resourceAiKey(identity),{version:1,method:mode});
+    const record=await createReviewRecord('total',[{type,id:created.id}]);await enterCenterReview(record);
+    check(!centerReview.quickMode.ready&&document.querySelector('[data-prepare-suggestion]'),'missing suggestion has a direct preparation button for '+type);
+    await prepareCenterSuggestedMaterial();
+    check(reviewWorkbench.inline&&!wb('Dialog').open&&wb('Prompt')&&wb('Readiness').dataset.materialState==='draft','preparation is inline, editable and not a new attempt');
+    await saveWorkbenchMaterial(true);check(!reviewWorkbench.attempt&&wb('Error').textContent.includes('补齐'),'incomplete drafts cannot save or start');
+    wb('Prompt').value=mode==='cloze'?'中国首都是【b1】':'解释首都的含义';
+    if(mode==='cloze'){addReviewBlank();wb('Blanks').querySelector('[data-blank=answer]').value='北京';}
+    else wb('Reference').value='北京及首都的含义';
+    if(mode==='contrast'){wb('Objects').value='首都\n省会';wb('Dimensions').value='管辖范围';}
+    wb('Prompt').dispatchEvent(new Event('input',{bubbles:true}));
+    check(wb('Readiness').textContent.includes('确认保存')&&!reviewWorkbench.attempt,'filled input remains a draft');
+    await switchWorkbenchToAvailableMode();
+    await prepareCenterSuggestedMaterial();check(wb('Prompt').value.includes(mode==='cloze'?'【b1】':'首都'),'fallback and return preserve the material draft');
+    if(type==='note'){
+      const originalRequest=requestApi;
+      try{requestApi=async(url,options)=>{if(options?.method==='PUT')throw Error('模拟保存失败');return originalRequest(url,options);};await saveWorkbenchMaterial(true);}
+      finally{requestApi=originalRequest;}
+      check(!reviewWorkbench.attempt&&wb('Prompt').value.includes('首都')&&wb('Error').textContent.includes('输入已保留'),'failed save preserves draft and cannot start');
+    }
+    await saveWorkbenchMaterial();
+    check(centerReview.quickMode.ready&&wb('Readiness').dataset.materialState==='ready'&&!reviewWorkbench.attempt,'save refreshes readiness for '+type+' without starting or grading');
+    const state=await api('GET','/review-items/'+type+'/'+created.id+'/state');check(state.lastGrade==null,'material preparation writes no grade');
+    await editWorkbenchMaterial();await saveWorkbenchMaterial(true);
+    check(reviewWorkbench.attempt?.modeId===mode&&reviewWorkbench.attempt.firstAnswer===null,'explicit save-and-start uses selected mode');
+    check(readReviewAiMethod(identity)===mode,'material preparation preserves the confirmed suggestion');
+    await pauseCenterReview();
+  }
   const preview=await createReviewRecord('total',[{type:'mistake',id:row.id}]);await enterCenterReview(preview);await confirmCenterQuickMode();
   check(reviewWorkbench?.inline&&wb('Answer').getClientRects().length&&!wb('Dialog').open,'final inline mode is visible for screenshot verification');
   check(document.documentElement.scrollWidth<=innerWidth+1,'inline review fits viewport');

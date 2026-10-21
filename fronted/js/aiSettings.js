@@ -132,7 +132,7 @@ const coursesAiSettings = (() => {
     const button=document.createElement('button');button.id='coursesAiOpen';button.type='button';button.className='courses-ai-open';button.onclick=open;document.body.append(button);
     const dialog=document.createElement('dialog');dialog.id='coursesAiDialog';dialog.className='courses-ai-settings';
     dialog.innerHTML=`<h2>AI 设置（当前标签页）</h2><p id="coursesAiSummary" role="status"></p>
-      <p>资料、笔记与错题的复习建议，以及错题答案与解析草稿共用设置；手工输入和 Mock 演示无需 Key。复习材料工作台的 Mock 演示仍独立，不会变成真实生成。Key 不写入浏览器存储或数据库，刷新/关闭即失效。</p>
+      <p>资料、笔记与错题的复习建议、复习材料草稿，以及错题答案与解析草稿共用设置；手工输入和明确选择的 Mock 演示无需 Key。生成结果不会自动采用或保存。Key 不写入浏览器存储或数据库，刷新/关闭即失效。</p>${globalThis.COURSES_AI_LOCAL_MOCK?'<p><a href="/ai-test" target="_blank" rel="noopener noreferrer">打开独立 AI 测试页（本地 3002 服务）</a>：仅验证接口，不保存业务结果；独立页不会继承本标签页的 Key。</p>':''}
       <label>来源<select id="coursesAiProvider"><option value="mock">Mock 演示（非真实 AI）</option><option value="deepseek">DeepSeek 官方</option></select></label>
       <label>模型<select id="coursesAiModel"><option>deepseek-flash</option><option>deepseek-v4-pro</option></select></label>
       <label>API Key<input id="coursesAiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512" placeholder="不回显已保留的 Key"></label>
