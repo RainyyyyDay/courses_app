@@ -38,15 +38,37 @@ function showListError(box, err) {
 }
 
 let confirmResolve = null;
+const confirmQueue = [];
+let confirmTrigger = null;
 function showConfirm(msg, title = '确认操作') {
-  document.getElementById('confirmTitle').textContent = title;
-  document.getElementById('confirmMsg').textContent = msg;
-  document.getElementById('confirmModal').classList.add('show');
-  return new Promise(resolve => { confirmResolve = resolve; });
+  return new Promise(resolve => {
+    confirmQueue.push({msg,title,resolve,trigger:document.activeElement});
+    openNextConfirm();
+  });
+}
+function openNextConfirm() {
+  if(confirmResolve || !confirmQueue.length)return;
+  const next=confirmQueue.shift(),dialog=document.getElementById('confirmModal');
+  confirmResolve=next.resolve;confirmTrigger=next.trigger;
+  document.getElementById('confirmTitle').textContent=next.title;
+  document.getElementById('confirmMsg').textContent=next.msg;
+  if(!dialog.dataset.confirmBound){
+    dialog.addEventListener('cancel',event=>{event.preventDefault();closeConfirm(false);});
+    dialog.addEventListener('close',()=>{if(!dialog.open&&confirmResolve)closeConfirm(false);});
+    dialog.dataset.confirmBound='true';
+  }
+  // A normal overlay cannot cover a showModal() dialog, regardless of z-index.
+  dialog.classList.add('show');dialog.showModal();
+  dialog.querySelector('.btn-cancel').focus({preventScroll:true});
 }
 function closeConfirm(result) {
-  document.getElementById('confirmModal').classList.remove('show');
-  if (confirmResolve) { confirmResolve(result); confirmResolve = null; }
+  if(!confirmResolve)return;
+  const resolve=confirmResolve,trigger=confirmTrigger,dialog=document.getElementById('confirmModal');
+  confirmResolve=null;confirmTrigger=null;dialog.classList.remove('show');
+  if(dialog.open)dialog.close();
+  if(trigger?.isConnected)trigger.focus({preventScroll:true});
+  resolve(result===true);
+  openNextConfirm();
 }
 /* ========== Toast 工具 ========== */
 function showToast(msg, duration = 2000) {

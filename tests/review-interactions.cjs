@@ -20,7 +20,8 @@ async function reviewInteractionChecks(courseId){
   check(!wb('Dialog').open&&mistakeDetailState.progress.mode.id==='standard','saving advice never silently changes executing native mode');
   const context=centerWorkbenchContext(session.items[0],session);
   await openReviewWorkbench('mistake',row.id,context);
-  check(wb('Suggestion').querySelector('button')&&wb('Info').textContent.includes('当前实际流程：标准复习'),'suggestion and actual mode shown separately');
+  check(!wb('Suggestion').querySelector('button')&&wb('Info').textContent.includes('当前实际流程：标准复习'),'selected suggestion and actual mode stay distinct without repeat adoption');
+  await loadReviewWorkbenchMode('standard');check(wb('Suggestion').querySelector('button'),'changing away from suggestion restores the explicit adoption action');
   wb('Suggestion').querySelector('button').click();
   for(let i=0;i<200&&reviewWorkbench.busy;i++)await new Promise(r=>setTimeout(r,20));
   check(reviewWorkbench.mode==='cloze'&&!reviewWorkbench.attempt&&wb('Editor').textContent.includes('空位')&&wb('Editor').textContent.includes('答案'),'AI adoption checks real material, not just saved ID');

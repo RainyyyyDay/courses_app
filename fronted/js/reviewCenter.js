@@ -327,6 +327,7 @@ function renderCenterReviewToolbar() {
     const selectedAi=!!q.aiMode&&q.modeId===q.aiMode;
     const quick=document.createElement('div');quick.className='mistake-toolbar';quick.dataset.quickMode=q.modeId;
     quick.innerHTML=`<button type="button" data-quick-toggle aria-pressed="${selectedAi}" onclick="toggleCenterQuickMode()" ${blocked||q.busy||!q.aiMode?'disabled':''}>${selectedAi?'AI 建议模式：'+escapeHtml(AI_REVIEW_METHODS[q.aiMode])+'（切换原复习）':'原复习：'+escapeHtml(AI_REVIEW_METHODS[q.modeId])+'（切回 AI 建议）'}</button><button type="button" data-quick-start onclick="confirmCenterQuickMode()" ${blocked||q.busy?'disabled':''}>${q.busy?'正在确认…':'确认开始：'+escapeHtml(AI_REVIEW_METHODS[q.modeId])}</button><small data-quick-reason>${escapeHtml(q.reason)}</small>`;
+    if(active?.mode===q.modeId||mistakeStorageGet(reviewSelectionKey(context)+':native-mode')===q.modeId){quick.querySelector('[data-quick-start]').hidden=true;}
     if(q.aiMode&&!q.ready){const prepare=document.createElement('button');prepare.type='button';prepare.dataset.prepareSuggestion='';prepare.textContent='就地准备建议材料（手动）';prepare.disabled=blocked;prepare.onclick=prepareCenterSuggestedMaterial;quick.append(prepare);}
     bar.append(quick);
   }

@@ -137,8 +137,14 @@ body {
   transition: opacity 0.3s ease, visibility 0.3s ease;
 }
 .modal-mask.show { opacity: 1; visibility: visible; }
-/* 二次确认需盖住编辑弹窗（100）和标签选择器（120），避免被后面的 DOM 遮挡。 */
-#confirmModal { z-index: 130; }
+/* Native confirmation joins the top layer above every currently open modal. */
+#confirmModal { width:min(380px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); margin:auto; padding:0; border:0; border-radius:12px; background:#fff; color:#232a3d; overflow:auto; box-shadow:0 20px 60px #17213c33; }
+#confirmModal:not([open]) { display:none; }
+#confirmModal::backdrop { background:rgba(17,25,40,.45); }
+#confirmModal .modal { width:100%; max-width:none; margin:0; transform:none; transition:none; padding:22px; }
+#confirmModal .modal-actions button { min-height:40px; background:#f3f4f8; color:#4a5268; }
+#confirmModal .modal-actions .btn-confirm { background:#4a6cf7; color:#fff; }
+#confirmModal button:focus-visible { outline:2px solid #8fa8ff; outline-offset:2px; }
 
 .modal {
   background: #fff; border-radius: 12px; padding: 20px;
