@@ -331,16 +331,74 @@ function clearPickerMindmap() {
 function renderPickerResourceSummary() {
   const box = document.getElementById('tagPickerResourceFileSummary');
   const remove = document.getElementById('tagPickerResourceRemove');
+  const ocr = document.getElementById('tagPickerResourceOcrBtn');
   if (!box) return;
   if (!pendingUploadFile) {
     box.style.display = 'none';
     box.innerHTML = '';
     if (remove) remove.style.display = 'none';
+    if (ocr) ocr.style.display = 'none';
+    closePickerResourceOcr();
     return;
   }
   box.style.display = 'flex';
   box.innerHTML = `<span class="mistake-create-file-icon">📎</span><div><strong>${escapeHtml(pendingUploadFile.name)}</strong><small>${escapeHtml(pendingUploadFile.type || '附件')} · 保存后上传</small></div>`;
   if (remove) remove.style.display = 'inline-flex';
+  if (ocr) ocr.style.display = 'inline-flex';
+}
+
+async function recognizePickerResourceFile() {
+  if (!pendingUploadFile) { showToast('请先选择附件'); return; }
+  const button = document.getElementById('tagPickerResourceOcrBtn');
+  if (button?.disabled) return;
+  const original = button ? button.textContent : '';
+  if (button) { button.disabled = true; button.textContent = '识别中…'; }
+  try {
+    const result = await recognizeUploadedFile(pendingUploadFile, (message) => {
+      if (button) button.textContent = message;
+    });
+    const text = document.getElementById('tagPickerResourceOcrText');
+    const panel = document.getElementById('tagPickerResourceOcrPanel');
+    const meta = document.getElementById('tagPickerResourceOcrMeta');
+    if (text) text.value = result.text || '';
+    if (panel) panel.style.display = 'grid';
+    if (meta) {
+      const parts = [];
+      if (result.provider) parts.push(`识别来源：${ocrProviderLabel(result.provider)}`);
+      if (Number.isFinite(result.confidence)) parts.push(`置信度 ${Math.round(result.confidence * 100)}%`);
+      if (result.warnings?.length) parts.push(result.warnings.join('；'));
+      meta.textContent = parts.join(' · ');
+    }
+    if (result.provider === 'mock') {
+      if (meta) meta.textContent = '⚠ 这是 mock 样例数据，不是真实识别。';
+      showToast('当前是 mock 样例数据，不是真实识别');
+      return;
+    }
+    showToast('识别完成，请校对后填入正文');
+  } catch (err) {
+    showToast(err.message);
+  } finally {
+    if (button) { button.disabled = false; button.textContent = original; }
+  }
+}
+
+function applyPickerResourceOcr(mode) {
+  const text = (document.getElementById('tagPickerResourceOcrText')?.value || '').trim();
+  if (!text) { showToast('识别结果为空'); return; }
+  const content = document.getElementById('tagPickerResourceContent');
+  if (!content) return;
+  content.value = mode === 'append' && content.value.trim() ? `${content.value.trim()}\n\n${text}` : text;
+  updatePickerResourceClear();
+  showToast(mode === 'append' ? '已追加到正文' : '已替换正文');
+}
+
+function closePickerResourceOcr() {
+  const panel = document.getElementById('tagPickerResourceOcrPanel');
+  const text = document.getElementById('tagPickerResourceOcrText');
+  const meta = document.getElementById('tagPickerResourceOcrMeta');
+  if (panel) panel.style.display = 'none';
+  if (text) text.value = '';
+  if (meta) meta.textContent = '';
 }
 
 function choosePickerResourceFile(input) {

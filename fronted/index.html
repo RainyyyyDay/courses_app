@@ -755,10 +755,21 @@
             <div id="tagPickerResourceFileSummary" class="mistake-create-file" style="display:none;"></div>
             <div class="edit-file-actions">
               <button type="button" class="edit-btn" onclick="document.getElementById('tagPickerResourceUpload').click()">上传附件</button>
+              <button type="button" class="edit-btn" id="tagPickerResourceOcrBtn" style="display:none;" onclick="recognizePickerResourceFile()">识别文字</button>
               <button type="button" class="edit-btn edit-btn-danger" id="tagPickerResourceRemove" style="display:none;" onclick="clearPickerResourceFile()">移除附件</button>
             </div>
             <input type="file" id="tagPickerResourceUpload" style="display:none" onchange="choosePickerResourceFile(this)" />
             <textarea id="tagPickerResourceContent" rows="5" placeholder="正文 / 重点内容（可只上传附件）" oninput="updatePickerResourceClear()"></textarea>
+            <section id="tagPickerResourceOcrPanel" class="mistake-ocr-panel" style="display:none;">
+              <div class="mistake-ocr-head"><b>识别结果</b><span>先校对，再填入正文</span></div>
+              <textarea id="tagPickerResourceOcrText" rows="5"></textarea>
+              <div class="mistake-ocr-actions">
+                <button type="button" onclick="applyPickerResourceOcr('replace')">替换正文</button>
+                <button type="button" onclick="applyPickerResourceOcr('append')">追加正文</button>
+                <button type="button" class="btn-cancel" onclick="closePickerResourceOcr()">放弃</button>
+              </div>
+              <small id="tagPickerResourceOcrMeta"></small>
+            </section>
           </div>
         </section>
         <section id="tagPickerOutlineBlock" class="edit-card" style="display:none;">
