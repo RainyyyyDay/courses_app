@@ -6,6 +6,26 @@ const path=require('node:path');
 const {spawnSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
 
+test('prepared browser OCR bypasses optional Python preflight instead of falsely reporting OCR unavailable',{skip:process.platform!=='win32'},()=>{
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'courses-browser-ocr-launch-'));
+  try{
+    for(const folder of ['back','fronted','ai-fastapi','.local-ai-deps','ocr-service'])fs.mkdirSync(path.join(temp,folder),{recursive:true});
+    for(const file of ['back/server.js','fronted/index.html','ai-fastapi/test_app.py','.local-ai-deps/fastapi.py','.local-ai-deps/uvicorn.py'])fs.writeFileSync(path.join(temp,file),'');
+    fs.writeFileSync(path.join(temp,'back/package.json'),'{}');
+    const assets=['paddleocr-js.iife.js','models/PP-OCRv5_mobile_det_onnx_infer.tar','models/PP-OCRv5_mobile_rec_onnx_infer.tar','ort/ort-wasm-simd-threaded.mjs','ort/ort-wasm-simd-threaded.wasm','ort/ort-wasm-simd-threaded.jsep.mjs','ort/ort-wasm-simd-threaded.jsep.wasm','pdfjs/pdf.min.js','pdfjs/pdf.worker.min.js'];
+    for(const relative of assets){const file=path.join(temp,'fronted/vendor/ocr',relative);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,'fictional metadata fixture');}
+    fs.writeFileSync(path.join(temp,'ocr-service/start.ps1'),"param([switch]$CheckOnly)\nWrite-Host 'MUST_NOT_PROBE_PYTHON';exit 1");
+    const script=fs.readFileSync(path.join(root,'start-local.ps1'),'utf8')
+      .replace('function Get-OccupiedPorts {','function Get-OccupiedPorts {\n    return @()')
+      .replace('function Test-LocalOcrHealth {','function Test-LocalOcrHealth {\n    return $false');
+    fs.writeFileSync(path.join(temp,'start-local.ps1'),script);
+    const run=()=>spawnSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(temp,'start-local.ps1'),'-CheckOnly'],{encoding:'utf8',windowsHide:true,timeout:20000,env:{...process.env,NODE_PATH:path.join(root,'back/node_modules')}});
+    const ready=run();assert.equal(ready.status,0,ready.stdout+ready.stderr);assert.match(ready.stdout,/浏览器 OCR 资源已准备/);assert.doesNotMatch(ready.stdout,/MUST_NOT_PROBE_PYTHON|两条 OCR 路径均未就绪/);
+    fs.unlinkSync(path.join(temp,'fronted/vendor/ocr/models/PP-OCRv5_mobile_det_onnx_infer.tar'));
+    const missing=run();assert.equal(missing.status,0);assert.match(missing.stdout,/资源不完整/);assert.match(missing.stdout,/MUST_NOT_PROBE_PYTHON/);
+  }finally{fs.rmSync(temp,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
+});
+
 test('Windows launcher separates AI mock and real OCR, retains cwd/exit codes and tolerates unhealthy OCR',{skip:process.platform!=='win32'},()=>{
   const script=fs.readFileSync(path.join(root,'start-local.ps1'),'utf8');
   assert.equal(script.charCodeAt(0),0xfeff,'retain BOM for Windows PowerShell Chinese');
@@ -33,7 +53,7 @@ test('Windows launcher separates AI mock and real OCR, retains cwd/exit codes an
     }
     fs.writeFileSync(path.join(project,'start-local.ps1'),isolated.replace('return $true','return $false'));
     const degraded=spawnSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(project,'start-local.ps1'),'-Service','Node'],{cwd:temp,input:'\r\n',encoding:'utf8',windowsHide:true,timeout:20000});
-    assert.equal(degraded.status,7,'backend executes and preserves its own exit code despite OCR outage');assert.match(degraded.stdout,/OCR 暂不可用/);assert.match(degraded.stdout,/LAUNCH_TEST:/,'backend still starts on OCR failure');
+    assert.equal(degraded.status,7,'backend executes and preserves its own exit code despite OCR outage');assert.match(degraded.stdout,/服务端 OCR 也暂不可用/);assert.match(degraded.stdout,/LAUNCH_TEST:/,'backend still starts on OCR failure');
   }finally{fs.rmSync(temp,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
 });
 

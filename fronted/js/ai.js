@@ -4,9 +4,12 @@
  */
 // Suggestion options only; selecting one does not activate its review engine.
 const AI_REVIEW_METHODS = Object.freeze({
-  choice_reproduction: '选择复现', standard: '标准复习', cloze: '挖空回忆',
+  choice_reproduction: '重新作答（选择题）', standard: '标准复习', cloze: '挖空回忆',
   self_explain: '自述讲解', reading: '阅读标记', contrast: '对比辨析', retry: '重新作答'
 });
+// Keep the old engine ID for historical rounds, not as a separate AI choice.
+const AI_SELECTABLE_METHODS = Object.freeze(Object.fromEntries(Object.entries(AI_REVIEW_METHODS).filter(([id])=>id!=='choice_reproduction')));
+const publicAiReviewMode = mode => mode==='choice_reproduction'?'retry':mode;
 
 function normalizeMistakeAiAnalysis(value) {
   const text=v=>typeof v==='string'&&!!v.trim()&&v.length<=300;
@@ -25,7 +28,7 @@ function normalizeMistakeAiAnalysis(value) {
   const alternatives=[];
   for(const item of value.alternatives){
     if(!item||typeof item.mode_id!=='string'||!Object.hasOwn(AI_REVIEW_METHODS,item.mode_id)||!text(item.reason))return null;
-    alternatives.push({mode_id:item.mode_id,reason:item.reason.trim()});
+    alternatives.push({mode_id:publicAiReviewMode(item.mode_id),reason:item.reason.trim()});
   }
   if(value.answer_status==='correct'&&possible_causes.length)return null;
   return {answer_status:value.answer_status,observations:value.observations.map(v=>v.trim()),possible_causes,
@@ -128,7 +131,7 @@ async function classifyMistakeWithAi(input, { signal, timeoutMs = 20000, deepsee
       || (!Object.hasOwn(AI_REVIEW_METHODS, data.review_method) && data.review_method !== 'unclassified')
       || typeof data.reason !== 'string' || !data.reason.trim() || data.reason.length > 500
       || data.needs_review !== true) throw mistakeAiError('INVALID_RESPONSE');
-    const result={review_method:data.review_method,reason:data.reason.trim(),needs_review:true};
+    const result={review_method:publicAiReviewMode(data.review_method),reason:data.reason.trim(),needs_review:true};
     if(data.analysis!==undefined||deepseek){
       const analysis=normalizeMistakeAiAnalysis(data.analysis);
       if(!analysis)throw mistakeAiError('INVALID_RESPONSE');

@@ -59,7 +59,7 @@ addEventListener('pagehide',()=>{
 function readMistakeAiRecord(detail) {
   const saved = mistakeStorageGet(mistakeAiStorageKey(detail));
   if (!saved || typeof saved.method !== 'string') return null;
-  if (saved.version === 1 && Object.hasOwn(AI_REVIEW_METHODS, saved.method)) return {method:saved.method};
+  if (saved.version === 1 && Object.hasOwn(AI_REVIEW_METHODS, saved.method)) return {method:saved.method==='choice_reproduction'?'retry':saved.method};
   // Never guess a migration for recall/guided/unclassified or unknown versions.
   // Keep original bytes in storage until the user explicitly confirms a new mode.
   return {method:null, needsReselection:true};
@@ -70,6 +70,7 @@ function readMistakeAiMethod(detail) {
 }
 
 function saveMistakeAiMethod(detail, method) {
+  if(method==='choice_reproduction')method='retry';
   if (!Number.isSafeInteger(detail.courseId) || detail.courseId < 1
     || !Number.isSafeInteger(detail.id) || detail.id < 1 || !Object.hasOwn(AI_REVIEW_METHODS, method)) return false;
   mistakeStorageSet(mistakeAiStorageKey(detail), {version:1, method});
@@ -179,7 +180,7 @@ function startMistakeAi(detail, options = {}) {
     mistakeAiElement('Result').hidden = false;
     mistakeAiElement('Method').value = '';
     mistakeAiElement('Suggested').textContent = '旧版 AI 复习建议需重新选择（原记录已保留）';
-    mistakeAiElement('Status').textContent = '旧记录无法可靠对应新模式，请从七种模式中选择并确认；取消不会覆盖旧记录。';
+    mistakeAiElement('Status').textContent = '旧记录无法可靠对应新模式，请重新选择并确认；取消不会覆盖旧记录。';
   }
   mistakeAiElement('Panel').hidden = false;
   mistakeAiElement('Toggle').setAttribute('aria-expanded', 'true');
@@ -298,7 +299,7 @@ function prepareMistakeCreateAi(state) {
     if ('value' in node) node.value = ''; else node.textContent = '';
   }
   mistakeCreateAiElement('Method').replaceChildren(new Option('不选择',''),
-    ...Object.entries(AI_REVIEW_METHODS).map(([id,label])=>new Option(label,id)));
+    ...Object.entries(AI_SELECTABLE_METHODS).map(([id,label])=>new Option(label,id)));
   mistakeCreateAiElement('Fields').disabled = false;
   mistakeCreateAiElement('Get').disabled = false;
   mistakeCreateAiElement('Adopt').disabled = true;

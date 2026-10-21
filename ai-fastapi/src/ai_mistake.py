@@ -130,6 +130,15 @@ def normalize_result(result, rules, *, require_analysis=False, data=None):
         clean['analysis'] = analysis
         if analysis['answer_status'] == 'correct' and analysis['possible_causes']:
             return None
+    # Public suggestions have six choices; keep the old engine ID only for input compatibility.
+    if clean['review_method'] == 'choice_reproduction':
+        clean['review_method'] = 'retry'
+        if 'analysis' in clean:clean['analysis']['material_requirements']=[MATERIAL_NEEDS['retry']]
+    if 'analysis' in clean:
+        for item in clean['analysis']['alternatives']:
+            if item['mode_id']=='choice_reproduction':item['mode_id']='retry'
+        clean['analysis']['alternatives']=[x for i,x in enumerate(clean['analysis']['alternatives'])
+            if x['mode_id']!=clean['review_method'] and all(y['mode_id']!=x['mode_id'] for y in clean['analysis']['alternatives'][:i])]
     return clean
 
 
@@ -143,13 +152,13 @@ def analysis_prompt():
             '例如 1+1 答1、参考2、无过程，只能确认答案差异，错因未知；先建议 standard 或 retry 并询问如何计算，不能因 knowledge_gap 自动推荐 cloze。'
             '若学生答案正确，不强行制造错误或错因；若缺参考或参考可疑，在 reference_check 说明局限，给安全的暂定动作和追问。'
             '模式必须适合实际练习目标；cloze 用于明确的事实/原文提取，contrast 用于明确易混对象，reading 不能替代掌握训练。'
-            'choice_reproduction 仅 question_format=choice 时可选；unknown 不能猜题型。不要创建材料、打分、修改分类或排期。'
-            '保留兼容字段 review_method（七模式或unclassified）、reason（不超过500字符）、needs_review=true。'
+            '选择题重新作答是 retry 的题型分支，不单独推荐 choice_reproduction；unknown 不能猜题型。不要创建材料、打分、修改分类或排期。'
+            '保留兼容字段 review_method（六模式或unclassified）、reason（不超过500字符）、needs_review=true。'
             '另必须给 analysis 对象：answer_status=correct/incorrect/uncertain；observations=1至4条观察；'
             'possible_causes=0至3项{category:knowledge/thinking/execution/unclassified,support:possible/supported,explanation:候选原因,evidence:依据或缺失证据}；'
             'follow_up_questions=0至3个可回答的补充问题；reference_check=参考答案核验说明；'
             'alternatives=0至3项{mode_id:备选模式,reason:适用理由}。各段/各条文本不超过300字符，总体简洁。'
-            '模式定义：' + json.dumps(MODES, ensure_ascii=False, separators=(',', ':')))
+            '模式定义：' + json.dumps({k:v for k,v in MODES.items() if k!='choice_reproduction'}, ensure_ascii=False, separators=(',', ':')))
 
 
 def _validate_rules(rules):

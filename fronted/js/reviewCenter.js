@@ -312,7 +312,8 @@ function renderCenterReviewToolbar() {
   const inlineVisible=!!(reviewWorkbench?.inline&&reviewWorkbench.sessionItemId===item.id&&!wb('Inline')?.hidden);
   const q=s.quickMode?.itemId===item.id?s.quickMode:null;
   const nativePanel=document.getElementById(item.item_type==='mistake'?'mistakeReviewPanel':'materialReviewActions');
-  if(nativePanel)nativePanel.hidden=inlineVisible||workbenchActive||!!q?.busy||!!(q&&q.modeId!==mistakeDetailState?.progress?.mode?.id&&q.modeId!=='retry');
+  if(nativePanel)nativePanel.hidden=inlineVisible||workbenchActive||!!q?.busy||!!(q&&q.modeId!==(item.item_type==='mistake'?mistakeDetailState?.progress?.mode?.id:'reading')&&q.modeId!=='retry');
+  const aiPanel=document.getElementById('resourceAiPanel');if(aiPanel)aiPanel.hidden=inlineVisible||workbenchActive;
   if(item.item_type!=='mistake')for(const id of ['materialReviewContent','materialReviewPreview']){const original=document.getElementById(id);if(original)original.hidden=inlineVisible||workbenchActive;}
   if(workbenchActive){
     bar.insertAdjacentHTML('afterbegin',`<p>当前实际执行：${escapeHtml(AI_REVIEW_METHODS[active.mode])} · 在本页直接作答</p>`);

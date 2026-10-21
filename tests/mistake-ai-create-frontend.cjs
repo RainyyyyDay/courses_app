@@ -35,7 +35,7 @@ async function mistakeAiCreateChecks(check) {
       ?rows.map(row=>({...row,type:'mistake',reviewable:1,nodes:[]})):rows;
     await open();
     check(!ai('Panel').open && ai('Method').value==='' && !tagPickerState.aiCreate.selectedMethod,'creation starts collapsed with no selection');
-    check([...ai('Method').options].map(o=>o.value).join('|')===['',...Object.keys(AI_REVIEW_METHODS)].join('|'),'exact seven stable options plus empty choice');
+    check([...ai('Method').options].map(o=>o.value).join('|')===['',...Object.keys(AI_SELECTABLE_METHODS)].join('|'),'six public options plus empty choice');
     document.getElementById('mistakeCreateType').value='';await confirmTagPicker();
     check(tagPickerState && posts===0,'original required category validation unchanged');
     document.getElementById('mistakeCreateType').value='knowledge';

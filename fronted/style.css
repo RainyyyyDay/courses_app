@@ -2187,3 +2187,8 @@ body.plan-modal-open { overflow: hidden; }
 .courses-ai-settings select, .courses-ai-settings input[type=password] { display:block; width:100%; box-sizing:border-box; padding:10px; }
 .courses-ai-settings p { overflow-wrap:anywhere; }
 .courses-ai-settings button { min-height:40px; }
+#resourceAiPanel label { display:block; margin:12px 0; }
+#resourceAiPanel textarea, #resourceAiPanel select { display:block; width:100%; max-width:100%; box-sizing:border-box; padding:10px; border:1px solid #d9dfeb; border-radius:6px; font:inherit; }
+#resourceAiPanel button { min-height:44px; padding:8px 12px; margin:4px 4px 4px 0; }
+#resourceAiPanel fieldset { border:0; min-width:0; padding:0; }
+#resourceAiPanel p { overflow-wrap:anywhere; }

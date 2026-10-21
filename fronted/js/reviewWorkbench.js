@@ -22,7 +22,7 @@ function recommendReviewMode(type,row={},explicit=null,ai=null){
 }
 function workbenchSelection(s){
   const explicit=readReviewModeChoice(s);
-  const ai=s.type==='mistake'&&typeof readMistakeAiMethod==='function'?readMistakeAiMethod(s):null;
+  const ai=typeof readReviewAiMethod==='function'?readReviewAiMethod(s):s.type==='mistake'&&typeof readMistakeAiMethod==='function'?readMistakeAiMethod(s):null;
   return recommendReviewMode(s.type,s.row||{},explicit,ai);
 }
 
@@ -44,21 +44,24 @@ async function routeCenterReviewMode(item,session){
   if(item.status!=='pending'||centerReviewHasPendingSave())return;
   const context=centerWorkbenchContext(item,session),active=readReviewActive(context),explicit=readReviewModeChoice(context);
   if(active?.mode)await openReviewWorkbench(item.item_type,item.item_id,{...context,mode:active.mode});
-  else if(item.item_type==='mistake'&&centerReview.quickMode?.aiMode&&centerReview.quickMode.modeId===centerReview.quickMode.aiMode&&mistakeStorageGet(reviewSelectionKey(context)+':native-mode')!==centerReview.quickMode.modeId)
+  else if(centerReview.quickMode?.aiMode&&centerReview.quickMode.modeId===centerReview.quickMode.aiMode&&centerReview.quickMode.modeId!=='reading'&&mistakeStorageGet(reviewSelectionKey(context)+':native-mode')!==centerReview.quickMode.modeId)
     await openReviewWorkbench(item.item_type,item.item_id,{...context,mode:centerReview.quickMode.modeId});
   else if(item.item_type!=='mistake'&&explicit&&explicit!=='reading')await openReviewWorkbench(item.item_type,item.item_id,{...context,mode:explicit});
 }
 // Only selects a flow; execution remains in the native controller / material workbench.
 async function prepareCenterQuickMode(item,session){
-  if(item.item_type!=='mistake'||item.status!=='pending')return;
-  const owner=centerReview,context=centerWorkbenchContext(item,session),record=readMistakeAiRecord(context),aiMode=record?.method;
+  if(item.status!=='pending')return;
+  const owner=centerReview,context=centerWorkbenchContext(item,session),record=item.item_type==='mistake'?readMistakeAiRecord(context):{method:readReviewAiMethod(context)},aiMode=record?.method;
+  // No resource advice: preserve the original reading/settings entry and rule default.
+  if(item.item_type!=='mistake'&&!aiMode)return;
   const originalKey=reviewSelectionKey(context)+':original-mode';
-  const originalMode=mistakeStorageGet(originalKey)||mistakeStorageGet(legacyReviewSelectionKey(context)+':original-mode')||mistakeDetailState?.progress?.mode?.id||'standard';
+  const originalMode=mistakeStorageGet(originalKey)||mistakeStorageGet(legacyReviewSelectionKey(context)+':original-mode')||(item.item_type==='mistake'?mistakeDetailState?.progress?.mode?.id||'standard':'reading');
   mistakeStorageSet(originalKey,originalMode);
   const q={itemId:item.id,aiMode,originalMode,ready:false,modeId:originalMode,reason:'没有已确认的 AI 建议，沿用原复习。',busy:false};
   if(record?.needsReselection)q.reason='AI 建议无效或版本过旧，使用标准复习。';
   if(aiMode){
-    if(['standard','retry'].includes(aiMode))q.ready=!!mistakeDetailState?.progress?.reviewable;
+    if(item.item_type!=='mistake'&&aiMode==='reading')q.ready=true;
+    else if(item.item_type==='mistake'&&['standard','retry'].includes(aiMode))q.ready=!!mistakeDetailState?.progress?.reviewable;
     else if(aiMode==='choice_reproduction')q.ready=mistakeDetailState?.row?.question_format_confirmed===1&&mistakeDetailState.progress.mode.availableModes.some(m=>m.id===aiMode);
     else try{const data=await(await requestApi(reviewWorkbenchBase(context)+'/materials/'+aiMode+'?view=practice')).json();q.ready=data.version>0&&!!data.material;}catch{q.reason='无法确认建议材料，暂用标准复习；可从手动材料入口重试。';}
     if(q.ready)q.reason='建议材料可用；点击确认开始后执行，不会自动评分。';
@@ -97,20 +100,24 @@ async function confirmCenterQuickMode(){
   try{
     const selected=q.modeId;
     // Recheck availability on confirm, so a displayed label cannot start a stale/invalid mode.
-    if(selected===q.aiMode&&!['standard','retry','choice_reproduction'].includes(selected)){
+    if(item.item_type!=='mistake'&&selected==='reading'){
+      if(reviewWorkbench)closeReviewWorkbench();const context=centerWorkbenchContext(item,owner.session);
+      rememberReviewSelection(context,'reading');writeReviewActive(context,null);q.reason='使用原阅读流程，仅记录曝光，不自动评分。';return;
+    }
+    if(selected===q.aiMode&&!(item.item_type==='mistake'&&['standard','retry','choice_reproduction'].includes(selected))&&selected!=='retry'){
       const context=centerWorkbenchContext(item,owner.session);let data=null;
       try{data=await(await requestApi(reviewWorkbenchBase(context)+'/materials/'+selected+'?view=practice')).json();}catch{}
       if(!data?.version||!data.material){
         q.ready=false;q.reason='建议材料无法确认或已不可用；请准备材料，或切换原复习。';
-        if(centerReview===owner&&currentCenterItem()?.id===item.id)await openReviewWorkbench('mistake',item.item_id,{...context,mode:selected});
+        if(centerReview===owner&&currentCenterItem()?.id===item.id)await openReviewWorkbench(item.item_type,item.item_id,{...context,mode:selected});
         return;
       }
     }
     if(centerReview!==owner||currentCenterItem()?.id!==item.id)return;
     const context=centerWorkbenchContext(item,owner.session);rememberReviewSelection(context,q.modeId);
-    await openReviewWorkbench('mistake',item.item_id,{...context,mode:q.modeId});
+    await openReviewWorkbench(item.item_type,item.item_id,{...context,mode:q.modeId});
     if(reviewWorkbench?.mode!==q.modeId)return;
-    if(['standard','retry','choice_reproduction'].includes(q.modeId))await runExistingReviewMode();
+    if(q.modeId==='retry'||item.item_type==='mistake'&&['standard','choice_reproduction'].includes(q.modeId))await runExistingReviewMode();
     else if(!reviewWorkbench.attempt)await startWorkbenchAttempt();
     else {writeReviewActive(context,{mode:reviewWorkbench.attempt.modeId});renderWorkbenchAttempt();}
   }catch(err){if(centerReview===owner)showToast('未开始复习：'+err.message);}
@@ -118,11 +125,11 @@ async function confirmCenterQuickMode(){
 }
 function renderWorkbenchInfo(s){
   const actual=s.attempt?.modeId||readReviewActive(s)?.mode||(s.type==='mistake'?mistakeDetailState?.progress?.mode?.id:'reading');
-  const suggestion=s.type==='mistake'?readMistakeAiMethod(s):null,selection=workbenchSelection(s);
+  const suggestion=readReviewAiMethod(s),selection=workbenchSelection(s);
   wb('Info').textContent=s.sessionItemId?`当前实际流程：${AI_REVIEW_METHODS[actual]||'尚未开始'}。待使用：${AI_REVIEW_METHODS[s.mode]}（${{user:'本次明确选择',ai:'已保存的 AI 建议，尚需本次采用',rule:'规则推荐'}[selection.source]}）。选择/准备不评分；开始本轮后才执行选中模式。切换不会改写历史、评分或计划；已完成项目请在记录中再次复习。`:'材料准备：手动填写即可，AI 可选。确认保存后从总复习或计划进入。';
   wb('Suggestion').innerHTML=s.sessionItemId&&suggestion?`<p>已保存的 AI 建议：${escapeHtml(AI_REVIEW_METHODS[suggestion])}；不等于已创建材料。</p><button type="button" onclick="useWorkbenchSuggestion()">本次使用此建议（先检查材料）</button>`:'';
 }
-async function useWorkbenchSuggestion(){const s=reviewWorkbench,mode=s&&readMistakeAiMethod(s);if(mode)await loadReviewWorkbenchMode(mode);}
+async function useWorkbenchSuggestion(){const s=reviewWorkbench,mode=s&&readReviewAiMethod(s);if(mode)await loadReviewWorkbenchMode(mode);}
 function reviewWorkbenchBase(s=reviewWorkbench){return `${API}/courses/${s.courseId}/review-items/${s.type}/${s.id}`;}
 function reviewWorkbenchKey(s=reviewWorkbench){return `review-workbench:${s.courseId}:${s.type}:${s.id}:${s.sessionItemId||'prepare'}:${s.mode}`;}
 function ensureReviewWorkbench(){
@@ -176,9 +183,9 @@ async function openReviewWorkbench(type,id,context={}){
   if(!s.row&&type==='mistake'&&mistakeDetailState?.id===id&&mistakeDetailState.courseId===s.courseId)s.row=mistakeDetailState.row;
   s.modeChoice=context.mode||null;s.mode=context.mode||workbenchSelection(s).mode;
   s.lastExecutableMode=readReviewActive(s)?.mode||null;
-  const methods={...AI_REVIEW_METHODS};if(type!=='mistake')delete methods.choice_reproduction;
+  const methods={...AI_REVIEW_METHODS};delete methods.choice_reproduction;
   wb('Mode').replaceChildren(...Object.entries(methods).map(([value,label])=>new Option(label,value)));
-  wb('Mode').value=s.mode;
+  wb('Mode').value=s.mode==='choice_reproduction'?'retry':s.mode;
   if(s.inline)mountInlineReviewWorkbench(s);
   else {wb('Dialog').append(wb('Panel'));wb('Header').hidden=false;wb('Settings').open=true;wb('Dialog').showModal();}
   await loadReviewWorkbenchMode(s.mode,false);
@@ -205,7 +212,7 @@ async function loadReviewWorkbenchMode(mode,explicit=true){
   if(explicit){s.modeChoice=mode;rememberReviewSelection(s,mode);if(s.sessionItemId)syncCenterQuickMode(mode);s.editing=false;}
   s.aiDraft=null;s.beforeAi=null;
   s.mode=mode;s.startRequestId=null;s.attempt=null;s.pending=null;wb('Error').textContent='';wb('Editor').innerHTML='';wb('Attempt').innerHTML='';wb('Actions').innerHTML='';
-  wb('Mode').value=mode;renderWorkbenchInfo(s);
+  wb('Mode').value=mode==='choice_reproduction'?'retry':mode;renderWorkbenchInfo(s);
   if(mode==='retry'||mode==='choice_reproduction'||(mode==='standard'&&s.type==='mistake')){
     const incompatible=mode==='choice_reproduction'&&!recommendReviewMode(s.type,s.row||{}).alternatives.includes(mode);
     wb('Editor').textContent=incompatible?'当前缺少已确认且完整的选择题选项和正确答案。请在错题详情编辑题型，或明确切换标准复习。':mode==='retry'?'将隐藏旧作答、答案和解析，开启新轮次。复用已有流程和判分，旧轮次证据保留；不会覆盖历史。':'使用原题和答案，不需要额外材料。进入后先独立作答，再揭示答案并自评。切换原生模式会重新开始本轮，但不改变记忆状态。';
@@ -349,11 +356,21 @@ async function runExistingReviewMode(){
     s.mode=target;wb('Mode').value=target;mistakeStorageSet(reviewWorkbenchKey(s),null);
     await loadReviewWorkbenchMode(target,false);if(s.version)await startWorkbenchAttempt();return;
   }
-  if(s.type!=='mistake'){wb('Editor').textContent='本项目尚无可重开的工作台轮次。请选择标准复习准备任务，或明确返回已有阅读流程。';wb('Actions').innerHTML='<button onclick="loadReviewWorkbenchMode(\'standard\')">准备标准复习</button><button onclick="switchWorkbenchToAvailableMode()">返回现有阅读流程</button>';return;}
+  if(s.type!=='mistake'){
+    s.busy=true;let data;
+    try{data=await(await requestApi(reviewWorkbenchBase(s)+'/materials/standard?view=practice')).json();}
+    catch(err){if(reviewWorkbench===s)wb('Error').textContent=err.message;return;}
+    finally{if(reviewWorkbench===s)s.busy=false;}
+    if(reviewWorkbench!==s)return;
+    if(data.version&&data.material){await loadReviewWorkbenchMode('standard',false);if(s.version)await startWorkbenchAttempt();}
+    else {wb('Editor').textContent='尚无可重新作答的任务；请先手动准备标准复习任务，或返回原阅读。不会把阅读当作成功作答。';wb('Actions').innerHTML='<button onclick="loadReviewWorkbenchMode(\'standard\')">手动准备标准复习任务</button><button onclick="switchWorkbenchToAvailableMode()">返回原阅读流程</button>';}
+    return;
+  }
   s.busy=true;
   try{
     const state=mistakeDetailState;if(state?.id!==s.id||state.sessionItemId!==s.sessionItemId)throw Error('当前项目已变化，请返回队列重新进入');
-    if(s.mode!=='retry'&&state.progress.mode.id!==s.mode){await requestApi(`${API}/courses/${s.courseId}/mistakes/${s.id}/mode`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({modeId:s.mode})});state.firstAnswerDraft='';document.getElementById('mistakeFirstAnswer')?.remove();}
+    const target=s.mode==='retry'?(state.progress.mode.availableModes.some(m=>m.id==='choice_reproduction')?'choice_reproduction':'standard'):s.mode;
+    if(state.progress.mode.id!==target){await requestApi(`${API}/courses/${s.courseId}/mistakes/${s.id}/mode`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({modeId:target})});state.firstAnswerDraft='';document.getElementById('mistakeFirstAnswer')?.remove();}
     await refreshMistakeReview(state);
     if(!state.progress?.reviewable)throw Error('请先在错题详情补齐题目和参考答案');
     if(s.mode==='retry'||state.progress.allowedActions.includes('start'))await submitMistakeReview(s.mode==='retry'&&state.progress.allowedActions.includes('restart')?'restart':'start');

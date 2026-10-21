@@ -1,5 +1,7 @@
 # 浏览器端 OCR
 
+2026-10-21 启动检查修正：一键 `start-local.ps1` 打开的 3002 网站同样可使用本地浏览器 OCR。脚本现在分别检查浏览器九份资源与 8001 备用健康；本机资源齐全且真实浏览器合成图片识别测试通过。Python PaddleOCR 依赖缺失只说明服务端备用未准备，不再据此报告所有 OCR 不可用。详情见 `review-resources-ocr-fixes.md`。
+
 错题上传时的「识别文字」默认在**浏览器里**跑：官方 `@paddleocr/paddleocr-js` + ONNX Runtime Web + PP-OCRv5 mobile 模型。图片不上传、不需要服务器算力。
 
 ## 为什么要改打开方式

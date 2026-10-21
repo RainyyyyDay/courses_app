@@ -13,6 +13,7 @@ const coursesAiSettings = (() => {
       `当前：DeepSeek 官方 / ${model}；${key?'Key 已在本标签页就绪':'未持有 Key（不会回退 Mock）'}；已发起 ${calls} 次共享请求。`;
     node('Message').textContent=message;
     node('Open').textContent='AI 设置'+(drafts.size?` · 草稿 ${drafts.size}`:'');
+    if(typeof updateResourceAiSource==='function')updateResourceAiSource();
     for(const prefix of ['mistakeAi','mistakeCreateAi','mistakeCreateAnswerAi','mistakeEditAnswerAi']){
       const option=document.getElementById(prefix+'Provider')?.querySelector('option[value="shared"]');if(option)option.textContent=label();
     }
@@ -131,7 +132,7 @@ const coursesAiSettings = (() => {
     const button=document.createElement('button');button.id='coursesAiOpen';button.type='button';button.className='courses-ai-open';button.onclick=open;document.body.append(button);
     const dialog=document.createElement('dialog');dialog.id='coursesAiDialog';dialog.className='courses-ai-settings';
     dialog.innerHTML=`<h2>AI 设置（当前标签页）</h2><p id="coursesAiSummary" role="status"></p>
-      <p>错题分析、答案与解析草稿跨页面共用；手工输入和 Mock 演示无需 Key。复习材料工作台的 Mock 演示仍独立，不会变成真实生成。Key 不写入浏览器存储或数据库，刷新/关闭即失效。</p>
+      <p>资料、笔记与错题的复习建议，以及错题答案与解析草稿共用设置；手工输入和 Mock 演示无需 Key。复习材料工作台的 Mock 演示仍独立，不会变成真实生成。Key 不写入浏览器存储或数据库，刷新/关闭即失效。</p>
       <label>来源<select id="coursesAiProvider"><option value="mock">Mock 演示（非真实 AI）</option><option value="deepseek">DeepSeek 官方</option></select></label>
       <label>模型<select id="coursesAiModel"><option>deepseek-flash</option><option>deepseek-v4-pro</option></select></label>
       <label>API Key<input id="coursesAiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512" placeholder="不回显已保留的 Key"></label>

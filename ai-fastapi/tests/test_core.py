@@ -18,15 +18,15 @@ FULL = {"question": "1+1=?", "student_answer": "3", "error_type": "careless"}
 
 class ContractTests(unittest.TestCase):
     def test_documented_suggestion_modes_and_fallback_are_normalized(self):
-        modes = ['choice_reproduction', 'standard', 'cloze', 'self_explain', 'reading', 'contrast', 'retry']
+        modes = ['standard', 'cloze', 'self_explain', 'reading', 'contrast', 'retry']
         plan = Path(__file__).resolve().parents[2] / 'docs/review-system-master-plan.md'
         # Read the authoritative mode list, excluding the per-mode editing table below it.
         mode_table = plan.read_text(encoding='utf-8').split('## 3. 模式清单', 1)[1].split('### 3.1', 1)[0]
         documented = re.findall(r'^\| `([a-z_]+)`', mode_table, re.M)
         self.assertEqual(documented, modes)
-        self.assertEqual([c['id'] for c in DEFAULT_RULES['categories']], modes + ['unclassified'])
-        for mode in modes + ['unclassified']:
-            self.assertEqual(normalize_result({'review_method': mode, 'reason': '演示', 'needs_review': True}, DEFAULT_RULES)['review_method'], mode)
+        self.assertEqual([c['id'] for c in DEFAULT_RULES['categories']], ['choice_reproduction'] + modes + ['unclassified'])
+        for mode in ['choice_reproduction'] + modes + ['unclassified']:
+            self.assertEqual(normalize_result({'review_method': mode, 'reason': '演示', 'needs_review': True}, DEFAULT_RULES)['review_method'], 'retry' if mode=='choice_reproduction' else mode)
         for legacy in ['recall', 'guided']:
             self.assertIsNone(normalize_result({'review_method': legacy, 'reason': '旧值', 'needs_review': True}, DEFAULT_RULES))
 

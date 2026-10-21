@@ -1,5 +1,9 @@
 # AI 错题分类 FastAPI 移植模块
 
+## 资料／笔记复习建议（2026-10-21）
+
+新增可选模块 `src/ai_review_suggestion.py`，用 `register(app, dependencies=[Depends(宿主真实权限依赖)])` 挂载 `POST /api/ai/review-suggestion`，缺权限依赖默认拒绝。JSON `{provider:mock/deepseek,input:{kind:material/note,title?,content,goal?:remember/understand/compare/practice/read/空字符串,recall?},api_key?,model?,confirm_cost?}`；各输入字符串最多4000 UTF-16单元，总体16KB，真实凭据和费用确认沿用现有约束。响应 `{provider,result:{review_method,reason,needs_review:true}}`，六种公开模式，不操作数据库。复用 ai_mistake 的 HTTP/并发/超时/取消基础，无新增第三方依赖。已注册本地开发服务，使用前重启 3002。正常网页入口和验收见 [资料笔记/OCR修正](../docs/review-resources-ocr-fixes.md)。
+
 ## 第二轮补充：统一设置（2026-10-21）
 
 正常网站右下角新增“AI 设置”，错题建议与答案/解析草稿共用标签页内临时 Key。保留 Key 和保存新错题后的自动分析均需显式同意；自动分析默认关闭，只生成待确认的内存草稿。未实现账户登录、永久 Key 或主后端整合，Python 继续复用已有权限依赖。范围、安全边界、宿主身份钩子及验收见 [第二轮说明](../docs/ai-settings-round-two.md)。下文“未做统一设置”等为此前记录，以本节为当前状态。

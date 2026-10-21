@@ -1,9 +1,10 @@
 async function mistakeAiModeChecks(check,el,prepare) {
-  const modes=[['choice_reproduction','选择复现'],['standard','标准复习'],['cloze','挖空回忆'],
+  const modes=[['standard','标准复习'],['cloze','挖空回忆'],
     ['self_explain','自述讲解'],['reading','阅读标记'],['contrast','对比辨析'],['retry','重新作答']];
   const options=[...el('Method').options].filter(option=>option.value).map(option=>[option.value,option.textContent]);
-  check(JSON.stringify(options)===JSON.stringify(modes),'exact seven stable IDs and Chinese labels');
-  check(JSON.stringify(Object.entries(AI_REVIEW_METHODS))===JSON.stringify(modes),'mapping matches seven options');
+  check(JSON.stringify(options)===JSON.stringify(modes),'six public modes, choice is a retry branch');
+  check(JSON.stringify(Object.entries(AI_SELECTABLE_METHODS))===JSON.stringify(modes),'public mapping matches six options');
+  check(AI_REVIEW_METHODS.choice_reproduction==='重新作答（选择题）','historical engine ID remains readable');
   const fetchBefore=window.fetch;
   let output;
   window.fetch=async()=>new Response(JSON.stringify({review_method:output,reason:'Mock 演示建议',needs_review:true}),{status:200});
@@ -20,6 +21,8 @@ async function mistakeAiModeChecks(check,el,prepare) {
       resetMistakeAi();toggleMistakeAi();
       check(el('Method').value===method && el('Confirmation').textContent.includes(label),'restores confirmed mode: '+method);
     }
+    const oldChoice=JSON.stringify({version:1,method:'choice_reproduction'});localStorage.setItem(key(83),oldChoice);open(83);
+    check(el('Method').value==='retry'&&localStorage.getItem(key(83))===oldChoice,'legacy choice advice is read as retry without rewriting history');
     localStorage.setItem(key(82),JSON.stringify({version:1,method:'retry'}));open(82);
     output='unclassified';await request();
     check(el('Suggested').textContent==='AI 暂未给出可用建议，请人工选择','fallback is a prompt, not an eighth mode');

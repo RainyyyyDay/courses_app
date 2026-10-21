@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>课内</title>
-  <link rel="stylesheet" href="style.css?v=20261021-settings-2" />
+  <link rel="stylesheet" href="style.css?v=20261021-resources-3" />
 </head>
 <body>
 
@@ -339,7 +339,7 @@
             <label for="mistakeAiMethod">人工复核：可修改建议</label>
             <select id="mistakeAiMethod" onchange="changeMistakeAiSuggestion()">
               <option value="" disabled selected>请选择复习模式</option>
-              <option value="choice_reproduction">选择复现</option><option value="standard">标准复习</option>
+              <option value="standard">标准复习</option>
               <option value="cloze">挖空回忆</option><option value="self_explain">自述讲解</option>
               <option value="reading">阅读标记</option><option value="contrast">对比辨析</option>
               <option value="retry">重新作答</option>
@@ -1104,8 +1104,8 @@
   <script src="js/config.js"></script>
   <script src="js/state.js"></script>
   <script src="js/utils.js"></script>
-  <script src="js/ai.js?v=20261021-settings-2"></script>
-  <script src="js/aiSettings.js?v=20261021-settings-2"></script>
+  <script src="js/ai.js?v=20261021-resources-3"></script>
+  <script src="js/aiSettings.js?v=20261021-resources-3"></script>
 
   <!-- 课程 -->
   <script src="js/courses.js"></script>
@@ -1127,15 +1127,16 @@
   <script src="js/tagPickerView.js"></script>
 
   <!-- 详情页 -->
-  <script src="js/page.js"></script>
+  <script src="js/page.js?v=20261021-resources-3"></script>
   <script src="js/nodeDetail.js"></script>
-  <script src="js/resourceDetail.js"></script>
-  <script src="js/materialReview.js"></script>
+  <script src="js/resourceDetail.js?v=20261021-resources-3"></script>
+  <script src="js/materialReview.js?v=20261021-resources-3"></script>
   <script src="js/noteReview.js"></script>
   <script src="js/mistakeDetail.js?v=20261021-answer-1"></script>
-  <script src="js/mistakeAi.js?v=20261021-settings-2"></script>
+  <script src="js/mistakeAi.js?v=20261021-resources-3"></script>
   <script src="js/mistakeAnswerAi.js?v=20261021-settings-2"></script>
-  <script src="js/reviewWorkbench.js"></script>
+  <script src="js/resourceAi.js?v=20261021-resources-3"></script>
+  <script src="js/reviewWorkbench.js?v=20261021-resources-3"></script>
   <dialog id="mistakeAiDialog" aria-labelledby="mistakeAiDialogTitle" oncancel="event.preventDefault();resetMistakeAi()" onclick="if(event.target===this)resetMistakeAi()">
     <header class="mistake-ai-dialog-head"><div><h2 id="mistakeAiDialogTitle" tabindex="-1">AI 复习建议</h2><p id="mistakeAiDialogQuestionTitle" class="mistake-ai-note"></p></div><button type="button" class="tag-sheet-close" onclick="resetMistakeAi()" aria-label="关闭 AI 复习建议">×</button></header>
     <div id="mistakeAiDialogBody" class="tag-sheet-body"></div>
@@ -1145,7 +1146,7 @@
   <script src="js/courseSearch.js"></script>
   <script src="js/reviewPicker.js"></script>
   <script src="js/reviewPlans.js"></script>
-  <script src="js/reviewCenter.js"></script>
+  <script src="js/reviewCenter.js?v=20261021-resources-3"></script>
 
   <!-- 知识框架 -->
   <script src="js/knowledgeTree.js"></script>

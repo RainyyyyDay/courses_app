@@ -14,7 +14,7 @@ const { db } = require('./connection');
 const MODE_DEFINITIONS = {
   choice_reproduction: {
     id: 'choice_reproduction',
-    name: '选择复现',
+    name: '重新作答（选择题）',
     description: '遮住答案重选一次，按选项客观判分。',
     implemented: true,
   },

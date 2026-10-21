@@ -192,6 +192,8 @@ function createReadingReview(kind, label, resumeId, options = {}) {
         renderResourcePreview(type,url,el('Preview')); el('OpenFile').href = url; el('OpenFile').style.display = 'inline-block';
       }
       state.actions();
+      if(!options.readOnly&&typeof mountResourceAi==='function')mountResourceAi(el('Item'),kind==='notes'?'note':'material',row,
+        {sessionId:queue.sessionId,sessionItemId:queue.sessionItems?.[row.id]});
     } catch (err) {
       if (request !== state.request || !current()) return;
       el('Error').textContent = err.message;

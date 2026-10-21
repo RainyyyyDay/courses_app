@@ -103,7 +103,7 @@ test('adapter enforces method/reason/manual-review output contract', async () =>
 
 test('adapter accepts seven documented modes plus unclassified sentinel', async()=>{
   for(const method of ['choice_reproduction','standard','cloze','self_explain','reading','contrast','retry','unclassified']){
-    assert.equal((await adapter(async()=>reply({...output,review_method:method}))()).review_method,method);
+    assert.equal((await adapter(async()=>reply({...output,review_method:method}))()).review_method,method==='choice_reproduction'?'retry':method);
   }
 });
 test('HTTP errors use safe messages including 503/401/403/429/504 and allow retry', async () => {

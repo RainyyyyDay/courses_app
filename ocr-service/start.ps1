@@ -65,6 +65,7 @@ try {
     }
     throw "OCR 在 40 秒内未通过健康检查；未就绪，不会声称识别可用。请查看 $errLog（PID=$($worker.Id)）。"
 } catch {
-    Write-Host "OCR 启动未完成：$($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "服务端备用 OCR 启动未完成：$($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host '这只影响 8001 服务端备用路径；网页浏览器 OCR 使用 fronted/vendor/ocr 的独立资源，不由此依赖检查决定。'
     exit 1
 }
