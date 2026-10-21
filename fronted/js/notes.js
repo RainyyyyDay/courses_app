@@ -21,7 +21,7 @@ async function loadNotes() {
     if (typeof renderNoteReviewResume === 'function') renderNoteReviewResume();
     if (rows.length === 0) return box.innerHTML = '<div class="empty">暂无笔记</div>';
     box.innerHTML = rows.map(r => `
-      <div class="item-row card-openable" data-note-id="${r.id}" role="link" tabindex="0"
+      <div class="item-row content-card card-openable" data-note-id="${r.id}" role="link" tabindex="0"
         aria-label="查看笔记：${escapeHtml(r.title)}"
         onclick="openReadingCard(event,'note',${r.id})"
         onkeydown="openReadingCardKey(event,'note',${r.id})">

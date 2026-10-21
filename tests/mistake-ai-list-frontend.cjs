@@ -24,8 +24,10 @@ async function mistakeAiListChecks(check, el) {
     const saved=id=>card(id).querySelector('.mistake-ai-saved');
     const originalRow=JSON.stringify(row),view=currentView;
     check(saved(71).textContent.includes('暂无已保存'),'initial list has no saved result');
-    const entry=card(71).querySelector('.mistake-ai-entry');entry.click();
-    check(document.getElementById('mistakeAiDialog').open && currentView===view,'list entry opens modal without navigating to detail');
+    check(!card(71).querySelector('.mistake-ai-entry')&&!card(71).querySelector('button[onclick*="openMistakeDetail"]'),'list has no duplicate View or AI action');
+    // Backward-compatibility check of the old helper, not a visible list entry.
+    const entry=card(71),openLegacy=()=>openMistakeAiFromList(71,entry);openLegacy();
+    check(document.getElementById('mistakeAiDialog').open && currentView===view,'legacy helper remains compatible without a visible list button');
     const dialog=document.getElementById('mistakeAiDialog'),body=document.getElementById('mistakeAiDialogBody');
     const rect=dialog.getBoundingClientRect();
     check(Math.abs(rect.left+rect.width/2-innerWidth/2)<=2 && Math.abs(rect.top+rect.height/2-innerHeight/2)<=2,'dialog centered horizontally and vertically');
@@ -52,12 +54,12 @@ async function mistakeAiListChecks(check, el) {
     check(saved(71).textContent.includes('自述讲解') && saved(72).textContent.includes('暂无已保存'),'save updates only matching card');
     check(!dialog.open && mistakeAiState===null && currentView===view && document.activeElement===entry,'successful save closes modal and returns to original list with focus');
     check(el('Panel').previousElementSibling.id==='mistakeAiHome' && el('Actions').previousElementSibling.id==='mistakeAiActionsHome','panel and actions returned to detail home');
-    entry.click();
+    openLegacy();
     el('Method').value='cloze';changeMistakeAiSuggestion();
     check(saved(71).textContent.includes('自述讲解'),'unconfirmed edit does not update card');
     foot.querySelector('.mistake-ai-dialog-only').click();
     check(!dialog.open && saved(71).textContent.includes('自述讲解'),'manual cancel discards unconfirmed edit');
-    entry.click();check(el('Method').value==='self_explain' && body.scrollTop===0,'reopen restores saved choice from top');
+    openLegacy();check(el('Method').value==='self_explain' && body.scrollTop===0,'reopen restores saved choice from top');
     el('Method').value='cloze';changeMistakeAiSuggestion();
     const set=Storage.prototype.setItem;
     try {
@@ -71,7 +73,7 @@ async function mistakeAiListChecks(check, el) {
     check(document.getElementById('mistakeAiDialog').scrollWidth<=document.getElementById('mistakeAiDialog').clientWidth+1,'modal has no horizontal overflow');
     resetMistakeAi();check(document.activeElement===entry && !document.getElementById('mistakeAiDialog').open,'close restores focus');
     check(el('Panel').previousElementSibling.id==='mistakeAiHome','shared panel returned to detail home');
-    entry.click();check(el('Method').value==='cloze' && !mistakeAiState.result,'list restores saved final choice');
+    openLegacy();check(el('Method').value==='cloze' && !mistakeAiState.result,'legacy helper restores saved final choice');
     el('StudentAnswer').value='3';el('ErrorType').value='careless';
     window.fetch=()=>new Promise(resolve=>{release=resolve;});const pending=requestMistakeAi();
     resetMistakeAi();openMistakeAiFromList(72);release(new Response(JSON.stringify(suggestion)));await pending;
@@ -92,13 +94,15 @@ async function mistakeAiListChecks(check, el) {
     localStorage.setItem('mistake-ai-method:42:72','{');await loadMistakes();
     check(saved(72).textContent.includes('暂无已保存'),'corrupt storage renders missing advice safely');
     check(JSON.stringify(row)===originalRow,'AI never mutates mistake category or review data');
-    for(const label of ['查看','编辑','删除'])check([...card(71).querySelectorAll('button')].some(button=>button.textContent===label),'original '+label+' action remains');
+    for(const label of ['编辑','删除'])check([...card(71).querySelectorAll('button')].some(button=>button.textContent===label),'original '+label+' action remains');
     // Verify original buttons still dispatch their original handlers.
     const viewHandler=openMistakeDetail, editHandler=editMistakeFromList, deleteHandler=delItem;
     let action='';
     try {
       openMistakeDetail=id=>{action='view:'+id;};editMistakeFromList=id=>{action='edit:'+id;};delItem=(type,id)=>{action=type+':'+id;};
-      for(const [label,expected] of [['查看','view:71'],['编辑','edit:71'],['删除','mistakes:71']]){
+      card(71).click();check(action==='view:71','card click replaces redundant View button');
+      card(71).dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));check(action==='view:71','keyboard opens card');
+      for(const [label,expected] of [['编辑','edit:71'],['删除','mistakes:71']]){
         [...card(71).querySelectorAll('button')].find(button=>button.textContent===label).click();check(action===expected,'original '+label+' handler intact');
       }
     } finally {openMistakeDetail=viewHandler;editMistakeFromList=editHandler;delItem=deleteHandler;}

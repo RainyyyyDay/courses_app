@@ -1,4 +1,5 @@
-// Real normal website + isolated Node/SQLite fixtures + actual FastAPI mock.
+// Legacy helper compatibility + isolated Node/SQLite + actual FastAPI mock.
+// The visible list AI button is intentionally removed; normal card navigation has separate DOM tests.
 // No original data/uploads/.env are copied. Uses random loopback ports.
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
@@ -41,13 +42,13 @@ function normalWebsiteScenario(courseId,mistakeId,nodePort) {
         check(courseEntry,'normal course entry exists');courseEntry.click();
       }
       switchTab('mistakes');await openMistakeCategory('knowledge');
-      await wait(()=>card()?.querySelector('.mistake-ai-entry'),'normal list cards load');
+      await wait(()=>card()?.classList.contains('card-openable'),'normal list cards load');
       const before=await (await fetch(API+'/mistakes/${mistakeId}')).json();
       if(sessionStorage.getItem('http-ai-phase')==='created'){
         const createdId=Number(sessionStorage.getItem('http-ai-created-id'));
         const createdCard=document.querySelector('#mistakeList [data-mistake-id="'+createdId+'"]');
         check(createdCard?.textContent.includes('对比辨析'),'actual reload restores newly created final choice');
-        createdCard.querySelector('.mistake-ai-entry').click();
+        openMistakeAiFromList(createdId,createdCard);
         check(el('Method').value==='contrast' && !mistakeAiState.result,'creation choice restored by existing list panel');resetMistakeAi();
         document.getElementById('totalReviewOpen').click();await wait(()=>totalReviewState && !totalReviewState.loading,'created total candidates');switchTotalReviewTab('mistake');
         check(document.getElementById('totalReviewCandidates').textContent.includes('对比辨析'),'total review displays same creation final choice after reload');
@@ -60,12 +61,12 @@ function normalWebsiteScenario(courseId,mistakeId,nodePort) {
       if(sessionStorage.getItem('http-ai-phase')==='legacy'){
         const storageKey='mistake-ai-method:'+${courseId}+':'+${mistakeId};
         check(card().textContent.includes('重新选择'),'legacy warning survives actual reload in list');
-        const raw=localStorage.getItem(storageKey);card().querySelector('.mistake-ai-entry').click();
+        const raw=localStorage.getItem(storageKey);openMistakeAiFromList(${mistakeId},card());
         check(el('Method').value==='' && el('Confirm').disabled,'legacy mode never auto-selected');
         resetMistakeAi();check(localStorage.getItem(storageKey)===raw,'closing preserves actual legacy storage');
         document.getElementById('totalReviewOpen').click();await wait(()=>totalReviewState && !totalReviewState.loading,'legacy total candidates');switchTotalReviewTab('mistake');
         check(document.getElementById('totalReviewCandidates').textContent.includes('重新选择'),'total review warns consistently about legacy');closeTotalReview();
-        card().querySelector('.mistake-ai-entry').click();el('Method').value='reading';changeMistakeAiSuggestion();el('Confirm').click();
+        openMistakeAiFromList(${mistakeId},card());el('Method').value='reading';changeMistakeAiSuggestion();el('Confirm').click();
         check(card().textContent.includes('阅读标记') && !document.getElementById('mistakeAiDialog').open,'explicit legacy replacement saves and closes');
         const ai=name=>document.getElementById('mistakeCreateAi'+name);
         const fillCreation=async title=>{
@@ -93,7 +94,7 @@ function normalWebsiteScenario(courseId,mistakeId,nodePort) {
         sessionStorage.setItem('http-ai-created-id',String(created.id));sessionStorage.setItem('http-ai-phase','created');location.reload();return;
       }
       if(sessionStorage.getItem('http-ai-phase')!=='saved'){
-        card().querySelector('.mistake-ai-entry').click();
+        openMistakeAiFromList(${mistakeId},card());
         const dialog=document.getElementById('mistakeAiDialog'),body=document.getElementById('mistakeAiDialogBody');
         const bounds=dialog.getBoundingClientRect();
         check(Math.abs(bounds.left+bounds.width/2-innerWidth/2)<2 && Math.abs(bounds.top+bounds.height/2-innerHeight/2)<2,'real dialog centered');
@@ -117,7 +118,7 @@ function normalWebsiteScenario(courseId,mistakeId,nodePort) {
         sessionStorage.setItem('http-ai-phase','saved');location.reload();return;
       }
       check(card().textContent.includes('自述讲解'),'actual reload restores card');
-      card().querySelector('.mistake-ai-entry').click();
+      openMistakeAiFromList(${mistakeId},card());
       check(el('Method').value==='self_explain' && !mistakeAiState.result,'actual reload restores final choice without calling AI');
       resetMistakeAi();document.getElementById('totalReviewOpen').click();
       await wait(()=>totalReviewState && !totalReviewState.loading,'real total review candidates');

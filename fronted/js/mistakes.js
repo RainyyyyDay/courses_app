@@ -284,7 +284,7 @@ async function loadMistakes() {
     }
     if (!rows.length) { box.innerHTML = '<div class="empty">暂无符合条件的错题</div>'; return; }
     box.innerHTML = rows.map(r => `
-      <div class="item-row ${selecting ? 'mistake-selectable' : 'card-openable'}" data-mistake-id="${r.id}"
+      <div class="item-row content-card ${selecting ? 'mistake-selectable' : 'card-openable'}" data-mistake-id="${r.id}"
         ${selecting ? `onclick="toggleMistakeCard(event, ${r.id})"` : `role="link" tabindex="0" aria-label="查看错题：${escapeHtml(r.title)}" onclick="openMistakeCard(event, ${r.id})" onkeydown="openMistakeCardKey(event, ${r.id})"`}>
         <div class="info">
           <div${selecting ? ' class="mistake-title-row"' : ''}>
@@ -294,7 +294,7 @@ async function loadMistakes() {
           ${mistakeFormatHtml(r)}
           ${selecting ? `<div class="mistake-line"><span class="mistake-state ${r.review_status === 'reviewed' ? 'mistake-state-reviewed' : ''}">${mistakeStatusText(r.review_status)}</span>${r.favorite ? '<span class="mistake-state">★ 已收藏</span>' : ''}${(r.knowledge || []).map(k => `<span class="mistake-state">${escapeHtml(k.name)}</span>`).join('')}</div>`
             : `<span class="material-review-badge">${mistakeStatusText(r.review_status)}</span>`}
-          <div class="meta">${!r.image_url ? '手动输入' : (isImageFile(r.file_type, r.image_url) ? '图片' : '文件')} · ${escapeHtml(r.created_at || '')}</div>
+          <div class="meta">${!r.image_url ? '✍ 手动输入' : (isImageFile(r.file_type, r.image_url) ? '🖼 图片' : '📄 文件')} · ${escapeHtml(r.created_at || '')}</div>
           ${r.content ? `<div class="row-content">${escapeHtml(r.content)}</div>` : ''}
           ${typeof mistakeAiSavedHtml === 'function' ? mistakeAiSavedHtml(courseId, r.id) : ''}
           ${selecting ? '' : `<div class="mistake-tags">${nodeChipsHtml(r)}</div>`}
@@ -302,8 +302,6 @@ async function loadMistakes() {
         </div>
         <div class="mistake-actions" ${selecting ? 'style="display:none;"' : ''}>
           <button class="reading-favorite ${r.favorite ? 'is-favorite' : ''}" data-mistake-favorite="${r.id}" aria-label="${r.favorite ? '取消收藏' : '收藏'}" aria-pressed="${!!r.favorite}" ${mistakeFavoritePending.has(currentCourseId + ':' + r.id) ? 'disabled' : ''} onclick="event.stopPropagation();toggleMistakeFavorite(${r.id}, ${!r.favorite}, this)">${r.favorite ? '★' : '☆'}</button>
-          <button onclick="event.stopPropagation();openMistakeDetail(${r.id})">查看</button>
-          <button type="button" class="mistake-ai-entry" onclick="event.stopPropagation();openMistakeAiFromList(${r.id},this)">AI 复习建议</button>
           <button onclick="event.stopPropagation();editMistakeFromList(${r.id})">编辑</button>
           <button onclick="event.stopPropagation();delItem('mistakes', ${r.id}, loadMistakes)">删除</button>
         </div>

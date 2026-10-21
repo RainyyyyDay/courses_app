@@ -107,6 +107,13 @@ body {
   outline-offset: 2px;
 }
 
+/* The three normal content lists share one card surface; review selection stays unchanged. */
+.content-card:not(.mistake-selectable) { align-items:flex-start; gap:16px; padding:16px; border:1px solid #edf0f5; }
+.content-card:not(.mistake-selectable) .title { font-size:15px; font-weight:600; line-height:1.5; overflow-wrap:anywhere; }
+.content-card:not(.mistake-selectable) .meta { line-height:1.6; }
+.content-card:not(.mistake-selectable) .material-review-badge { margin:4px 0; }
+.content-card .mistake-ai-saved { font-size:12px; color:#798499; }
+
 .upload-btn {
   width: 100%; padding: 12px;
   border: 1px dashed #ccc;
@@ -1053,9 +1060,8 @@ body.mistake-review-open { overflow: hidden; }
 #mistakeAiStatus:not(:empty), #mistakeAiError:not(:empty) { margin: 10px 0; }
 
 .mistake-ai-saved { display: block; margin-top: 6px; color: #526477; font-size: 13px; overflow-wrap: anywhere; }
-#mistakeList .mistake-actions { flex-wrap: wrap; gap: 6px; max-width: 340px; justify-content: flex-end; }
-#mistakeList .info { min-width: 0; }
-.mistake-actions .mistake-ai-entry { color: #2456a6; font-weight: 600; }
+:is(#mistakeList, #materialList, #noteList) .mistake-actions { flex-wrap: wrap; gap: 6px; max-width: 220px; justify-content: flex-end; }
+:is(#mistakeList, #materialList, #noteList) .info { min-width: 0; }
 #mistakeAiDialog { position: fixed; inset: 0; margin: auto; box-sizing: border-box; width: min(680px, calc(100% - 32px)); max-height: calc(100vh - 32px); max-height: min(88dvh, 860px); overflow: hidden; padding: 0; border: 0; border-radius: 12px; }
 #mistakeAiDialog[open] { display: flex; flex-direction: column; }
 #mistakeAiDialogBody { background: #f6f7fb; }
@@ -1067,9 +1073,9 @@ body.mistake-review-open { overflow: hidden; }
 .mistake-ai-dialog-head button { flex: 0 0 auto; min-width: 44px; min-height: 44px; }
 #mistakeAiDialog .mistake-ai-panel { border-top: 0; margin-top: 0; }
 @media (max-width: 640px) {
-  #mistakeList .item-row { flex-wrap: wrap; }
-  #mistakeList .item-row > .info { flex-basis: 100%; }
-  #mistakeList .mistake-actions { max-width: 100%; width: 100%; justify-content: flex-start; }
+  :is(#mistakeList, #materialList, #noteList) .item-row { flex-wrap: wrap; }
+  :is(#mistakeList, #materialList, #noteList) .item-row > .info { flex-basis: 100%; }
+  :is(#mistakeList, #materialList, #noteList) .mistake-actions { max-width: 100%; width: 100%; justify-content: flex-start; }
   #mistakeAiDialog { width: calc(100% - 20px); max-height: calc(100dvh - 20px); }
   .mistake-ai-dialog-head { padding: 14px 16px; }
   #mistakeAiDialogFoot .modal-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }

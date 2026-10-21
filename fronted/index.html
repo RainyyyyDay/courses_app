@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>课内</title>
-  <link rel="stylesheet" href="style.css?v=20261021-resources-3" />
+  <link rel="stylesheet" href="style.css?v=20261021-cards-4" />
 </head>
 <body>
 
@@ -116,9 +116,9 @@
   <div class="detail-tabs">
     <div class="dtab active" onclick="switchTab('materials', this)">资料</div>
     <div class="dtab" onclick="switchTab('notes', this)">笔记</div>
-    <div class="dtab" onclick="switchTab('assessments', this)">考核</div>
     <div class="dtab" onclick="switchTab('mistakes', this)">错题</div>
     <div class="dtab" onclick="switchTab('reviewPlans', this)">复习</div>
+    <div class="dtab" onclick="switchTab('assessments', this)">考核</div>
     <div class="dtab" onclick="switchTab('knowledge', this)">知识框架</div>
   </div>
 
@@ -291,7 +291,7 @@
         <h2>解析 / 错误原因</h2><div id="mistakeExplanationText" class="detail-content"></div>
         <div class="mistake-toolbar">
           <button type="button" onclick="openMistakeEdit()">编辑</button>
-          <button id="mistakeAiToggle" type="button" aria-expanded="false" aria-controls="mistakeAiPanel" onclick="toggleMistakeAi()">AI 分类</button>
+          <button id="mistakeAiToggle" type="button" aria-expanded="false" aria-controls="mistakeAiPanel" onclick="toggleMistakeAi()">AI 复习建议</button>
         </div>
         <span id="mistakeAiHome" hidden></span>
         <section id="mistakeAiPanel" class="mistake-ai-panel" aria-labelledby="mistakeAiTitle" hidden>
@@ -1114,12 +1114,12 @@
   <!-- 四类资源（列表页） -->
   <script src="js/tags.js"></script>
   <script src="js/readingBrowse.js"></script>
-  <script src="js/materials.js"></script>
-  <script src="js/notes.js"></script>
+  <script src="js/materials.js?v=20261021-cards-4"></script>
+  <script src="js/notes.js?v=20261021-cards-4"></script>
   <script src="js/assessments.js"></script>
   <script src="js/ocrBrowser.js"></script>
   <script src="js/outlineMap.js"></script>
-  <script src="js/mistakes.js"></script>
+  <script src="js/mistakes.js?v=20261021-cards-4"></script>
 
   <!-- 录入流程：手动输入 + 选标签 -->
   <script src="js/manualEntry.js"></script>
@@ -1146,7 +1146,7 @@
   <script src="js/courseSearch.js"></script>
   <script src="js/reviewPicker.js"></script>
   <script src="js/reviewPlans.js"></script>
-  <script src="js/reviewCenter.js?v=20261021-resources-3"></script>
+  <script src="js/reviewCenter.js?v=20261021-total-context-5"></script>
 
   <!-- 知识框架 -->
   <script src="js/knowledgeTree.js"></script>

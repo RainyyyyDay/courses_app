@@ -134,7 +134,9 @@ async function resumeLegacyReview(id) {
 async function openTotalReview() {
   if(totalReviewState?.busy)return;
   const filters=createReviewPickerFilters();
-  totalReviewState={courseId:currentCourseId,rows:[],ids:new Set(),tab:'material',filters,loading:true,busy:false,preview:null,returnFocus:document.activeElement,requestId:reviewRequestId()};
+  // Match only the current large tab, never inherit its search/category/item selection.
+  const tab=currentView.type==='course'?({materials:'material',notes:'note',mistakes:'mistake'}[currentView.tab]||'material'):'material';
+  totalReviewState={courseId:currentCourseId,rows:[],ids:new Set(),tab,filters,loading:true,busy:false,preview:null,returnFocus:document.activeElement,requestId:reviewRequestId()};
   restoreTotalReviewFilters();document.getElementById('totalReviewError').textContent='';
   document.getElementById('totalReviewSelector').hidden=false;document.getElementById('totalReviewPreview').hidden=true;
   document.getElementById('totalReviewModal').classList.add('show');document.body.classList.add('plan-modal-open');document.getElementById('totalReviewTitle').focus();

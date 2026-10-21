@@ -21,7 +21,7 @@ async function loadMaterials() {
     if (typeof renderMaterialReviewResume === 'function') renderMaterialReviewResume();
     if (rows.length === 0) return box.innerHTML = '<div class="empty">暂无资料</div>';
     box.innerHTML = rows.map(r => `
-      <div class="item-row card-openable" data-material-id="${r.id}" role="link" tabindex="0"
+      <div class="item-row content-card card-openable" data-material-id="${r.id}" role="link" tabindex="0"
         aria-label="查看资料：${escapeHtml(r.title)}"
         onclick="openReadingCard(event,'material',${r.id})"
         onkeydown="openReadingCardKey(event,'material',${r.id})">
