@@ -36,8 +36,8 @@ function renderEditableReviewDraft(s,draft){
   wb('Draft').insertAdjacentHTML('beforeend',input('草稿题面 / 正文','Prompt',m.prompt,5)
     +(s.mode==='cloze'?'<div id="reviewWbDraftBlanks">'+m.blanks.map(b=>`<div class="review-blank"><label>空位 ${escapeHtml(b.id)} 的答案<input data-draft-id="${escapeHtml(b.id)}" value="${escapeHtml(b.answer)}"></label><label>别名（每行一个）<textarea data-draft-aliases="${escapeHtml(b.id)}">${escapeHtml(b.aliases.join('\n'))}</textarea></label><label>提示<input data-draft-hint="${escapeHtml(b.id)}" value="${escapeHtml(b.hint)}"></label></div>`).join('')+'</div>':s.mode==='reading'?'':input('草稿参考要点','Reference',m.reference)+input('草稿核对量规','Rubric',m.rubric))
     +(s.mode==='contrast'?input('草稿比较对象（每行一个）','Objects',m.objects.join('\n'))+input('草稿比较维度（每行一个）','Dimensions',m.dimensions.join('\n')):'')
-    +(s.aiDraftReal?'<label><input type="checkbox" id="reviewWbDraftAccept">我已核实／修改草稿，确认按所选方式填入表单（尚不保存）。</label>':'')
-    +'<button type="button" onclick="adoptWorkbenchDraft(false)">仅补充空白字段</button><button type="button" onclick="adoptWorkbenchDraft(true)">替换表单（保留原稿供撤回）</button><button type="button" onclick="discardReviewMaterialDraft()">放弃草稿</button>');
+    +(s.aiDraftReal?'<label class="ai-check-row"><input type="checkbox" id="reviewWbDraftAccept"><span>我已核实或修改草稿，确认填入表单<small>仅按下方所选方式填入，仍需确认保存。</small></span></label>':'')
+    +'<div class="ai-action-row"><button type="button" class="ai-primary" onclick="adoptWorkbenchDraft(false)">仅补充空白字段</button><button type="button" onclick="adoptWorkbenchDraft(true)">替换表单（可撤回）</button><button type="button" class="ai-text-button" onclick="discardReviewMaterialDraft()">放弃草稿</button></div>');
 }
 function readEditedReviewDraft(s){
   const m=s.aiDraft;if(!m||!wb('DraftPrompt'))return m;

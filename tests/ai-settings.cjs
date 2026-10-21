@@ -12,7 +12,10 @@ function settings(){
 const config={provider:'deepseek',model:'deepseek-flash',apiKey:'synthetic-shared-key',consent:true,retain:true,auto:false};
 test('shared AI settings retain only opt-in tab credentials, never expose them in status',()=>{
   const {service:s,events}=settings();assert.equal(s.status().auto,false);assert.equal(s.read(),null);
-  assert.throws(()=>s.configure({...config,consent:false}));assert.throws(()=>s.configure({...config,auto:true}));
+  assert.throws(()=>s.configure({...config,consent:false}));assert.throws(()=>s.configure({...config,auto:true,retain:false}));
+  assert.throws(()=>s.configure({...config,auto:true,consent:false}));
+  s.configure({...config,auto:true});assert.equal(s.status().auto,true,'single consent covers explicitly enabled auto analysis');
+  s.configure(config);assert.equal(s.status().auto,false,'consent alone never enables automatic analysis');
   s.configure({...config,retain:false});const once=s.read();assert.equal(once.apiKey,config.apiKey);assert.throws(()=>s.read(),/没有 Key/);
   assert.ok(!JSON.stringify(s.status()).includes(config.apiKey));s.configure(config);assert.equal(s.read().apiKey,s.read().apiKey);
   let cancelled=0;const lease=s.read();s.track(lease,()=>cancelled++);events['courses-ai-identity-changed']();
@@ -27,10 +30,10 @@ test('shared AI automatic analysis is once-only, opt-in, complete-input-only and
   ctx.classifyMistakeWithAi=async()=>{calls++;return {review_method:'standard',reason:'draft',needs_review:true};};
   const row={id:1,course_id:1,title:'fiction'},capture=()=>({epoch:s.status().epoch,input:{question:'1+1=?',student_answer:'1'}});
   await s.afterCreated(row,capture());assert.equal(calls,0);
-  s.configure({...config,auto:true,autoConsent:true});const input=capture();
+  s.configure({...config,auto:true});const input=capture();
   await Promise.all([s.afterCreated(row,input),s.afterCreated(row,input)]);assert.equal(calls,1);assert.equal(s.status().drafts,1);
   await s.afterCreated({...row,id:2},{epoch:s.status().epoch,input:{question:'1+1=?'}});assert.equal(calls,1);
-  const old=capture();s.configure({...config,auto:true,autoConsent:true});await s.afterCreated({...row,id:3},old);assert.equal(calls,1);
+  const old=capture();s.configure({...config,auto:true});await s.afterCreated({...row,id:3},old);assert.equal(calls,1);
   ctx.classifyMistakeWithAi=async()=>{calls++;throw Error('fake failure');};
   const failing=capture();await s.afterCreated({...row,id:4},failing);await s.afterCreated({...row,id:4},failing);assert.equal(calls,2);
   s.clear();assert.equal(s.status().drafts,0);assert.equal(s.status().auto,false);
@@ -53,9 +56,12 @@ test('shared AI website settings work across entries, automatic drafts protect e
  };
  addEventListener('load',async()=>{
   const out=document.createElement('pre');out.id='regressionResult';const el=id=>document.getElementById(id),check=(x,m)=>{if(!x)throw Error(m);};
-  const configure=(auto=false)=>{coursesAiSettings.open();el('coursesAiProvider').value='deepseek';el('coursesAiKey').value='synthetic-shared-key';el('coursesAiRetain').checked=true;el('coursesAiConsent').checked=true;el('coursesAiAuto').checked=auto;el('coursesAiAutoConsent').checked=auto;el('coursesAiApply').click();el('coursesAiClose').click();};
+  const configure=(auto=false)=>{coursesAiSettings.open();el('coursesAiProvider').value='deepseek';el('coursesAiKey').value='synthetic-shared-key';el('coursesAiRetain').checked=true;el('coursesAiConsent').checked=true;el('coursesAiAuto').checked=auto;el('coursesAiApply').click();el('coursesAiClose').click();};
   try{
    check(el('coursesAiOpen')&&!coursesAiSettings.status().auto&&aiCalls.length===0,'global entry and auto off, no load call');
+   check(!el('coursesAiAutoConsent')&&el('coursesAiDialog').querySelectorAll('input[type=checkbox]').length===3,'one merged consent and two independent preference switches');
+   coursesAiSettings.open();el('coursesAiProvider').value='deepseek';el('coursesAiKey').value='synthetic-shared-key';el('coursesAiRetain').checked=true;el('coursesAiAuto').checked=true;el('coursesAiApply').click();
+   check(!coursesAiSettings.status().configured&&aiCalls.length===0,'auto analysis cannot bypass merged consent');el('coursesAiClose').click();
    configure();check(coursesAiSettings.status().hasKey&&!el('coursesAiKey').value,'masked memory credential');
    el('coursesAiOpen').click();el('coursesAiTest').click();while(el('coursesAiTest').disabled)await new Promise(r=>setTimeout(r,10));
    check(el('coursesAiMessage').textContent.includes('成功'),'connection uses shared settings');el('coursesAiClose').click();
@@ -81,6 +87,11 @@ test('shared AI website settings work across entries, automatic drafts protect e
    delay=false;const atClear=aiCalls.length;await requestMistakeAi();check(aiCalls.length===atClear&&mistakeAiElement('Error').textContent.includes('没有 Key'),'cleared real config cannot fall back to Mock');resetMistakeAi();
    check(!JSON.stringify(localStorage).includes('synthetic-shared-key')&&!JSON.stringify(sessionStorage).includes('synthetic-shared-key'),'no credential storage');
    coursesAiSettings.open();check(!el('coursesAiKey').value&&!coursesAiSettings.status().auto,'clear invalidates automatic consent');
+   check(!el('coursesAiConsent').checked,'opening requires renewed confirmation before applying real settings');
+   const dialog=el('coursesAiDialog'),body=dialog.querySelector('.ai-settings-body');
+   check(dialog.scrollHeight<=dialog.clientHeight+1&&body.scrollHeight>body.clientHeight,'only settings body scrolls; header and actions remain available');
+   check(el('coursesAiConsent').getBoundingClientRect().width<=20,'checkbox retains compact size');
+   check(el('coursesAiApply').getBoundingClientRect().bottom<=innerHeight&&el('coursesAiApply').getClientRects().length,'apply action visible without scrolling');
    check(document.documentElement.scrollWidth<=innerWidth+1,'mobile fits');out.dataset.result='passed';out.textContent='passed';
   }catch(e){out.dataset.result='failed';out.textContent=e.stack;}document.body.append(out);
  });`;

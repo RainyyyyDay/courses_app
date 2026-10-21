@@ -15,10 +15,10 @@ function mountResourceAi(host,type,row,context={}){
     <fieldset id="resourceAiFields"><label>待复习文字片段<textarea id="resourceAiContent" rows="5" maxlength="4000"></textarea></label>
     <label>学习目标<select id="resourceAiGoal"><option value="">暂不确定</option><option value="remember">记住事实</option><option value="understand">理解讲清</option><option value="compare">辨析比较</option><option value="practice">独立练习</option><option value="read">只想阅读</option></select></label>
     <label>当前回忆／困难（可选）<textarea id="resourceAiRecall" rows="2" maxlength="4000"></textarea></label>
-    <p id="resourceAiSource"></p><button type="button" onclick="coursesAiSettings.open()">AI 设置</button><button type="button" id="resourceAiGet" onclick="requestResourceAi()">获取建议（不采用）</button></fieldset>
+    <p id="resourceAiSource"></p><div class="ai-action-row"><button type="button" onclick="coursesAiSettings.open()">AI 设置</button><button type="button" class="ai-primary" id="resourceAiGet" onclick="requestResourceAi()">获取建议（不采用）</button></div></fieldset>
     <p id="resourceAiStatus" role="status"></p><p id="resourceAiError" role="alert" class="mistake-inline-error"></p>
-    <label>本次选择<select id="resourceAiMethod"></select></label><button type="button" id="resourceAiConfirm" onclick="confirmResourceAi()">确认此复习方式</button>
-    <button type="button" onclick="prepareResourceAiMaterial()">准备所选模式材料</button><p>重新作答复用已有任务；缺材料时先手动准备。阅读仅记录曝光。</p></details>`;
+    <label>本次选择<select id="resourceAiMethod"></select></label><div class="ai-action-row"><button type="button" class="ai-primary" id="resourceAiConfirm" onclick="confirmResourceAi()">确认此复习方式</button>
+    <button type="button" onclick="prepareResourceAiMaterial()">准备所选模式材料</button></div><p>重新作答复用已有任务；缺材料时先手动准备。阅读仅记录曝光。</p></details>`;
   host.append(panel);
   const text=row.content||row.ocr_text||'';document.getElementById('resourceAiContent').value=text.length<=4000?text:'';
   document.getElementById('resourceAiMethod').replaceChildren(new Option('请选择',''),...Object.entries(AI_SELECTABLE_METHODS).map(([id,label])=>new Option(label,id)));

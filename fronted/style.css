@@ -2187,12 +2187,74 @@ body.plan-modal-open { overflow: hidden; }
 }
 /* Shared AI controls stay outside the page-specific forms. */
 .courses-ai-open { position:fixed; right:16px; bottom:16px; z-index:1001; padding:10px 16px; border:1px solid #b8c5ee; border-radius:20px; background:#fff; color:#304b90; box-shadow:0 2px 12px #0002; }
-.courses-ai-settings { width:min(620px, calc(100vw - 32px)); max-height:85dvh; margin:auto; box-sizing:border-box; overflow:auto; border:1px solid #d9dfeb; border-radius:16px; padding:20px; }
+.courses-ai-settings { width:min(680px, calc(100vw - 32px)); max-height:90dvh; margin:auto; box-sizing:border-box; overflow:hidden; border:1px solid #e1e6ef; border-radius:16px; padding:0; background:#fff; color:#232a3d; box-shadow:0 24px 64px #17213c26; font-size:14px; }
+.courses-ai-settings[open] { display:flex; flex-direction:column; }
 .courses-ai-settings::backdrop { background:#0006; }
 .courses-ai-settings label { display:block; margin:12px 0; line-height:1.6; }
 .courses-ai-settings select, .courses-ai-settings input[type=password] { display:block; width:100%; box-sizing:border-box; padding:10px; }
 .courses-ai-settings p { overflow-wrap:anywhere; }
 .courses-ai-settings button { min-height:40px; }
+
+/* Shared AI additions follow the existing white-card / blue-primary editing style. */
+.ai-settings-head { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:18px 22px; border-bottom:1px solid #e8ecf3; flex-shrink:0; }
+.ai-settings-head h2 { margin:0 0 5px; font-size:20px; font-weight:600; }
+.ai-settings-head p { font-size:12px; color:#7d8799; }
+.ai-settings-head #coursesAiDismiss { width:36px; height:36px; min-height:36px; padding:0; display:grid; place-items:center; line-height:1; border:0; border-radius:50%; background:#f3f4f8; color:#667187; font-size:24px; cursor:pointer; }
+.ai-settings-body { padding:18px 22px; overflow:auto; min-height:0; line-height:1.65; }
+.ai-settings-status { padding:10px 12px; margin-bottom:10px; border:1px solid #dfe6fb; border-radius:9px; background:#f4f6ff; color:#425a94; font-size:13px; }
+.ai-settings-section { margin-top:18px; padding-top:16px; border-top:1px solid #edf0f5; }
+.ai-settings-section h3,.ai-settings-extras h3 { margin:0 0 10px; font-size:14px; font-weight:600; }
+.ai-settings-fields { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.courses-ai-settings .ai-settings-fields label { margin-top:0; }
+.courses-ai-settings label { color:#526078; font-size:13px; }
+.courses-ai-settings :is(select,input[type=password]) { margin-top:6px; padding:10px 12px; border:1px solid #dbe0ea; border-radius:9px; background:#fcfdff; font:inherit; color:#232a3d; }
+:is(.courses-ai-settings,.review-workbench,#resourceAiPanel) :is(textarea,select,input):focus-visible { outline:2px solid #b9c8ff; outline-offset:2px; }
+.ai-help,.ai-empty-note { color:#7a8497; font-size:12px; line-height:1.65; }
+:is(.courses-ai-settings,.review-workbench) .ai-check-row { display:flex; align-items:flex-start; gap:10px; margin:10px 0; padding:12px; border:1px solid #e5e9f1; border-radius:10px; background:#fafbfe; font-size:13px; color:#34415a; cursor:pointer; }
+:is(.courses-ai-settings,.review-workbench) .ai-check-row input[type=checkbox] { flex:0 0 auto; width:16px; height:16px; padding:0; margin:3px 0 0; accent-color:#4a6cf7; }
+.ai-check-row span { min-width:0; }
+.ai-check-row small { display:block; margin-top:3px; color:#7a8497; font-size:12px; font-weight:400; line-height:1.6; }
+.courses-ai-settings .ai-consent-row { background:#f4f6ff; border-color:#dfe6fb; }
+.ai-settings-extras { margin-top:18px; border-top:1px solid #edf0f5; padding-top:14px; }
+.ai-settings-extras summary { cursor:pointer; color:#52627f; font-size:13px; }
+.ai-settings-extras h3 { margin-top:14px; }
+.ai-settings-extras a { color:#4a6cf7; text-decoration:none; }
+.ai-settings-extras a:hover { text-decoration:underline; }
+#coursesAiDrafts > div { padding:12px; margin:10px 0; border:1px solid #e5e9f1; border-radius:10px; }
+#coursesAiDrafts button { margin:8px 6px 0 0; }
+.ai-settings-footer { padding:14px 22px 18px; border-top:1px solid #e8ecf3; background:#fff; flex-shrink:0; }
+#coursesAiMessage { font-size:12px; line-height:1.6; color:#667187; margin-bottom:10px; }
+.ai-settings-footer .modal-actions { flex-wrap:wrap; justify-content:flex-start; gap:8px; }
+:is(.courses-ai-settings,.review-workbench,#resourceAiPanel) button { padding:9px 14px; border:1px solid #dce1eb; border-radius:9px; background:#f3f4f8; color:#4a5268; font:inherit; font-size:13px; line-height:1.5; cursor:pointer; transition:background .15s,border-color .15s; }
+:is(.courses-ai-settings,.review-workbench,#resourceAiPanel) button:hover { background:#e9edf5; border-color:#b9c8ed; }
+:is(.courses-ai-settings,.review-workbench,#resourceAiPanel) button:focus-visible { outline:2px solid #8fa8ff; outline-offset:2px; }
+:is(.courses-ai-settings,.review-workbench,#resourceAiPanel) button:disabled { opacity:.55; cursor:not-allowed; }
+:is(.courses-ai-settings,.review-workbench,#resourceAiPanel) .ai-primary,.review-workbench [data-save-start] { background:#4a6cf7; border-color:#4a6cf7; color:#fff; }
+:is(.courses-ai-settings,.review-workbench,#resourceAiPanel) .ai-primary:hover,.review-workbench [data-save-start]:hover { background:#3e5fe3; border-color:#3e5fe3; }
+:is(.courses-ai-settings,.review-workbench) .ai-text-button { background:transparent; border-color:transparent; color:#788297; }
+.ai-action-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:12px 0; }
+.review-ai-generator { padding:14px; margin-top:18px; border:1px solid #dfe6f5; border-radius:12px; background:#f8faff; }
+.review-ai-generator summary { color:#34415a; font-weight:600; margin-bottom:0; }
+.ai-optional-tag { display:inline-block; margin-left:8px; padding:1px 7px; border-radius:20px; background:#eef2ff; color:#5a73b6; font-size:11px; font-weight:400; }
+.review-ai-draft:not(:empty) { padding:14px; margin-top:12px; border:1px solid #e1e6ef; border-radius:10px; background:#fff; }
+.review-workbench #reviewWbDraftStatus { margin:10px 0; color:#667187; font-size:12px; }
+.review-workbench #reviewWbReadiness { padding:12px 14px; margin-bottom:14px; border:1px solid #e0e7f5; border-radius:10px; background:#f5f7ff; color:#4b6088; font-size:13px; line-height:1.7; }
+.review-workbench #reviewWbReadiness[data-material-state=missing],.review-workbench #reviewWbReadiness[data-material-state=error] { background:#fff9ee; border-color:#f1dfb8; color:#94672d; }
+#reviewWbReadiness ul { margin:6px 0 0; padding-left:20px; }
+#resourceAiPanel label { display:grid; gap:6px; margin:12px 0; }
+#resourceAiPanel :is(textarea,select) { width:100%; padding:10px 12px; border:1px solid #dbe0ea; border-radius:9px; background:#fcfdff; font:inherit; font-size:14px; color:#232a3d; }
+#resourceAiPanel p { font-size:13px; line-height:1.7; color:#7a8497; margin:10px 0; }
+#resourceAiPanel #resourceAiError { color:#b63c3c; }
+#resourceAiPanel button { margin:0 6px 8px 0; }
+@media(max-width:640px) {
+  .courses-ai-settings { width:calc(100vw - 20px); max-height:calc(100dvh - 20px); border-radius:14px; }
+  .ai-settings-head,.ai-settings-body,.ai-settings-footer { padding:14px 16px; }
+  .ai-settings-fields { grid-template-columns:1fr; gap:0; }
+  .ai-settings-footer .modal-actions { display:grid; grid-template-columns:1fr 1fr; }
+  .ai-settings-footer .modal-actions button { padding:9px 10px; min-width:0; }
+  .ai-action-row button { flex:1 1 130px; }
+  .review-ai-generator,.review-ai-draft:not(:empty) { padding:12px; }
+}
 #resourceAiPanel label { display:block; margin:12px 0; }
 #resourceAiPanel textarea, #resourceAiPanel select { display:block; width:100%; max-width:100%; box-sizing:border-box; padding:10px; border:1px solid #d9dfeb; border-radius:6px; font:inherit; }
 #resourceAiPanel button { min-height:44px; padding:8px 12px; margin:4px 4px 4px 0; }

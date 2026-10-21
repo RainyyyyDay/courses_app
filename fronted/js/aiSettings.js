@@ -18,6 +18,7 @@ const coursesAiSettings = (() => {
       const option=document.getElementById(prefix+'Provider')?.querySelector('option[value="shared"]');if(option)option.textContent=label();
     }
     node('Drafts').replaceChildren();
+    if(!drafts.size){const empty=document.createElement('p');empty.className='ai-empty-note';empty.textContent='暂无自动分析草稿，手动生成不受影响。';node('Drafts').append(empty);}
     for(const [id,draft] of drafts){
       const item=document.createElement('div'),title=document.createElement('p'),view=document.createElement('button'),discard=document.createElement('button');
       title.textContent=draft.title+' · '+draft.message;item.append(title);
@@ -28,7 +29,7 @@ const coursesAiSettings = (() => {
   function configure(value){
     if(!['mock','deepseek'].includes(value.provider)||!['deepseek-flash','deepseek-v4-pro'].includes(value.model))throw new Error('请选择支持的服务商和模型。');
     if(value.provider==='deepseek'&&(!/^[\x21-\x7e]{1,512}$/.test(value.apiKey||'')||value.consent!==true))throw new Error('请填写 Key，并确认文字发送及可能产生的费用。');
-    if(value.auto&&(value.provider!=='deepseek'||!value.retain||value.autoConsent!==true))throw new Error('自动分析需要真实服务、标签页内保留 Key，以及单独的自动调用同意。');
+    if(value.auto&&(value.provider!=='deepseek'||!value.retain||value.consent!==true))throw new Error('自动分析需要 DeepSeek、标签页内保留 Key，并勾选包含自动调用的统一授权。');
     invalidate();key=value.provider==='deepseek'?value.apiKey:'';provider=value.provider;model=value.model;
     retain=!!value.retain;auto=!!value.auto;configured=true;
     for(const prefix of ['mistakeAi','mistakeCreateAi','mistakeCreateAnswerAi','mistakeEditAnswerAi']){
@@ -52,7 +53,7 @@ const coursesAiSettings = (() => {
     invalidate();key='';auto=false;retain=false;drafts.clear();seen.clear();
     // Keep the selected real provider: a cleared Key must not silently become Mock.
     message='Key、自动调用授权和内存草稿已清除；手工输入不受影响。';
-    if(node('Key')){node('Key').value='';node('Retain').checked=false;node('Auto').checked=false;node('Consent').checked=false;node('AutoConsent').checked=false;}
+    if(node('Key')){node('Key').value='';node('Retain').checked=false;node('Auto').checked=false;node('Consent').checked=false;}
     for(const prefix of ['mistakeAi','mistakeCreateAi','mistakeCreateAnswerAi','mistakeEditAnswerAi']){
       if(typeof clearMistakeAiKey==='function')clearMistakeAiKey(prefix);
     }
@@ -60,12 +61,12 @@ const coursesAiSettings = (() => {
   }
   function open(){
     node('Provider').value=provider;node('Model').value=model;node('Key').value='';node('Retain').checked=retain;
-    node('Auto').checked=auto;node('Consent').checked=false;node('AutoConsent').checked=false;
+    node('Auto').checked=auto;node('Consent').checked=false;
     refresh();if(!node('Dialog').open)node('Dialog').showModal();
   }
   function apply(){
     try{configure({provider:node('Provider').value,model:node('Model').value,apiKey:node('Key').value||key,
-      retain:node('Retain').checked,auto:node('Auto').checked,consent:node('Consent').checked,autoConsent:node('AutoConsent').checked});}
+      retain:node('Retain').checked,auto:node('Auto').checked,consent:node('Consent').checked});}
     catch(err){message=err.message;refresh();}finally{node('Key').value='';}
   }
   async function testConnection(){
@@ -131,20 +132,25 @@ const coursesAiSettings = (() => {
   function mount(){
     const button=document.createElement('button');button.id='coursesAiOpen';button.type='button';button.className='courses-ai-open';button.onclick=open;document.body.append(button);
     const dialog=document.createElement('dialog');dialog.id='coursesAiDialog';dialog.className='courses-ai-settings';
-    dialog.innerHTML=`<h2>AI 设置（当前标签页）</h2><p id="coursesAiSummary" role="status"></p>
-      <p>资料、笔记与错题的复习建议、复习材料草稿，以及错题答案与解析草稿共用设置；手工输入和明确选择的 Mock 演示无需 Key。生成结果不会自动采用或保存。Key 不写入浏览器存储或数据库，刷新/关闭即失效。</p>${globalThis.COURSES_AI_LOCAL_MOCK?'<p><a href="/ai-test" target="_blank" rel="noopener noreferrer">打开独立 AI 测试页（本地 3002 服务）</a>：仅验证接口，不保存业务结果；独立页不会继承本标签页的 Key。</p>':''}
+    dialog.setAttribute('aria-labelledby','coursesAiTitle');
+    dialog.innerHTML=`<header class="ai-settings-head"><div><h2 id="coursesAiTitle">AI 设置</h2><p>当前标签页共用 · 刷新或关闭后失效</p></div><button type="button" id="coursesAiDismiss" aria-label="关闭 AI 设置">×</button></header>
+      <div class="ai-settings-body"><p id="coursesAiSummary" class="ai-settings-status" role="status"></p>
+      <p class="ai-help">用于资料、笔记和错题的复习建议、材料草稿及答案解析。手动填写不受影响，生成结果均需确认后采用。</p>
+      <section class="ai-settings-section"><h3>服务与凭据</h3><div class="ai-settings-fields">
       <label>来源<select id="coursesAiProvider"><option value="mock">Mock 演示（非真实 AI）</option><option value="deepseek">DeepSeek 官方</option></select></label>
-      <label>模型<select id="coursesAiModel"><option>deepseek-flash</option><option>deepseek-v4-pro</option></select></label>
-      <label>API Key<input id="coursesAiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512" placeholder="不回显已保留的 Key"></label>
-      <label><input id="coursesAiRetain" type="checkbox">仅在本标签页内保留 Key，供多次操作使用（默认关闭；不勾选则仅下一次请求可用）</label>
-      <label><input id="coursesAiConsent" type="checkbox">同意所选文字发送至 DeepSeek 官方，知晓请求可能计费</label>
-      <label><input id="coursesAiAuto" type="checkbox">成功保存新错题后，自动生成一次分析草稿（默认关闭）</label>
-      <label><input id="coursesAiAutoConsent" type="checkbox">同意上述自动调用的文字发送及费用；不自动采用、不自动重试</label>
-      <p>仅在题干、学生作答齐全时自动分析。学生作答在新错题的“AI 复习建议（可选）”中填写；不根据参考答案猜作答。共享调用每标签页最多 20 次，此限制不代替后端账户配额。</p>
-      <div class="modal-actions"><button type="button" id="coursesAiApply">应用设置</button><button type="button" id="coursesAiTest">测试已应用的连接（可能计费）</button><button type="button" id="coursesAiClear">清除 Key 和自动草稿</button><button type="button" id="coursesAiClose">关闭</button></div>
-      <p id="coursesAiMessage" role="status"></p><h3>本标签页的自动分析草稿</h3><div id="coursesAiDrafts"></div>`;
+      <label>模型<select id="coursesAiModel"><option>deepseek-flash</option><option>deepseek-v4-pro</option></select></label></div>
+      <label>API Key<input id="coursesAiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512" placeholder="输入 Key，不回显已保留的内容"></label>
+      <p class="ai-help">Key 不写入浏览器存储或数据库。</p></section>
+      <section class="ai-settings-section"><h3>使用偏好与授权</h3>
+      <label class="ai-check-row"><input id="coursesAiRetain" type="checkbox"><span>在当前标签页保留 Key<small>供多次操作使用；默认关闭，不勾选则仅下一次请求可用。</small></span></label>
+      <label class="ai-check-row"><input id="coursesAiAuto" type="checkbox"><span>保存新错题后自动生成一次分析草稿<small>默认关闭；需要保留 Key，且题干和学生作答齐全。不自动采用或重试。</small></span></label>
+      <label class="ai-check-row ai-consent-row"><input id="coursesAiConsent" type="checkbox"><span>同意文字发送及可能产生的费用<small>同意将所选文字发送至 DeepSeek 官方；若开启上方自动分析，本授权同时涵盖该自动调用。</small></span></label>
+      <p class="ai-help">学生作答在新增错题的“AI 复习建议”中填写，不根据参考答案猜作答。每标签页最多 20 次共享调用，不代替后端账户配额。</p></section>
+      <details class="ai-settings-extras"><summary>自动草稿与测试工具</summary><h3>本标签页的自动分析草稿</h3><div id="coursesAiDrafts"></div>${globalThis.COURSES_AI_LOCAL_MOCK?'<p class="ai-help"><a href="/ai-test" target="_blank" rel="noopener noreferrer">打开独立 AI 测试页 ↗</a><br>仅验证接口，不保存业务结果，也不继承当前标签页的 Key。</p>':''}</details></div>
+      <footer class="ai-settings-footer"><p id="coursesAiMessage" role="status"></p><div class="modal-actions"><button type="button" class="ai-primary" id="coursesAiApply">应用设置</button><button type="button" id="coursesAiTest">测试已应用的连接（可能计费）</button><button type="button" class="ai-text-button" id="coursesAiClear">清除 Key 和草稿</button><button type="button" id="coursesAiClose">关闭</button></div></footer>`;
     dialog.addEventListener('close',()=>{node('Key').value='';});document.body.append(dialog);
     node('Apply').onclick=apply;node('Test').onclick=testConnection;node('Clear').onclick=clear;node('Close').onclick=()=>dialog.close();refresh();
+    node('Dismiss').onclick=()=>dialog.close();
   }
   addEventListener('pagehide',clear);
   // Host calls this on verified login/logout/account switch. It supplies no browser-trusted identity.

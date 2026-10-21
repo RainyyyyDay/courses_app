@@ -17,9 +17,12 @@ test('material AI shared settings produce editable drafts and reuse confirmed pr
    const record=await createReviewRecord('total',[{type,id:row.id}]);await enterCenterReview(record);
    await openReviewWorkbench(type,row.id,{...centerWorkbenchContext(record.items[0],record),mode});await editWorkbenchMaterial();
    const original=wb('Prompt').value;
+   wb('Editor').querySelector('.review-ai-generator').open=true;
    coursesAiSettings.configure({provider:'deepseek',model:'deepseek-flash',apiKey:'synthetic-material-key',retain:true,consent:true,auto:false});
    await requestWorkbenchDraft(true);
    check(reviewWorkbench.aiDraftReal&&wb('DraftPrompt')&&wb('DraftAccept')&&!reviewWorkbench.attempt&&wb('Prompt').value===original,'real draft preview neither overwrites nor starts');
+   check(reviewWorkbench.inline&&!wb('Dialog').open&&wb('DraftAccept').getBoundingClientRect().width===16,'styled draft stays inline with visible compact consent control');
+   check(getComputedStyle(wb('Editor').querySelector('[data-material-ai-generate]')).backgroundColor==='rgb(74, 108, 247)','generation uses existing blue primary style');
    await adoptWorkbenchDraft(false);check(wb('Error').textContent.includes('勾选')&&wb('Prompt').value===original,'real draft adoption requires confirmation');
    if(mode==='cloze')wb('Prompt').value='';
    if(wb('DraftReference'))wb('DraftReference').value='北京是首都；人工编辑过的要点';
