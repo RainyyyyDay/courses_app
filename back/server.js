@@ -295,6 +295,9 @@ for(const action of ['resume','pause','finish','position']) {
     res.json(db.changeReviewSession(mistakeCourse(req.params.courseId),positiveId(req.params.sessionId),action,req.body || {}));
   }));
 }
+app.patch('/api/courses/:courseId/review-sessions/:sessionId/name',mistakeApi((req,res)=>{
+  res.json(db.renameReviewSession(mistakeCourse(req.params.courseId),positiveId(req.params.sessionId),req.body));
+}));
 app.post('/api/courses/:courseId/review-sessions/:sessionId/repeat',mistakeApi((req,res)=>{
   res.status(201).json(db.repeatReviewSession(mistakeCourse(req.params.courseId),positiveId(req.params.sessionId),req.body));
 }));
