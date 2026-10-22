@@ -271,12 +271,28 @@ function openResourceCreate(type) {
 
 // ===== 上传弹窗里的思维导图 =====
 let pendingMindmapJson = '';
+let pendingMindmapImage = '';
+
+function importPickerMindmapImage(input) {
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  if (!/^image\//.test(file.type)) { showToast('请选择图片文件'); return; }
+  if (file.size > 2 * 1024 * 1024) { showToast('图片不能超过 2MB'); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    pendingMindmapImage = String(reader.result || '');
+    renderPickerMindmapSummary();
+    showToast('已上传导图图片');
+  };
+  reader.readAsDataURL(file);
+}
 
 function renderPickerMindmapSummary() {
   const box = document.getElementById('tagPickerMindmapSummary');
   const clear = document.getElementById('tagPickerMindmapClear');
   if (!box) return;
-  if (!pendingMindmapJson) {
+  if (!pendingMindmapJson && !pendingMindmapImage) {
     box.style.display = 'none';
     box.innerHTML = '';
     if (clear) clear.style.display = 'none';
@@ -286,7 +302,10 @@ function renderPickerMindmapSummary() {
   try { count = countMindmapNodes(JSON.parse(pendingMindmapJson)); } catch { count = 0; }
   box.className = 'mistake-create-file';
   box.style.display = 'flex';
-  box.innerHTML = `<span class="mistake-create-file-icon">🗺️</span><div><strong>已关联思维导图</strong><small>${count} 个节点 · 保存后可在详情页查看</small></div>`;
+  const parts = [];
+  if (pendingMindmapJson) parts.push(`${count} 个节点`);
+  if (pendingMindmapImage) parts.push('含导图截图');
+  box.innerHTML = `<span class="mistake-create-file-icon">🗺️</span><div><strong>已关联思维导图</strong><small>${parts.join(' · ')} · 保存后可在详情页查看</small></div>`;
   if (clear) clear.style.display = 'inline-flex';
 }
 
@@ -324,6 +343,7 @@ function generatePickerMindmap() {
 
 function clearPickerMindmap() {
   pendingMindmapJson = '';
+  pendingMindmapImage = '';
   renderPickerMindmapSummary();
 }
 

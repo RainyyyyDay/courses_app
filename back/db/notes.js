@@ -10,7 +10,7 @@ const { findKnowledgeNode, SUBTREE_CTE } = require('./knowledge');
 
 // ==================== 笔记 ====================
 
-const NOTE_COLUMNS = 'id, course_id, title, file_url, file_type, source, content, outline, mindmap_json, created_at, review_status, favorite';
+const NOTE_COLUMNS = 'id, course_id, title, file_url, file_type, source, content, outline, mindmap_json, mindmap_image, created_at, review_status, favorite';
 
 // 笔记列表：字段和原来一样，额外给每条补一个 nodes 数组（标签节点）
 function listNotes(courseId) {
@@ -34,16 +34,30 @@ function setNoteFavorite(id, courseId, favorite) {
   return findNote(id);
 }
 
+// 回传导图：只更新导图相关字段
+function setNoteMindmap(id, courseId, fields) {
+  const allowed = ['outline', 'mindmap_json', 'mindmap_image'];
+  const sets = [];
+  const args = [];
+  for (const key of allowed) {
+    if (typeof fields[key] === 'string') { sets.push(`${key} = ?`); args.push(fields[key]); }
+  }
+  if (!sets.length) return findNote(id);
+  args.push(id, courseId);
+  db.prepare(`UPDATE notes SET ${sets.join(', ')} WHERE id = ? AND course_id = ?`).run(...args);
+  return findNote(id);
+}
+
 // 新建笔记；nodeIds 可选，不传就是原来那条“没有标签”的笔记
 // content 是“手动输入”的正文；上传文件录入时传空字符串
-function createNote(courseId, title, fileUrl, fileType, source, nodeIds, content, outline, mindmapJson) {
+function createNote(courseId, title, fileUrl, fileType, source, nodeIds, content, outline, mindmapJson, mindmapImage) {
   db.exec('BEGIN');
   try {
     const info = db
       .prepare(
-        'INSERT INTO notes (course_id, title, file_url, file_type, source, content, outline, mindmap_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO notes (course_id, title, file_url, file_type, source, content, outline, mindmap_json, mindmap_image, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       )
-      .run(courseId, title, fileUrl, fileType, source, content || '', outline || '', mindmapJson || '', nowText());
+      .run(courseId, title, fileUrl, fileType, source, content || '', outline || '', mindmapJson || '', mindmapImage || '', nowText());
     const id = Number(info.lastInsertRowid);
 
     const insert = db.prepare(
@@ -152,6 +166,7 @@ module.exports = {
   findNote,
   setNoteReviewStatus,
   setNoteFavorite,
+  setNoteMindmap,
   renameNote,
   deleteNote,
   listNoteNodes,

@@ -72,6 +72,7 @@ async function doUploadMaterial(file, nodeIds, title, content = '') {
   const outline = document.getElementById('tagPickerOutline')?.value || '';
   if (outline.trim()) fd.append('outline', outline);
   if (pendingMindmapJson) fd.append('mindmapJson', pendingMindmapJson);
+  if (pendingMindmapImage) fd.append('mindmapImage', pendingMindmapImage);
 
   try {
     const res = await fetch(`${API}/courses/${currentCourseId}/materials`, {

@@ -52,8 +52,6 @@ app.use(express.static(path.join(__dirname, '..', 'fronted'), {
     res.setHeader('Cache-Control', longLived ? 'public, max-age=31536000, immutable' : 'no-cache');
   },
 }));
-// 思维导图（组员的功能包，静态资源，只读嵌入用）
-app.use('/mindmap', express.static(path.join(__dirname, '..', 'mindmap')));
 
 // ===== 错题标签（知识树节点）的解析与校验 =====
 
@@ -428,7 +426,8 @@ app.post('/api/courses/:id/materials', upload.single('file'), (req, res) => {
     nodeIds,
     content,
     typeof body.outline === 'string' ? body.outline : '',
-    typeof body.mindmapJson === 'string' ? body.mindmapJson : ''
+    typeof body.mindmapJson === 'string' ? body.mindmapJson : '',
+    typeof body.mindmapImage === 'string' ? body.mindmapImage : ''
   );
   res.status(201).json(newItem);
 });
@@ -516,7 +515,8 @@ app.post('/api/courses/:id/notes', upload.single('file'), (req, res) => {
     nodeIds,
     content,
     typeof body.outline === 'string' ? body.outline : '',
-    typeof body.mindmapJson === 'string' ? body.mindmapJson : ''
+    typeof body.mindmapJson === 'string' ? body.mindmapJson : '',
+    typeof body.mindmapImage === 'string' ? body.mindmapImage : ''
   );
   res.status(201).json(newItem);
 });
@@ -1107,6 +1107,28 @@ app.post('/api/ocr', upload.single('file'), async (req, res) => {
 
 // 默认只监听本机：接口没有任何鉴权，绑 0.0.0.0 等于把整个数据库暴露给同网段的任何人。
 // 需要让别的机器访问时显式设 HOST=0.0.0.0，并自行承担风险。
+// ===== 导图回传：只更新大纲/导图字段，不动附件与正文 =====
+function mindmapPayload(body) {
+  const payload = {};
+  for (const key of ['outline', 'mindmap_json', 'mindmap_image']) {
+    const bodyKey = key === 'mindmap_json' ? 'mindmapJson' : (key === 'mindmap_image' ? 'mindmapImage' : 'outline');
+    if (typeof body?.[bodyKey] === 'string') payload[key] = body[bodyKey];
+  }
+  return payload;
+}
+
+app.put('/api/courses/:courseId/materials/:id/mindmap', (req, res) => {
+  const row = db.findMaterial(Number(req.params.id));
+  if (!row || row.course_id !== Number(req.params.courseId)) return res.status(404).json({ message: '资料不存在' });
+  res.json(db.setMaterialMindmap(row.id, row.course_id, mindmapPayload(req.body)));
+});
+
+app.put('/api/courses/:courseId/notes/:id/mindmap', (req, res) => {
+  const row = db.findNote(Number(req.params.id));
+  if (!row || row.course_id !== Number(req.params.courseId)) return res.status(404).json({ message: '笔记不存在' });
+  res.json(db.setNoteMindmap(row.id, row.course_id, mindmapPayload(req.body)));
+});
+
 const listenHost = process.env.HOST || '127.0.0.1';
 app.listen(3000, listenHost, () => {
   console.log(`后端已启动，地址：http://${listenHost === '0.0.0.0' ? 'localhost' : listenHost}:3000`);

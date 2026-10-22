@@ -212,3 +212,67 @@ function countMindmapNodes(map) {
   (Array.isArray(map?.nodes) ? map.nodes : []).forEach(walk);
   return count;
 }
+
+// 下载导图 JSON，交给导图工具导入
+function downloadMindmapJson(mapJson, title) {
+  let map = null;
+  try { map = typeof mapJson === 'string' ? JSON.parse(mapJson) : mapJson; } catch { map = null; }
+  if (!map || !Array.isArray(map.nodes)) { showToast('没有可下载的导图数据'); return; }
+  const safe = String(title || map.title || '思维导图').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40);
+  const blob = new Blob([JSON.stringify(map, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${safe}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast('已下载导图 JSON，可在导图工具里导入');
+}
+
+// 导图工具地址：她的本地服务默认 8794，部署后换成正式地址即可
+const MINDMAP_APP_URL = globalThis.MINDMAP_APP_URL || 'http://127.0.0.1:8794/';
+
+// 跳到导图工具，带上标题与大纲，让对方那边直接新建
+function openMindmapEditor(mapJson, title, outline) {
+  const params = new URLSearchParams({ from: 'courses_app', title: title || '' });
+  if (outline) params.set('outline', outline);
+  const url = MINDMAP_APP_URL.replace(/\/?$/, '/') + '?' + params.toString();
+  window.open(url, '_blank', 'noopener');
+  showToast('已在导图工具中打开；保存后用「导入导图 JSON」传回来');
+}
+
+// 把她那边编辑/导出的文件传回来，更新当前资料/笔记的导图
+function reuploadMindmap(resourceType, id) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json,image/*';
+  input.onchange = () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const payload = {};
+      try {
+        if (/json$/i.test(file.type) || /\.json$/i.test(file.name)) {
+          const map = JSON.parse(String(reader.result || ''));
+          if (!Array.isArray(map.nodes)) throw new Error('JSON 里没有 nodes');
+          payload.mindmapJson = JSON.stringify(map);
+        } else {
+          payload.mindmapImage = String(reader.result || '');
+        }
+        const path = resourceType === 'note' ? 'notes' : 'materials';
+        await requestApi(`${API}/courses/${currentCourseId}/${path}/${id}/mindmap`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        showToast('导图已更新');
+        openResourceDetail(resourceType, id);
+      } catch (err) {
+        showToast('上传失败：' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}

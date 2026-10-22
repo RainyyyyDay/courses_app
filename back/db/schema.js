@@ -8,7 +8,7 @@
 const { db } = require('./connection');
 
 // ===== 当前程序支持的数据库版本 =====
-const CURRENT_DB_VERSION = 22;
+const CURRENT_DB_VERSION = 23;
 
 // 判断某张表是否已经存在
 function tableExists(name) {
@@ -650,6 +650,21 @@ function migrateMindmapField() {
   }
 }
 migrateMindmapField();
+
+// ===== v22 → v23：导图截图（用户在她工具里导出的 PNG/JPG，data URL 存储） =====
+function migrateMindmapImage() {
+  if (getUserVersion() !== 22) return;
+  db.exec('BEGIN');
+  try {
+    for (const table of ['materials', 'notes']) {
+      const columns = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+      if (!columns.has('mindmap_image')) db.exec(`ALTER TABLE ${table} ADD COLUMN mindmap_image TEXT NOT NULL DEFAULT ''`);
+    }
+    setUserVersion(23);
+    db.exec('COMMIT');
+  } catch (err) { db.exec('ROLLBACK'); throw err; }
+}
+migrateMindmapImage();
 
 // ===== 建表：Phase 0 的基础结构（version 1）=====
 // 每一张“子表”都用 course_id 指向 courses(id)，

@@ -791,9 +791,11 @@
             <div class="edit-file-actions">
               <button type="button" class="edit-btn" onclick="document.getElementById('tagPickerMindmapFile').click()">导入导图 JSON</button>
               <button type="button" class="edit-btn" onclick="generatePickerMindmap()">用大纲生成</button>
+              <button type="button" class="edit-btn" onclick="document.getElementById('tagPickerMindmapImage').click()">上传导图图片</button>
               <button type="button" class="edit-btn edit-btn-danger" id="tagPickerMindmapClear" style="display:none;" onclick="clearPickerMindmap()">移除导图</button>
             </div>
             <input type="file" id="tagPickerMindmapFile" accept=".json,application/json" style="display:none" onchange="importPickerMindmap(this)" />
+            <input type="file" id="tagPickerMindmapImage" accept="image/*" style="display:none" onchange="importPickerMindmapImage(this)" />
             <div id="tagPickerMindmapSummary" class="mistake-create-file" style="display:none;"></div>
           </div>
         </section>
