@@ -1,5 +1,9 @@
 # AI 错题分类 FastAPI 移植模块
 
+## 可选作答批改（2026-10-22）
+
+新增 `src/ai_review_feedback.py`，以 `register(app, dependencies=[Depends(宿主真实权限依赖)])` 挂载 `POST /api/ai/review-feedback`。复用现有 Provider 与共用 AI 设置，不新增依赖、不操作数据库。正常复习页提交后按需请求，返回判断、错误解释、参考解答及改进建议；不替换客观判分、自评或排期。Mock 明确不实际批改。接口合同及网页验证见 [作答批改说明](../docs/review-ai-feedback.md)。本地使用前重启3002。
+
 ## 复习材料草稿（2026-10-21）
 
 新增 `src/ai_material_draft.py`，复用现有 `ai_mistake.py` 的 DeepSeekProvider/Classifier/请求保护，不新增依赖、不读写数据库。宿主可通过 `from src.ai_material_draft import register`，再调用 `register(app, dependencies=[Depends(宿主真实权限依赖)])` 挂载；不提供权限依赖时拒绝请求。

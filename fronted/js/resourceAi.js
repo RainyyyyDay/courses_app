@@ -16,15 +16,62 @@ function mountResourceAi(host,type,row,context={}){
     <label>学习目标<select id="resourceAiGoal"><option value="">暂不确定</option><option value="remember">记住事实</option><option value="understand">理解讲清</option><option value="compare">辨析比较</option><option value="practice">独立练习</option><option value="read">只想阅读</option></select></label>
     <label>当前回忆／困难（可选）<textarea id="resourceAiRecall" rows="2" maxlength="4000"></textarea></label>
     <p id="resourceAiSource"></p><div class="ai-action-row"><button type="button" onclick="coursesAiSettings.open()">AI 设置</button><button type="button" class="ai-primary" id="resourceAiGet" onclick="requestResourceAi()">获取建议（不采用）</button></div></fieldset>
-    <p id="resourceAiStatus" role="status"></p><p id="resourceAiError" role="alert" class="mistake-inline-error"></p>
+    <p id="resourceAiStatus" role="status"></p><button type="button" class="ai-primary" id="resourceAiAdopt" hidden onclick="adoptResourceAiSuggestion()">一键采用此建议</button><p id="resourceAiError" role="alert" class="mistake-inline-error"></p>
     <label>本次选择<select id="resourceAiMethod"></select></label><div class="ai-action-row"><button type="button" class="ai-primary" id="resourceAiConfirm" onclick="confirmResourceAi()">确认此复习方式</button>
-    <button type="button" onclick="prepareResourceAiMaterial()">准备所选模式材料</button></div><p>重新作答复用已有任务；缺材料时先手动准备。阅读仅记录曝光。</p></details>`;
+    <button type="button" id="resourceAiPrepare" hidden onclick="prepareResourceAiMaterial()">准备所选模式材料</button><button type="button" id="resourceAiEditMaterial" hidden onclick="prepareResourceAiMaterial()">查看 / 编辑材料</button></div><p id="resourceAiMaterialStatus" role="status"></p><p>重新作答复用已有任务；缺材料时先手动准备。阅读仅记录曝光。</p></details>`;
   host.append(panel);
   const text=row.content||row.ocr_text||'';document.getElementById('resourceAiContent').value=text.length<=4000?text:'';
   document.getElementById('resourceAiMethod').replaceChildren(new Option('请选择',''),...Object.entries(AI_SELECTABLE_METHODS).map(([id,label])=>new Option(label,id)));
   document.getElementById('resourceAiMethod').value=readResourceAiMethod(s)||'';
   document.getElementById('resourceAiStatus').textContent=(readResourceAiMethod(s)?'已确认：'+AI_REVIEW_METHODS[readResourceAiMethod(s)]+'。':'尚未确认建议。')+(text.length>4000?'正文超过4000字，请自行选取片段，不会静默截断。':'');
   updateResourceAiSource();
+  document.getElementById('resourceAiMethod').onchange=()=>void updateResourceAiActions();
+  for(const event of ['input','change'])document.getElementById('resourceAiFields').addEventListener(event,()=>updateResourceAiAdopt());
+  void updateResourceAiActions();
+}
+function resourceAiInput(s){
+  return {kind:s.type,title:s.row.title||'',content:document.getElementById('resourceAiContent').value.trim(),goal:document.getElementById('resourceAiGoal').value,recall:document.getElementById('resourceAiRecall').value.trim()};
+}
+function resourceAiSuggestion(s){
+  const mode=s.result?.review_method;
+  return s.resultUsable&&Object.hasOwn(AI_SELECTABLE_METHODS,mode)&&s.resultInput===JSON.stringify(resourceAiInput(s))?mode:null;
+}
+function updateResourceAiAdopt(){
+  const s=resourceAiState;if(!s||!resourceAiCurrent(s))return;
+  const mode=resourceAiSuggestion(s),button=document.getElementById('resourceAiAdopt');
+  button.hidden=!mode||(readResourceAiMethod(s)===mode&&document.getElementById('resourceAiMethod').value===mode);
+  button.disabled=s.busy;button.textContent=mode?'一键采用建议：'+AI_REVIEW_METHODS[mode]:'一键采用此建议';
+}
+function adoptResourceAiSuggestion(){
+  const s=resourceAiState;if(!s||s.busy||!resourceAiCurrent(s))return;
+  const mode=resourceAiSuggestion(s);
+  if(!mode){document.getElementById('resourceAiError').textContent='建议已失效或内容已修改，请重新获取建议。';return;}
+  document.getElementById('resourceAiMethod').value=mode;
+  document.getElementById('resourceAiError').textContent='';confirmResourceAi();
+  if(readResourceAiMethod(s)===mode)showToast('已采用建议：'+AI_REVIEW_METHODS[mode]);
+}
+async function updateResourceAiActions(){
+  const s=resourceAiState;if(!s||!resourceAiCurrent(s))return;
+  const el=name=>document.getElementById('resourceAi'+name),method=el('Method').value,valid=Object.hasOwn(AI_SELECTABLE_METHODS,method);
+  updateResourceAiAdopt();
+  el('Confirm').hidden=!valid||readResourceAiMethod(s)===method;el('Confirm').disabled=s.busy;
+  el('Prepare').hidden=true;el('EditMaterial').hidden=true;el('MaterialStatus').textContent='';
+  const check=(s.materialCheck||0)+1;s.materialCheck=check;
+  if(!valid)return;
+  if(method==='reading'&&(s.row.content||s.row.ocr_text||s.row.file_url)){
+    el('MaterialStatus').textContent='可直接使用原文或附件阅读，无需另行准备材料。';return;
+  }
+  el('MaterialStatus').textContent='正在检查材料…';
+  try{
+    const target=method==='retry'?(readReviewActive(s)?.mode||'standard'):method;
+    const data=await(await requestApi(reviewWorkbenchBase(s)+'/materials/'+target+'?view=practice')).json();
+    if(!resourceAiCurrent(s)||s.materialCheck!==check||el('Method').value!==method)return;
+    const ready=!!(data.version&&data.material);el('Prepare').hidden=ready;el('EditMaterial').hidden=!ready;
+    el('MaterialStatus').textContent=ready?'材料已就绪，无需重复准备；如需修改可查看 / 编辑。':'尚缺所选模式的正式材料，可在此准备。';
+  }catch{
+    if(!resourceAiCurrent(s)||s.materialCheck!==check||el('Method').value!==method)return;
+    el('EditMaterial').hidden=false;el('MaterialStatus').textContent='暂时无法确认材料状态，可打开检查；不会自动创建或覆盖材料。';
+  }
 }
 function updateResourceAiSource(){const node=document.getElementById('resourceAiSource');if(node)node.textContent=coursesAiSettings.label();}
 function resourceAiCurrent(s){return resourceAiState===s&&currentCourseId===s.courseId&&currentView===s.view&&s.host.isConnected;}
@@ -51,7 +98,7 @@ async function fetchResourceAi(input,{signal,deepseek}={}){
 async function requestResourceAi(){
   const s=resourceAiState;if(!s||s.busy||!resourceAiCurrent(s))return;
   const el=id=>document.getElementById('resourceAi'+id);el('Error').textContent='';
-  const input={kind:s.type,title:s.row.title||'',content:el('Content').value.trim(),goal:el('Goal').value,recall:el('Recall').value.trim()};
+  s.resultUsable=false;updateResourceAiAdopt();const input=resourceAiInput(s);
   if(!input.content){el('Error').textContent='请先填写或校对待复习的文字片段；不会自动读取附件。';return;}
   let credentials;
   try{
@@ -59,17 +106,18 @@ async function requestResourceAi(){
     el('Status').textContent=credentials?'正在请求 DeepSeek 官方（可能计费）；不会自动采用…':'正在获取 Mock 规则演示，不调用真实模型…';
     const pending=fetchResourceAi(input,{signal:s.controller.signal,deepseek:credentials});if(credentials)credentials.apiKey='';
     const result=await pending;if(!resourceAiCurrent(s))return;
-    s.result=result;el('Status').textContent=(credentials?'DeepSeek 官方建议：':'Mock 规则演示：')+AI_REVIEW_METHODS[result.review_method]+'；'+result.reason;
+    s.result=result;s.resultUsable=true;s.resultInput=JSON.stringify(input);el('Status').textContent=(credentials?'DeepSeek 官方建议：':'Mock 规则演示：')+AI_REVIEW_METHODS[result.review_method]+'；'+result.reason;
     // A response must not replace a choice made before/during this request.
     if(!el('Method').value)el('Method').value=result.review_method;
   }catch(err){if(resourceAiCurrent(s))el('Error').textContent=err.message;}
-  finally{if(credentials)credentials.apiKey='';if(resourceAiCurrent(s)){s.busy=false;s.controller=null;el('Fields').disabled=false;el('Confirm').disabled=false;updateResourceAiSource();}}
+  finally{if(credentials)credentials.apiKey='';if(resourceAiCurrent(s)){s.busy=false;s.controller=null;el('Fields').disabled=false;updateResourceAiSource();void updateResourceAiActions();}}
 }
 function confirmResourceAi(){
   const s=resourceAiState,method=document.getElementById('resourceAiMethod')?.value;
   if(!s||s.busy||!resourceAiCurrent(s)||!Object.hasOwn(AI_SELECTABLE_METHODS,method))return;
   mistakeStorageSet(resourceAiKey(s),{version:1,method});
-  document.getElementById('resourceAiStatus').textContent=readResourceAiMethod(s)===method?'已确认到本浏览器：'+AI_REVIEW_METHODS[method]+'；尚未创建材料或执行复习。':'本地保存失败，请重试；原内容未改变。';
+  document.getElementById('resourceAiStatus').textContent=readResourceAiMethod(s)===method?'已确认到本浏览器：'+AI_REVIEW_METHODS[method]+'；本次确认不会自动创建材料或执行复习。':'本地保存失败，请重试；原内容未改变。';
+  void updateResourceAiActions();
   if(typeof centerReview!=='undefined'&&s.sessionItemId&&currentCenterItem()?.id===s.sessionItemId){
     // Existing explicit session choice stays ahead of this newly confirmed recommendation.
     void prepareCenterQuickMode(currentCenterItem(),centerReview.session).then(()=>renderCenterReviewToolbar());

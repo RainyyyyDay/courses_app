@@ -137,8 +137,14 @@ body {
   transition: opacity 0.3s ease, visibility 0.3s ease;
 }
 .modal-mask.show { opacity: 1; visibility: visible; }
-/* 二次确认需盖住编辑弹窗（100）和标签选择器（120），避免被后面的 DOM 遮挡。 */
-#confirmModal { z-index: 130; }
+/* Native confirmation joins the top layer above every currently open modal. */
+#confirmModal { width:min(380px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); margin:auto; padding:0; border:0; border-radius:12px; background:#fff; color:#232a3d; overflow:auto; box-shadow:0 20px 60px #17213c33; }
+#confirmModal:not([open]) { display:none; }
+#confirmModal::backdrop { background:rgba(17,25,40,.45); }
+#confirmModal .modal { width:100%; max-width:none; margin:0; transform:none; transition:none; padding:22px; }
+#confirmModal .modal-actions button { min-height:40px; background:#f3f4f8; color:#4a5268; }
+#confirmModal .modal-actions .btn-confirm { background:#4a6cf7; color:#fff; }
+#confirmModal button:focus-visible { outline:2px solid #8fa8ff; outline-offset:2px; }
 
 .modal {
   background: #fff; border-radius: 12px; padding: 20px;
@@ -1841,6 +1847,16 @@ body.mistake-edit-open { overflow: hidden; }
 .review-plan-controls { display: flex; align-items: center; justify-content: center; gap: 20px; margin: 14px 0; }
 .review-plan-controls button, .review-section-heading button, .review-record button, .review-session-bar button { border: 1px solid #dce1ec; border-radius: 8px; background: #fff; color: #415479; padding: 8px 12px; cursor: pointer; }
 .review-record { overflow-wrap: anywhere; }
+.review-rename-dialog { width:min(400px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); margin:auto; padding:22px; border:1px solid #e1e6ef; border-radius:14px; color:#232a3d; background:#fff; overflow:auto; }
+.review-rename-dialog::backdrop { background:rgba(17,25,40,.45); }
+.review-rename-dialog h2 { font-size:18px; margin-bottom:10px; }
+.review-rename-dialog p { font-size:13px; line-height:1.6; color:#7a8497; margin-bottom:14px; }
+.review-rename-dialog label { display:block; font-size:13px; margin-bottom:6px; }
+.review-rename-dialog input { width:100%; padding:10px 12px; border:1px solid #dbe0ea; border-radius:9px; font:inherit; }
+.review-rename-dialog input:focus-visible { outline:2px solid #b9c8ff; outline-offset:2px; }
+.review-rename-dialog #reviewRenameError { color:#b63c3c; margin-top:8px; }
+.review-rename-dialog #reviewRenameSave { background:#4a6cf7; color:#fff; }
+.review-rename-dialog button:disabled { opacity:.5; cursor:wait; }
 .review-record h3 { font-size: 16px; margin-bottom: 10px; }
 .review-record p { margin: 8px 0; }
 .review-record progress { width: 100%; accent-color: #4a6cf7; }
@@ -2234,6 +2250,15 @@ body.plan-modal-open { overflow: hidden; }
 :is(.courses-ai-settings,.review-workbench) .ai-text-button { background:transparent; border-color:transparent; color:#788297; }
 .ai-action-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:12px 0; }
 .review-ai-generator { padding:14px; margin-top:18px; border:1px solid #dfe6f5; border-radius:12px; background:#f8faff; }
+.review-feedback { margin-top:16px; }
+.review-feedback button { padding:9px 14px; border:1px solid #dce1eb; border-radius:9px; background:#f3f4f8; color:#4a5268; font:inherit; font-size:13px; cursor:pointer; }
+.review-feedback button.ai-primary { background:#4a6cf7; border-color:#4a6cf7; color:#fff; }
+.review-feedback button:disabled { opacity:.55; cursor:wait; }
+.review-feedback :is(p,li,blockquote) { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.7; }
+.review-feedback h4 { margin:12px 0 6px; }
+.review-feedback ol { padding-left:22px; }
+.review-feedback-error { padding:10px 12px; border-left:3px solid #d6e0fc; margin:10px 0; background:#f8faff; border-radius:6px; }
+.review-feedback-error blockquote { color:#667187; margin-bottom:6px; }
 .review-ai-generator summary { color:#34415a; font-weight:600; margin-bottom:0; }
 .ai-optional-tag { display:inline-block; margin-left:8px; padding:1px 7px; border-radius:20px; background:#eef2ff; color:#5a73b6; font-size:11px; font-weight:400; }
 .review-ai-draft:not(:empty) { padding:14px; margin-top:12px; border:1px solid #e1e6ef; border-radius:10px; background:#fff; }

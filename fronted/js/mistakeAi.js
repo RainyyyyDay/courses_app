@@ -84,6 +84,7 @@ function mistakeAiSuggestionText(result) {
 
 function updateMistakeAiConfirm() {
   const state = mistakeAiState;
+  mistakeAiElement('Confirm').hidden=!!state&&readMistakeAiMethod(state.detail)===mistakeAiElement('Method').value;
   mistakeAiElement('Confirm').disabled = !state || state.busy
     || !(state.result || state.savedMethod || state.needsReselection)
     || !Object.hasOwn(AI_REVIEW_METHODS, mistakeAiElement('Method').value);
@@ -276,6 +277,7 @@ function confirmMistakeAiSuggestion() {
   mistakeAiElement('Confirmation').textContent = persisted
     ? '已保存到本浏览器：' + AI_REVIEW_METHODS[method] + '。刷新后可恢复；原错题分类未改变。'
     : '已确认：' + AI_REVIEW_METHODS[method] + '。本地保存失败，仅本页暂存，刷新后可能丢失；请重试。原错题分类未改变。';
+  updateMistakeAiConfirm();
 }
 
 // Optional creation view: shares adapter, mode map and persistence with existing advice.

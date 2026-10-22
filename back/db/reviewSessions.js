@@ -41,6 +41,17 @@ function sessionView(row,withItems=false) {
     types:[...new Set(items.map(item=>item.item_type))],...(withItems ? {items} : {})};
 }
 function getReviewSession(courseId,id) { return sessionView(sessionRow(courseId,id),true); }
+function renameReviewSession(courseId,id,body) {
+  const row=sessionRow(courseId,id);
+  if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>!['name','expectedName'].includes(k))
+    ||typeof body.name!=='string'||!body.name.trim()||body.name.trim().length>100||/[\r\n\u0000-\u001f]/.test(body.name)
+    ||typeof body.expectedName!=='string')planError(400,'INVALID_ARGUMENT','名称请填写 1 到 100 个字符，不要换行');
+  if(row.name!==body.expectedName)planError(409,'NAME_CONFLICT','名称已在其他页面修改，请关闭后重新打开再试');
+  // A label edit must not look like a review activity or alter any evidence.
+  const changed=db.prepare('UPDATE review_sessions SET name=? WHERE id=? AND course_id=? AND name=?').run(body.name.trim(),id,courseId,body.expectedName);
+  if(!changed.changes)planError(409,'NAME_CONFLICT','名称已在其他页面修改，请重新打开再试');
+  return getReviewSession(courseId,id);
+}
 function listReviewSessions(courseId,query={}) {
   if (Object.keys(query).some(key=>!['status','sourceType','limit','offset'].includes(key)) || Object.values(query).some(v=>typeof v!=='string')) planError(400,'INVALID_ARGUMENT','复习记录筛选参数不合法');
   const where=['course_id=?'],args=[courseId];
@@ -207,5 +218,5 @@ function listSessionCandidates(courseId) {
   const {listMaterials}=require('./materials'),{listNotes}=require('./notes'),{listMistakes}=require('./mistakes');
   return [['material',listMaterials(courseId)],['note',listNotes(courseId)],['mistake',listMistakes(courseId)]].flatMap(([type,rows])=>rows.map(row=>({...row,type,nodes:row.nodes || row.knowledge || [],reviewable:canReview(type,row) ? 1 : 0})));
 }
-module.exports={listReviewSessions,getReviewSession,createReviewSession,repeatReviewSession,reviewSessionContext,assertSessionItemWritable,
+module.exports={listReviewSessions,getReviewSession,renameReviewSession,createReviewSession,repeatReviewSession,reviewSessionContext,assertSessionItemWritable,
   completeSessionItem,touchReviewSession,saveSessionReadingReview,changeReviewSession,skipReviewSessionItem,listSessionCandidates};

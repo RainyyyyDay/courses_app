@@ -85,6 +85,10 @@ test('P0/P1/P2 real HTTP: evidence, exposure, manual materials, snapshots, alias
   assert.equal(read(db=>db.prepare('SELECT status FROM review_plan_items WHERE id=?').get(task.id).status),'completed');
   const draft=await api('POST','/ai/review-draft',{modeId:'cloze',text:'牛顿定律：质量乘以加速度。'});
   assert.equal(draft.provider,'mock');assert.ok(draft.material.blanks[0].answer);assert.equal(draft.needsReview,true);
+  for(const modeId of ['standard','self_explain','contrast']){
+    const referenceDraft=await api('POST','/ai/review-draft',{modeId,text:'北京是中国的首都。'});
+    assert.equal(referenceDraft.material.reference,'北京是中国的首都。','reference contains content only, not Mock warnings');
+  }
 },{legacy:false}));
 
 for(const [name,run]of [['sessions',testReviewCenterApi],['plans',testReviewPlanApi]])test('shared '+name+' API regression on isolated database',{timeout:90000},async()=>fixture(async({base,back})=>run({base,temp:back}),{legacy:false}));
@@ -168,7 +172,8 @@ function scenario(base,courseId){return `window.COURSES_API_BASE=${JSON.stringif
     wb('Prompt').value='首都为【b1】';addReviewBlank();let blank=wb('Blanks').querySelector('.review-blank');
     blank.querySelector('[data-blank="answer"]').value='北京';blank.querySelector('[data-blank="aliases"]').value='北京市';blank.querySelector('[data-blank="hint"]').value='中国首都';
     addReviewBlank();removeReviewBlank(wb('Blanks').lastElementChild.querySelector('button'));check(wb('Blanks').children.length===1,'manual add/remove blank');
-    await saveWorkbenchMaterial();check(reviewWorkbench.version===1&&!wb('Error').textContent,'manual material saved without AI');
+    await saveWorkbenchMaterial();check(!reviewWorkbench&&!wb('Dialog').open&&[...document.querySelectorAll('.toast')].some(n=>n.textContent==='保存成功'),'manual material save closes preparation dialog with success toast');
+    await openReviewWorkbench('note',note.id);check(reviewWorkbench.version===1&&!wb('Error').textContent,'saved materials reopen without losing input');
     const original=wb('Prompt').value;await requestWorkbenchDraft();check(wb('Prompt').value===original&&reviewWorkbench.aiDraft,'AI generates separate draft without overwrite');
     await adoptWorkbenchDraft(false);check(wb('Prompt').value===original,'fill-empty preserves manual prompt');undoWorkbenchDraft();
     const bounds=wb('Dialog').getBoundingClientRect();check(bounds.left>=0&&bounds.right<=innerWidth+1&&bounds.top>=0&&bounds.bottom<=innerHeight+1,'workbench fits viewport');

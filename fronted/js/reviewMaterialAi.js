@@ -30,7 +30,7 @@ function validReviewMaterialDraft(mode,m){
 }
 function renderEditableReviewDraft(s,draft){
   const m=draft.material;
-  wb('Draft').innerHTML='<p>'+escapeHtml(s.aiDraftReal?'DeepSeek 草稿，尚未验证正确；原材料未改变。':'Mock 演示草稿，不代表真实分析。')+'</p><p>'+escapeHtml((draft.caveats||[]).join('；'))+'</p>';
+  wb('Draft').innerHTML='<p>'+escapeHtml(s.aiDraftReal?'DeepSeek 草稿，尚未验证正确；原材料未改变。':'Mock 演示草稿，不代表真实分析；参考要点请人工核对。')+'</p><p>'+escapeHtml((draft.caveats||[]).join('；'))+'</p>';
   if(!m)return;
   const input=(label,id,value,rows=3)=>wbInput(label,'Draft'+id,value,rows);
   wb('Draft').insertAdjacentHTML('beforeend',input('草稿题面 / 正文','Prompt',m.prompt,5)

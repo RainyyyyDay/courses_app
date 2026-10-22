@@ -164,7 +164,7 @@ function renderWorkbenchInfo(s){
   const actual=s.attempt?.modeId||readReviewActive(s)?.mode||(s.type==='mistake'?mistakeDetailState?.progress?.mode?.id:'reading');
   const suggestion=readReviewAiMethod(s),selection=workbenchSelection(s);
   wb('Info').textContent=s.sessionItemId?`当前实际流程：${AI_REVIEW_METHODS[actual]||'尚未开始'}。待使用：${AI_REVIEW_METHODS[s.mode]}（${{user:'本次明确选择',ai:'已保存的 AI 建议，尚需本次采用',rule:'规则推荐'}[selection.source]}）。选择/准备不评分；开始本轮后才执行选中模式。切换不会改写历史、评分或计划；已完成项目请在记录中再次复习。`:'材料准备：手动填写即可，AI 可选。确认保存后从总复习或计划进入。';
-  wb('Suggestion').innerHTML=s.sessionItemId&&suggestion?`<p>已保存的 AI 建议：${escapeHtml(AI_REVIEW_METHODS[suggestion])}；不等于已创建材料。</p><button type="button" onclick="useWorkbenchSuggestion()">本次使用此建议（先检查材料）</button>`:'';
+  wb('Suggestion').innerHTML=s.sessionItemId&&suggestion?`<p>已保存的 AI 建议：${escapeHtml(AI_REVIEW_METHODS[suggestion])}；不等于已创建材料。</p>${s.mode===suggestion?'<p>本次已选用此建议，无需重复确认。</p>':'<button type="button" onclick="useWorkbenchSuggestion()">本次使用此建议（先检查材料）</button>'}`:'';
 }
 async function useWorkbenchSuggestion(){const s=reviewWorkbench,mode=s&&readReviewAiMethod(s);if(mode)await loadReviewWorkbenchMode(mode);}
 function reviewWorkbenchBase(s=reviewWorkbench){return `${API}/courses/${s.courseId}/review-items/${s.type}/${s.id}`;}
@@ -188,6 +188,7 @@ function saveWorkbenchAnswerDraft(){
 }
 function closeReviewWorkbench(refresh=true){
   if(reviewWorkbench?.busy)return;
+  if(reviewWorkbench&&typeof resetReviewFeedback==='function')resetReviewFeedback(reviewWorkbench);
   saveWorkbenchAnswerDraft();
   if(reviewWorkbench&&wb('Prompt'))mistakeStorageSet(reviewWorkbenchKey()+':draft',readWorkbenchMaterial());
   if(wb('Panel'))wb('Dialog').append(wb('Panel'));
@@ -211,7 +212,7 @@ async function openCenterReviewSettings(){
 }
 function mountReviewPreparation(host,type,row){
   let button=host.querySelector('[data-review-preparation]');if(!button){button=document.createElement('button');button.type='button';button.className='btn-cancel';button.dataset.reviewPreparation='';host.append(button);}
-  button.textContent='准备复习材料（手动 / 可选 AI）';button.onclick=()=>openReviewWorkbench(type,row.id,{row,sourceText:row.content||row.ocr_text||'',referenceText:row.answer_content||row.explanation||''});
+  button.textContent='复习材料管理（查看 / 手动 / 可选 AI）';button.onclick=()=>openReviewWorkbench(type,row.id,{row,sourceText:row.content||row.ocr_text||'',referenceText:row.answer_content||row.explanation||''});
 }
 async function openReviewWorkbench(type,id,context={}){
   if(reviewWorkbench?.busy)return;
@@ -301,7 +302,13 @@ async function saveWorkbenchMaterial(startAfterSave=false){
   if(missing.length){s.busy=false;updateWorkbenchPreparation();wb('Error').textContent='请先补齐上方材料；输入已保留，尚未保存或开始。';return;}
   try{
     const data=await (await requestApi(reviewWorkbenchBase(s)+'/materials/'+s.mode,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({expectedVersion:s.version,confirmed:true,material})})).json();
-    if(reviewWorkbench!==s)return;s.version=data.version;mistakeStorageSet(reviewWorkbenchKey(s)+':draft',null);showToast('正式材料已保存；未更改 AI 建议或评分');
+    if(reviewWorkbench!==s)return;s.version=data.version;mistakeStorageSet(reviewWorkbenchKey(s)+':draft',null);
+    if(typeof updateResourceAiActions==='function')void updateResourceAiActions();
+    if(!s.sessionItemId){
+      // Do not let close() re-create the just-confirmed form as an unsaved draft.
+      wb('Editor').innerHTML='';s.busy=false;closeReviewWorkbench();showToast('保存成功');return;
+    }
+    showToast('保存成功；未更改 AI 建议或评分');
     if(s.sessionItemId&&currentCenterItem()?.id===s.sessionItemId)await prepareCenterQuickMode(currentCenterItem(),centerReview.session);
     renderWorkbenchReadiness('ready','正式材料已保存，可以开始；尚未作答或评分');
     if(s.sessionItemId){s.editing=false;s.busy=false;wb('Editor').innerHTML='';await loadReviewWorkbenchMode(s.mode,false);if(startAfterSave&&reviewWorkbench===s&&!s.attempt&&s.version)await startWorkbenchAttempt();}
@@ -368,6 +375,7 @@ function renderWorkbenchAttempt(){
     if(p.stage==='completed')content+=`<p>${p.grade===null?'已记录曝光，未产生评分':`已保存评分：${['','Again','Hard','Good','Easy'][p.grade]}`} · ${p.durationMs} ms</p>`;
   }
   wb('Attempt').innerHTML=content;
+  if(typeof mountWorkbenchFeedback==='function')mountWorkbenchFeedback(s);
 }
 async function submitWorkbenchAttempt(action,grade){
   const s=reviewWorkbench;if(!s?.attempt||s.busy)return;

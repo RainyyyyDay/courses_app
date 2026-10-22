@@ -104,7 +104,7 @@ async function createReviewDraft(body) {
   if(!['standard','cloze','self_explain','reading','contrast'].includes(modeId))invalid('不支持的草稿模式');
   const text=requiredText(body.text,'text',20000);
   // This demo endpoint always reuses the local deterministic provider, irrespective of env.
-  const material={prompt:text,reference:modeId==='reading'?'':'Mock 演示参考要点（请人工核对）：'+text,rubric:modeId==='reading'?'':'核对是否覆盖关键概念与推理；最终档位由用户确认。',blanks:[],objects:[],dimensions:[]};
+  const material={prompt:text,reference:modeId==='reading'?'':text,rubric:modeId==='reading'?'':'核对是否覆盖关键概念与推理；最终档位由用户确认。',blanks:[],objects:[],dimensions:[]};
   if(modeId==='cloze'){
     const generated=await createAiPort({provider:'mock'}).generateCloze({text,blankCount:3});material.prompt=generated.clozeText;
     material.blanks=generated.blanks.map(b=>({...b,aliases:[]}));material.reference='';material.rubric='';

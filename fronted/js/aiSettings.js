@@ -61,11 +61,18 @@ const coursesAiSettings = (() => {
   }
   function open(){
     node('Provider').value=provider;node('Model').value=model;node('Key').value='';node('Retain').checked=retain;
+    node('Model').dataset.selectedModel=model;syncProviderModel();
     node('Auto').checked=auto;node('Consent').checked=false;
     refresh();if(!node('Dialog').open)node('Dialog').showModal();
   }
+  function syncProviderModel(){
+    const field=node('Model'),real=node('Provider').value==='deepseek';
+    if(field.value)field.dataset.selectedModel=field.value;
+    field.disabled=!real;
+    field.value=real?(field.dataset.selectedModel||model):'';
+  }
   function apply(){
-    try{configure({provider:node('Provider').value,model:node('Model').value,apiKey:node('Key').value||key,
+    try{configure({provider:node('Provider').value,model:node('Model').value||model,apiKey:node('Key').value||key,
       retain:node('Retain').checked,auto:node('Auto').checked,consent:node('Consent').checked});}
     catch(err){message=err.message;refresh();}finally{node('Key').value='';}
   }
@@ -135,10 +142,10 @@ const coursesAiSettings = (() => {
     dialog.setAttribute('aria-labelledby','coursesAiTitle');
     dialog.innerHTML=`<header class="ai-settings-head"><div><h2 id="coursesAiTitle">AI 设置</h2><p>当前标签页共用 · 刷新或关闭后失效</p></div><button type="button" id="coursesAiDismiss" aria-label="关闭 AI 设置">×</button></header>
       <div class="ai-settings-body"><p id="coursesAiSummary" class="ai-settings-status" role="status"></p>
-      <p class="ai-help">用于资料、笔记和错题的复习建议、材料草稿及答案解析。手动填写不受影响，生成结果均需确认后采用。</p>
+      <p class="ai-help">用于资料、笔记和错题的复习建议、材料草稿、答案解析及作答后的可选批改。手动填写不受影响，AI 批改不自动修改评分，其余生成结果需确认后采用。</p>
       <section class="ai-settings-section"><h3>服务与凭据</h3><div class="ai-settings-fields">
       <label>来源<select id="coursesAiProvider"><option value="mock">Mock 演示（非真实 AI）</option><option value="deepseek">DeepSeek 官方</option></select></label>
-      <label>模型<select id="coursesAiModel"><option>deepseek-flash</option><option>deepseek-v4-pro</option></select></label></div>
+      <label>模型<select id="coursesAiModel" disabled><option value=""></option><option>deepseek-flash</option><option>deepseek-v4-pro</option></select></label></div>
       <label>API Key<input id="coursesAiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512" placeholder="输入 Key，不回显已保留的内容"></label>
       <p class="ai-help">Key 不写入浏览器存储或数据库。</p></section>
       <section class="ai-settings-section"><h3>使用偏好与授权</h3>
@@ -151,6 +158,7 @@ const coursesAiSettings = (() => {
     dialog.addEventListener('close',()=>{node('Key').value='';});document.body.append(dialog);
     node('Apply').onclick=apply;node('Test').onclick=testConnection;node('Clear').onclick=clear;node('Close').onclick=()=>dialog.close();refresh();
     node('Dismiss').onclick=()=>dialog.close();
+    node('Provider').onchange=syncProviderModel;syncProviderModel();
   }
   addEventListener('pagehide',clear);
   // Host calls this on verified login/logout/account switch. It supplies no browser-trusted identity.

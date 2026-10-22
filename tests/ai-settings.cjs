@@ -59,9 +59,18 @@ test('shared AI website settings work across entries, automatic drafts protect e
   const configure=(auto=false)=>{coursesAiSettings.open();el('coursesAiProvider').value='deepseek';el('coursesAiKey').value='synthetic-shared-key';el('coursesAiRetain').checked=true;el('coursesAiConsent').checked=true;el('coursesAiAuto').checked=auto;el('coursesAiApply').click();el('coursesAiClose').click();};
   try{
    check(el('coursesAiOpen')&&!coursesAiSettings.status().auto&&aiCalls.length===0,'global entry and auto off, no load call');
+   coursesAiSettings.open();
+   check(el('coursesAiModel').value===''&&el('coursesAiModel').disabled,'Mock leaves model visibly blank and disabled');
+   el('coursesAiApply').click();check(coursesAiSettings.status().configured&&coursesAiSettings.status().provider==='mock'&&aiCalls.length===0,'blank Mock model can be applied without requests');
+   el('coursesAiProvider').value='deepseek';el('coursesAiProvider').dispatchEvent(new Event('change'));
+   check(!el('coursesAiModel').disabled&&el('coursesAiModel').value==='deepseek-flash','DeepSeek selection reveals supported model');
+   el('coursesAiModel').value='deepseek-v4-pro';el('coursesAiProvider').value='mock';el('coursesAiProvider').dispatchEvent(new Event('change'));
+   check(el('coursesAiModel').value===''&&el('coursesAiModel').disabled,'switching back to Mock clears displayed model');
+   el('coursesAiProvider').value='deepseek';el('coursesAiProvider').dispatchEvent(new Event('change'));
+   check(el('coursesAiModel').value==='deepseek-v4-pro'&&aiCalls.length===0,'switching restores pending model without sending a request');el('coursesAiClose').click();
    check(!el('coursesAiAutoConsent')&&el('coursesAiDialog').querySelectorAll('input[type=checkbox]').length===3,'one merged consent and two independent preference switches');
    coursesAiSettings.open();el('coursesAiProvider').value='deepseek';el('coursesAiKey').value='synthetic-shared-key';el('coursesAiRetain').checked=true;el('coursesAiAuto').checked=true;el('coursesAiApply').click();
-   check(!coursesAiSettings.status().configured&&aiCalls.length===0,'auto analysis cannot bypass merged consent');el('coursesAiClose').click();
+   check(coursesAiSettings.status().provider==='mock'&&!coursesAiSettings.status().auto&&aiCalls.length===0,'auto analysis cannot bypass merged consent');el('coursesAiClose').click();
    configure();check(coursesAiSettings.status().hasKey&&!el('coursesAiKey').value,'masked memory credential');
    el('coursesAiOpen').click();el('coursesAiTest').click();while(el('coursesAiTest').disabled)await new Promise(r=>setTimeout(r,10));
    check(el('coursesAiMessage').textContent.includes('成功'),'connection uses shared settings');el('coursesAiClose').click();

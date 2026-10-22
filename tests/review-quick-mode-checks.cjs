@@ -16,6 +16,7 @@ async function reviewQuickModeChecks(courseId){
   check(centerReview.quickMode.modeId==='self_explain'&&document.querySelector('[data-quick-toggle]').getAttribute('aria-pressed')==='true','valid AI suggestion selected by default');
   check(!wb('Dialog').open&&mistakeDetailState.progress.mode.id==='standard','selection alone never mutates native progress');
   await confirmCenterQuickMode();check(reviewWorkbench?.attempt?.modeId==='self_explain'&&wb('Answer').rows===10,'confirm reads selected mode, not native standard state');
+  check(!wb('Suggestion').querySelector('button')&&document.querySelector('[data-quick-start]').hidden,'active matching advice does not request repeated adoption or start confirmation');
   check(!wb('Dialog').open&&reviewWorkbench.inline&&wb('Answer').closest('#mistakeDetailPage')&&wb('Answer').getClientRects().length>0,'AI answer is visible inside original page, never a modal');
   check(getComputedStyle(document.getElementById('mistakeReviewPanel')).display==='none','native and AI answer controls are mutually exclusive');
   const initialAttempt=reviewWorkbench.attempt.id;wb('Answer').value='设置展开不丢讲解';

@@ -6,6 +6,47 @@ let totalReviewState=null;
 let centerReview=null;
 let reviewCenterRequest=0;
 let reviewRecordBusy=false;
+let reviewRenameState=null;
+function closeReviewRename(){
+  if(reviewRenameState?.busy)return;
+  const focus=reviewRenameState?.focus;reviewRenameState=null;document.getElementById('reviewRenameDialog')?.close();
+  if(focus?.isConnected)focus.focus({preventScroll:true});
+}
+async function openReviewRename(id){
+  if(reviewRenameState?.busy)return;
+  const s={id,courseId:currentCourseId,focus:document.activeElement,busy:false};reviewRenameState=s;
+  try{
+    const row=await(await requestApi(reviewSessionApi(id,s.courseId))).json();
+    if(reviewRenameState!==s||currentCourseId!==s.courseId)return;
+    s.original=row.name;
+    let dialog=document.getElementById('reviewRenameDialog');
+    if(!dialog){
+      dialog=document.createElement('dialog');dialog.id='reviewRenameDialog';dialog.className='review-rename-dialog';dialog.setAttribute('aria-labelledby','reviewRenameTitle');
+      dialog.innerHTML='<form id="reviewRenameForm"><h2 id="reviewRenameTitle">重命名复习记录</h2><p>只修改名称，不影响复习内容、评分和进度。</p><label for="reviewRenameInput">记录名称</label><input id="reviewRenameInput" maxlength="100" required autocomplete="off"><p id="reviewRenameError" role="alert"></p><div class="modal-actions"><button type="button" id="reviewRenameCancel" onclick="closeReviewRename()">取消</button><button type="submit" id="reviewRenameSave">保存</button></div></form>';
+      document.body.append(dialog);dialog.addEventListener('cancel',event=>{event.preventDefault();closeReviewRename();});
+      document.getElementById('reviewRenameForm').addEventListener('submit',event=>{event.preventDefault();void saveReviewRename();});
+    }
+    document.getElementById('reviewRenameInput').value=row.name;document.getElementById('reviewRenameError').textContent='';
+    if(!dialog.open)dialog.showModal();document.getElementById('reviewRenameInput').focus();document.getElementById('reviewRenameInput').select();
+  }catch(err){if(reviewRenameState===s){reviewRenameState=null;showToast(err.message);}}
+}
+async function saveReviewRename(){
+  const s=reviewRenameState;if(!s||s.busy||s.courseId!==currentCourseId)return;
+  const input=document.getElementById('reviewRenameInput'),error=document.getElementById('reviewRenameError'),name=input.value.trim();error.textContent='';
+  if(!name||name.length>100){error.textContent='请输入 1 到 100 个字符的名称';return;}
+  if(name===s.original){closeReviewRename();return;}
+  s.busy=true;for(const id of ['reviewRenameInput','reviewRenameSave','reviewRenameCancel'])document.getElementById(id).disabled=true;
+  try{
+    const row=await(await requestApi(reviewSessionApi(s.id,s.courseId)+'/name',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,expectedName:s.original})})).json();
+    if(reviewRenameState!==s||currentCourseId!==s.courseId)return;
+    for(const article of document.querySelectorAll('[data-review-session="'+s.id+'"]')){const heading=article.querySelector('h3');if(heading?.firstChild)heading.firstChild.nodeValue=row.name+' ';}
+    if(reviewHistoryState?.courseId===s.courseId)for(const item of reviewHistoryState.rows)if(item.id===s.id)item.name=row.name;
+    if(reviewSessionDetail?.id===s.id)reviewSessionDetail.name=row.name;
+    if(centerReview?.session?.id===s.id){centerReview.session.name=row.name;renderCenterReviewToolbar();}
+    s.busy=false;closeReviewRename();showToast('重命名成功');
+  }catch(err){if(reviewRenameState===s)error.textContent=err.message+'；输入已保留。';}
+  finally{s.busy=false;for(const id of ['reviewRenameInput','reviewRenameSave','reviewRenameCancel'])document.getElementById(id).disabled=false;}
+}
 function reviewSessionApi(id='',courseId=currentCourseId) {return `${API}/courses/${courseId}/review-sessions${id ? '/'+id : ''}`;}
 function reviewRequestId() {return typeof crypto.randomUUID==='function' ? crypto.randomUUID() : Date.now()+'-'+Math.random().toString(36).slice(2);}
 async function reviewSessionRequest(id,body={},courseId=currentCourseId) {
@@ -39,11 +80,14 @@ function reviewProgressHtml(row) {
   const width = value => Math.min(100, Math.round((Number(value) || 0) / total * 100));
   return `<div class="review-progress-split" role="img" aria-label="已通过 ${row.passed || 0}，未通过 ${row.failed || 0}，仅曝光 ${row.exposed || 0}，跳过 ${row.skipped || 0}，待处理 ${row.pending || 0}"><span class="is-done" style="width:${width(row.passed)}%"></span><span class="is-failed" style="width:${width(row.failed)}%"></span><span class="is-skipped" style="width:${width(row.exposed)}%"></span><span class="is-skipped" style="width:${width(row.skipped)}%"></span></div>`;
 }
-function reviewRecordCard(row) {
+function reviewRecordCard(row) {return addReviewRenameAction(reviewRecordCardContent(row),row);}
+function addReviewRenameAction(html,row){return html.replace(/<\/div><\/article>$/,`<button type="button" data-review-rename="${row.id}" onclick="openReviewRename(${row.id})">重命名</button></div></article>`);}
+function reviewRecordCardContent(row) {
   return `<article class="detail-card review-record" data-review-session="${row.id}"><h3>${escapeHtml(row.name)} <span class="material-review-badge">${reviewSessionBadge(row)}</span></h3><p>${REVIEW_SOURCE_LABELS[row.source_type]} · ${row.types.map(type=>PLAN_TYPE_LABELS[type]).join(' + ')}</p><p class="detail-meta">开始：${escapeHtml(reviewTime(row.started_at))}<br>最近活动：${escapeHtml(reviewTime(row.updated_at))}</p><p>已完成 ${row.passed || 0} / ${row.total} · 未通过 ${row.failed || 0} · 仅曝光 ${row.exposed || 0} · 跳过 ${row.skipped} · 待处理 ${row.pending}</p>${reviewProgressHtml(row)}<div class="mistake-toolbar">${row.status==='completed' ? `<button onclick="repeatReviewRecord(${row.id})">再次复习</button>` : `<button onclick="resumeReviewRecord(${row.id})">继续复习</button>`}<button onclick="openReviewSessionDetail(${row.id})">查看详情</button></div></article>`;
 }
 // 首页使用紧凑列表，历史页和记录详情继续保留原有卡片。
-function reviewRecentRecord(row) {
+function reviewRecentRecord(row) {return addReviewRenameAction(reviewRecentRecordContent(row),row);}
+function reviewRecentRecordContent(row) {
   return `<article class="review-recent-record" data-review-session="${row.id}"><div class="review-recent-main"><div class="review-recent-title"><h3>${escapeHtml(row.name)}</h3><span class="review-recent-state">${reviewSessionBadge(row)}</span></div><div class="review-recent-meta"><span>${REVIEW_SOURCE_LABELS[row.source_type]} · ${row.types.map(type=>PLAN_TYPE_LABELS[type]).join(' + ')}</span><span>最近活动：${escapeHtml(reviewTime(row.updated_at || row.started_at))}</span></div><div class="review-recent-progress">${reviewProgressHtml(row)}<span>已完成 ${row.passed || 0} / ${row.total} · 未通过 ${row.failed || 0} · 仅曝光 ${row.exposed || 0} · 跳过 ${row.skipped} · 待处理 ${row.pending}</span></div></div><div class="review-recent-actions">${row.status==='completed' ? `<button type="button" onclick="repeatReviewRecord(${row.id})">再次复习</button>` : `<button type="button" onclick="resumeReviewRecord(${row.id})">继续复习</button>`}<button type="button" onclick="openReviewSessionDetail(${row.id})">查看详情</button></div></article>`;
 }
 async function loadRecentReviews() {
@@ -327,6 +371,7 @@ function renderCenterReviewToolbar() {
     const selectedAi=!!q.aiMode&&q.modeId===q.aiMode;
     const quick=document.createElement('div');quick.className='mistake-toolbar';quick.dataset.quickMode=q.modeId;
     quick.innerHTML=`<button type="button" data-quick-toggle aria-pressed="${selectedAi}" onclick="toggleCenterQuickMode()" ${blocked||q.busy||!q.aiMode?'disabled':''}>${selectedAi?'AI 建议模式：'+escapeHtml(AI_REVIEW_METHODS[q.aiMode])+'（切换原复习）':'原复习：'+escapeHtml(AI_REVIEW_METHODS[q.modeId])+'（切回 AI 建议）'}</button><button type="button" data-quick-start onclick="confirmCenterQuickMode()" ${blocked||q.busy?'disabled':''}>${q.busy?'正在确认…':'确认开始：'+escapeHtml(AI_REVIEW_METHODS[q.modeId])}</button><small data-quick-reason>${escapeHtml(q.reason)}</small>`;
+    if(active?.mode===q.modeId||mistakeStorageGet(reviewSelectionKey(context)+':native-mode')===q.modeId){quick.querySelector('[data-quick-start]').hidden=true;}
     if(q.aiMode&&!q.ready){const prepare=document.createElement('button');prepare.type='button';prepare.dataset.prepareSuggestion='';prepare.textContent='就地准备建议材料（手动）';prepare.disabled=blocked;prepare.onclick=prepareCenterSuggestedMaterial;quick.append(prepare);}
     bar.append(quick);
   }
