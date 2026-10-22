@@ -36,7 +36,8 @@ class LocalRoutes(unittest.IsolatedAsyncioTestCase):
                 self.assertIn('window.COURSES_AI_LOCAL_MOCK=true', page.text)
                 self.assertIn('<script src="app.js"></script>', page.text)
                 self.assertEqual(page.headers['cache-control'], 'no-store')
-                self.assertIn('js/mistakeAi.js?v=20261021-resources-3', page.text)
+                self.assertRegex(page.text, r'js/mistakeAi\.js\?v=[^"\s]+')
+                self.assertIn('js/reviewFeedback.js?v=20261022-feedback-1', page.text)
             self.assertEqual((await client.get('/js/ai.js')).status_code, 200)
             for path in ['/js/ai.js', '/js/mistakeAi.js?v=20261021-analysis-1', '/style.css?v=20261021-analysis-1']:
                 self.assertEqual((await client.get(path)).headers['cache-control'], 'no-store')

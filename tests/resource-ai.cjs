@@ -18,7 +18,8 @@ test('resource AI suggestions reach real inline material and note practice',{tim
    await openResourceDetail(type,row.id);check(el('resourceAiPanel'),'AI entry in original detail');el('resourceAiPanel').querySelector('details').open=true;
    check([...el('resourceAiMethod').options].filter(o=>o.value).length===6&&!el('resourceAiMethod').querySelector('option[value=choice_reproduction]'),'six choices only');
    el('resourceAiGoal').value='remember';await requestResourceAi();check(el('resourceAiStatus').textContent.includes('Mock')&&el('resourceAiMethod').value==='cloze','Mock works without student answer or key');
-   check(!readResourceAiMethod(resourceAiState),'response not adopted');confirmResourceAi();await updateResourceAiActions();check(readResourceAiMethod(resourceAiState)==='cloze','explicit confirmation stores scoped mode');
+   check(!readResourceAiMethod(resourceAiState)&&!el('resourceAiAdopt').hidden,'response not auto-adopted; explicit one-click entry is visible');el('resourceAiAdopt').click();await updateResourceAiActions();check(readResourceAiMethod(resourceAiState)==='cloze','one click selects and confirms the suggested mode');
+   check(el('resourceAiAdopt').hidden,'adopted suggestion hides duplicate adoption action');
    check(el('resourceAiConfirm').hidden&&!el('resourceAiPrepare').hidden,'confirmed suggestion hides repeat confirmation, missing materials still actionable');
    el('resourceAiMethod').value='contrast';await updateResourceAiActions();check(!el('resourceAiConfirm').hidden,'changing the selected mode restores confirmation');
    el('resourceAiMethod').value='cloze';await updateResourceAiActions();check(el('resourceAiConfirm').hidden,'returning to the saved choice needs no new confirmation');
@@ -26,8 +27,12 @@ test('resource AI suggestions reach real inline material and note practice',{tim
    const state=await api('GET','/review-items/'+type+'/'+row.id+'/state');check(state.grade===undefined||state.grade===null,'suggestion does not grade');
    coursesAiSettings.configure({provider:'deepseek',model:'deepseek-flash',apiKey:'synthetic-resource-key',retain:true,consent:true,auto:false});
    el('resourceAiMethod').value='reading';await requestResourceAi();check(resourceAiState.result.review_method==='self_explain'&&el('resourceAiMethod').value==='reading','real adapter does not override manual choice');
+   check(!el('resourceAiAdopt').hidden&&readResourceAiMethod(resourceAiState)==='cloze','new advice requires an explicit action even when manual selection differs');
+   el('resourceAiRecall').value='修改后的困难';el('resourceAiRecall').dispatchEvent(new Event('input',{bubbles:true}));check(el('resourceAiAdopt').hidden,'edited source hides stale adoption');
+   el('resourceAiRecall').value='';el('resourceAiRecall').dispatchEvent(new Event('input',{bubbles:true}));el('resourceAiAdopt').click();await updateResourceAiActions();
+   check(el('resourceAiMethod').value==='self_explain'&&readResourceAiMethod(resourceAiState)==='self_explain'&&el('resourceAiConfirm').hidden,'one click adopts real-provider suggestion without dropdown or second confirmation');
    el('resourceAiContent').value='';await requestResourceAi();check(el('resourceAiError').textContent.includes('文字'),'missing attachment text actionable');el('resourceAiContent').value='FAIL';
-   await requestResourceAi();check(el('resourceAiError').textContent.includes('Key 无效')&&readResourceAiMethod(resourceAiState)==='cloze','safe real failure preserves confirmed suggestion');
+   await requestResourceAi();check(el('resourceAiError').textContent.includes('Key 无效')&&readResourceAiMethod(resourceAiState)==='self_explain'&&el('resourceAiAdopt').hidden,'failed requests preserve saved choice and cannot adopt stale advice');
    el('resourceAiContent').value=row.content;el('resourceAiMethod').value='self_explain';confirmResourceAi();
    const session=await createReviewRecord('total',[{type,id:row.id}]);await enterCenterReview(session);
    check(centerReview.quickMode.aiMode==='self_explain'&&reviewWorkbench?.inline&&reviewWorkbench.type===type,'confirmed suggestion reaches correct resource and inline workbench');

@@ -2250,6 +2250,15 @@ body.plan-modal-open { overflow: hidden; }
 :is(.courses-ai-settings,.review-workbench) .ai-text-button { background:transparent; border-color:transparent; color:#788297; }
 .ai-action-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:12px 0; }
 .review-ai-generator { padding:14px; margin-top:18px; border:1px solid #dfe6f5; border-radius:12px; background:#f8faff; }
+.review-feedback { margin-top:16px; }
+.review-feedback button { padding:9px 14px; border:1px solid #dce1eb; border-radius:9px; background:#f3f4f8; color:#4a5268; font:inherit; font-size:13px; cursor:pointer; }
+.review-feedback button.ai-primary { background:#4a6cf7; border-color:#4a6cf7; color:#fff; }
+.review-feedback button:disabled { opacity:.55; cursor:wait; }
+.review-feedback :is(p,li,blockquote) { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.7; }
+.review-feedback h4 { margin:12px 0 6px; }
+.review-feedback ol { padding-left:22px; }
+.review-feedback-error { padding:10px 12px; border-left:3px solid #d6e0fc; margin:10px 0; background:#f8faff; border-radius:6px; }
+.review-feedback-error blockquote { color:#667187; margin-bottom:6px; }
 .review-ai-generator summary { color:#34415a; font-weight:600; margin-bottom:0; }
 .ai-optional-tag { display:inline-block; margin-left:8px; padding:1px 7px; border-radius:20px; background:#eef2ff; color:#5a73b6; font-size:11px; font-weight:400; }
 .review-ai-draft:not(:empty) { padding:14px; margin-top:12px; border:1px solid #e1e6ef; border-radius:10px; background:#fff; }

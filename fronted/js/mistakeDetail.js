@@ -908,6 +908,7 @@ function renderMistakeReview(state) {
     panel.querySelectorAll('[data-review-action]').forEach(b => { b.disabled = true; });
   }
   if (typeof renderMistakeQueueBanner === 'function') renderMistakeQueueBanner();
+  if(typeof mountMistakeFeedback==='function')mountMistakeFeedback(state,answerVisible);
 }
 
 async function submitMistakeReview(action, key, value, extra = {}) {

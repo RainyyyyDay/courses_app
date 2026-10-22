@@ -142,7 +142,7 @@ const coursesAiSettings = (() => {
     dialog.setAttribute('aria-labelledby','coursesAiTitle');
     dialog.innerHTML=`<header class="ai-settings-head"><div><h2 id="coursesAiTitle">AI 设置</h2><p>当前标签页共用 · 刷新或关闭后失效</p></div><button type="button" id="coursesAiDismiss" aria-label="关闭 AI 设置">×</button></header>
       <div class="ai-settings-body"><p id="coursesAiSummary" class="ai-settings-status" role="status"></p>
-      <p class="ai-help">用于资料、笔记和错题的复习建议、材料草稿及答案解析。手动填写不受影响，生成结果均需确认后采用。</p>
+      <p class="ai-help">用于资料、笔记和错题的复习建议、材料草稿、答案解析及作答后的可选批改。手动填写不受影响，AI 批改不自动修改评分，其余生成结果需确认后采用。</p>
       <section class="ai-settings-section"><h3>服务与凭据</h3><div class="ai-settings-fields">
       <label>来源<select id="coursesAiProvider"><option value="mock">Mock 演示（非真实 AI）</option><option value="deepseek">DeepSeek 官方</option></select></label>
       <label>模型<select id="coursesAiModel" disabled><option value=""></option><option>deepseek-flash</option><option>deepseek-v4-pro</option></select></label></div>

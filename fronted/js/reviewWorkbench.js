@@ -188,6 +188,7 @@ function saveWorkbenchAnswerDraft(){
 }
 function closeReviewWorkbench(refresh=true){
   if(reviewWorkbench?.busy)return;
+  if(reviewWorkbench&&typeof resetReviewFeedback==='function')resetReviewFeedback(reviewWorkbench);
   saveWorkbenchAnswerDraft();
   if(reviewWorkbench&&wb('Prompt'))mistakeStorageSet(reviewWorkbenchKey()+':draft',readWorkbenchMaterial());
   if(wb('Panel'))wb('Dialog').append(wb('Panel'));
@@ -374,6 +375,7 @@ function renderWorkbenchAttempt(){
     if(p.stage==='completed')content+=`<p>${p.grade===null?'已记录曝光，未产生评分':`已保存评分：${['','Again','Hard','Good','Easy'][p.grade]}`} · ${p.durationMs} ms</p>`;
   }
   wb('Attempt').innerHTML=content;
+  if(typeof mountWorkbenchFeedback==='function')mountWorkbenchFeedback(s);
 }
 async function submitWorkbenchAttempt(action,grade){
   const s=reviewWorkbench;if(!s?.attempt||s.busy)return;
