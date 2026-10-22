@@ -44,6 +44,7 @@ async function renderResourceDetailPage(resourceType, resourceId) {
     renderResourceDetail(resourceType, row);
     if(typeof mountReviewPreparation==='function')mountReviewPreparation(document.getElementById('resourceDetailTags'),resourceType,row);
     if(typeof mountResourceAi==='function')mountResourceAi(document.getElementById('resourceDetailPreview').parentElement,resourceType,row);
+    if(typeof mountItemReviewHistory==='function')mountItemReviewHistory(document.getElementById('resourceDetailPreview').parentElement,resourceType,row.id);
   } catch (err) {
     if (!isCurrent()) return;
     console.warn('加载资源详情失败:', err.message);

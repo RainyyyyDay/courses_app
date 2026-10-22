@@ -38,4 +38,5 @@ module.exports = {
   ...require('./reviewSessions'),
   ...require('./reviewItems'),
   ...require('./reviewArtifacts'),
+  ...require('./reviewHistory'),
 };

@@ -247,7 +247,7 @@ function applyMistakeReview(id, body, startOnly = false, planItemId = null, sess
         modeId: mode.id,
         durationMs,
         firstAnswer,answerRevealed,
-        evidence:{judgedBeforeReveal:isChoice},
+        evidence:{judgedBeforeReveal:isChoice,nativeHistoryKey:`n:${mistake.review_revision}:${round}`},
       });
     }
     const response = getMistakeReview(id);

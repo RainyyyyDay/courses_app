@@ -1,6 +1,47 @@
 /* Materials and notes share suggestions/settings/workbench, never mistake diagnosis. */
 let resourceAiState=null;
 const resourceAiKey=s=>`resource-ai-method:${s.courseId}:${s.type}:${s.id}`;
+const resourceAiTextKey=s=>`resource-ai-text:${s.courseId}:${s.type}:${s.id}`;
+const resourceAiContextKey=s=>`resource-ai-context:${s.courseId}:${s.type}:${s.id}`;
+const resourceAiGoals=['','remember','understand','compare','practice','read'];
+function readResourceAiContext(s){
+  const saved=mistakeStorageGet(resourceAiContextKey(s));
+  return saved?.version===1&&resourceAiGoals.includes(saved.goal)&&typeof saved.recall==='string'&&saved.recall.length<=4000?{goal:saved.goal,recall:saved.recall}:null;
+}
+function resourceAiContextInput(){return {goal:document.getElementById('resourceAiGoal').value,recall:document.getElementById('resourceAiRecall').value};}
+function updateResourceAiContextStatus(message=''){
+  const s=resourceAiState;if(!s||!resourceAiCurrent(s))return;
+  const saved=readResourceAiContext(s),input=resourceAiContextInput(),same=!!saved&&saved.goal===input.goal&&saved.recall===input.recall;
+  document.getElementById('resourceAiContextStatus').textContent=message||(same?'已保存到本浏览器。':'未保存：学习目标或当前回忆／困难尚未保存。');
+  document.getElementById('resourceAiSaveContext').disabled=s.busy||same;
+}
+function saveResourceAiContext(){
+  const s=resourceAiState;if(!s||s.busy||!resourceAiCurrent(s))return;
+  const input=resourceAiContextInput();
+  if(!resourceAiGoals.includes(input.goal)||input.recall.length>4000){updateResourceAiContextStatus('未保存：请选择有效的学习目标，回忆／困难最多4000字。');return;}
+  mistakeStorageSet(resourceAiContextKey(s),{version:1,...input});
+  const saved=readResourceAiContext(s);
+  if(!saved||saved.goal!==input.goal||saved.recall!==input.recall){updateResourceAiContextStatus('保存失败：浏览器存储不可用或空间不足；当前输入仍保留，请复制备份后重试。');return;}
+  updateResourceAiContextStatus();showToast('学习目标与回忆保存成功');
+}
+function readResourceAiText(s){
+  const saved=mistakeStorageGet(resourceAiTextKey(s));
+  return saved?.version===1&&typeof saved.content==='string'&&saved.content.trim()&&saved.content.length<=4000?saved.content:null;
+}
+function updateResourceAiTextStatus(message=''){
+  const s=resourceAiState;if(!s||!resourceAiCurrent(s))return;
+  const text=document.getElementById('resourceAiContent').value,saved=readResourceAiText(s);
+  document.getElementById('resourceAiTextStatus').textContent=message||(saved===text?'已保存到本浏览器。':'未保存'+(saved===null?'：当前片段尚未单独保存。':'：文字已修改，请保存。'));
+  document.getElementById('resourceAiSaveText').disabled=s.busy||saved===text;
+}
+function saveResourceAiText(){
+  const s=resourceAiState;if(!s||s.busy||!resourceAiCurrent(s))return;
+  const content=document.getElementById('resourceAiContent').value;
+  if(!content.trim()||content.length>4000){updateResourceAiTextStatus('未保存：请填写1至4000字的复习片段。');return;}
+  mistakeStorageSet(resourceAiTextKey(s),{version:1,content});
+  if(readResourceAiText(s)!==content){updateResourceAiTextStatus('保存失败：浏览器存储不可用或空间不足；当前输入仍保留，请复制备份后重试。');return;}
+  updateResourceAiTextStatus();showToast('复习片段保存成功');
+}
 function readResourceAiMethod(s){
   const saved=mistakeStorageGet(resourceAiKey(s));
   return saved?.version===1&&Object.hasOwn(AI_SELECTABLE_METHODS,saved.method)?saved.method:null;
@@ -13,14 +54,25 @@ function mountResourceAi(host,type,row,context={}){
   const panel=document.createElement('section');panel.id='resourceAiPanel';panel.className='detail-card mistake-create-ai';
   panel.innerHTML=`<details><summary>AI 复习建议（${type==='note'?'笔记':'资料'}）</summary><p>建议和正式材料分别确认，不修改正文、评分或计划；文件不会自动上传给 AI，请提供已校对文字片段。</p>
     <fieldset id="resourceAiFields"><label>待复习文字片段<textarea id="resourceAiContent" rows="5" maxlength="4000"></textarea></label>
+    <div class="ai-action-row"><button type="button" id="resourceAiSaveText" onclick="saveResourceAiText()">保存复习片段</button><span id="resourceAiTextStatus" role="status" aria-live="polite"></span></div>
+    <p class="ai-help">仅保存此片段到当前浏览器，不修改正文或正式复习材料，也不请求 AI；同一浏览器、同一网站地址可恢复，清理浏览器数据后会丢失，不跨设备同步。</p>
     <label>学习目标<select id="resourceAiGoal"><option value="">暂不确定</option><option value="remember">记住事实</option><option value="understand">理解讲清</option><option value="compare">辨析比较</option><option value="practice">独立练习</option><option value="read">只想阅读</option></select></label>
     <label>当前回忆／困难（可选）<textarea id="resourceAiRecall" rows="2" maxlength="4000"></textarea></label>
+    <div class="ai-action-row"><button type="button" id="resourceAiSaveContext" onclick="saveResourceAiContext()">保存学习目标与回忆</button><span id="resourceAiContextStatus" role="status" aria-live="polite"></span></div>
+    <p class="ai-help">可选保存到当前浏览器，重新进入时恢复；可留空或清空后保存。不请求 AI，不改变已确认的复习方式。</p>
     <p id="resourceAiSource"></p><div class="ai-action-row"><button type="button" onclick="coursesAiSettings.open()">AI 设置</button><button type="button" class="ai-primary" id="resourceAiGet" onclick="requestResourceAi()">获取建议（不采用）</button></div></fieldset>
     <p id="resourceAiStatus" role="status"></p><button type="button" class="ai-primary" id="resourceAiAdopt" hidden onclick="adoptResourceAiSuggestion()">一键采用此建议</button><p id="resourceAiError" role="alert" class="mistake-inline-error"></p>
     <label>本次选择<select id="resourceAiMethod"></select></label><div class="ai-action-row"><button type="button" class="ai-primary" id="resourceAiConfirm" onclick="confirmResourceAi()">确认此复习方式</button>
     <button type="button" id="resourceAiPrepare" hidden onclick="prepareResourceAiMaterial()">准备所选模式材料</button><button type="button" id="resourceAiEditMaterial" hidden onclick="prepareResourceAiMaterial()">查看 / 编辑材料</button></div><p id="resourceAiMaterialStatus" role="status"></p><p>重新作答复用已有任务；缺材料时先手动准备。阅读仅记录曝光。</p></details>`;
   host.append(panel);
-  const text=row.content||row.ocr_text||'';document.getElementById('resourceAiContent').value=text.length<=4000?text:'';
+  const text=row.content||row.ocr_text||'';document.getElementById('resourceAiContent').value=readResourceAiText(s)??(text.length<=4000?text:'');
+  document.getElementById('resourceAiContent').addEventListener('input',()=>updateResourceAiTextStatus());
+  updateResourceAiTextStatus();
+  const savedContext=readResourceAiContext(s);
+  if(savedContext){document.getElementById('resourceAiGoal').value=savedContext.goal;document.getElementById('resourceAiRecall').value=savedContext.recall;}
+  document.getElementById('resourceAiGoal').addEventListener('change',()=>updateResourceAiContextStatus());
+  document.getElementById('resourceAiRecall').addEventListener('input',()=>updateResourceAiContextStatus());
+  updateResourceAiContextStatus();
   document.getElementById('resourceAiMethod').replaceChildren(new Option('请选择',''),...Object.entries(AI_SELECTABLE_METHODS).map(([id,label])=>new Option(label,id)));
   document.getElementById('resourceAiMethod').value=readResourceAiMethod(s)||'';
   document.getElementById('resourceAiStatus').textContent=(readResourceAiMethod(s)?'已确认：'+AI_REVIEW_METHODS[readResourceAiMethod(s)]+'。':'尚未确认建议。')+(text.length>4000?'正文超过4000字，请自行选取片段，不会静默截断。':'');

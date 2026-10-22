@@ -8,7 +8,7 @@
 const { db } = require('./connection');
 
 // ===== 当前程序支持的数据库版本 =====
-const CURRENT_DB_VERSION = 23;
+const CURRENT_DB_VERSION = 24;
 
 // 判断某张表是否已经存在
 function tableExists(name) {
@@ -665,6 +665,31 @@ function migrateMindmapImage() {
   } catch (err) { db.exec('ROLLBACK'); throw err; }
 }
 migrateMindmapImage();
+
+// v23 → v24: reconcile BOTH published v23 shapes (mindmap image OR review history).
+// Add missing structures only; existing images, feedback versions and review evidence stay intact.
+function migrateReviewHistory() {
+  if(getUserVersion()!==23)return;
+  db.exec('BEGIN');try{
+    for(const table of ['materials','notes']){
+      const columns=new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(c=>c.name));
+      if(!columns.has('mindmap_image'))db.exec(`ALTER TABLE ${table} ADD COLUMN mindmap_image TEXT NOT NULL DEFAULT ''`);
+    }
+    db.exec(`CREATE TABLE IF NOT EXISTS review_ai_feedback (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      item_type TEXT NOT NULL,item_id INTEGER NOT NULL,history_key TEXT NOT NULL,request_id TEXT NOT NULL,
+      version INTEGER NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,payload_json TEXT NOT NULL,created_at TEXT NOT NULL,
+      UNIQUE(course_id,item_type,item_id,history_key,request_id));
+      CREATE INDEX IF NOT EXISTS idx_review_feedback_scope ON review_ai_feedback(course_id,item_type,item_id,history_key,id);
+      CREATE TABLE IF NOT EXISTS review_reading_history (
+      session_item_id INTEGER PRIMARY KEY REFERENCES review_session_items(id) ON DELETE CASCADE,
+      snapshot_json TEXT NOT NULL,started_at TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS idx_review_attempt_history ON review_mode_attempts(course_id,item_type,item_id,started_at,id);
+      CREATE INDEX IF NOT EXISTS idx_native_review_history ON mistake_review_events(mistake_id,round,id);`);
+    setUserVersion(24);db.exec('COMMIT');
+  }catch(err){db.exec('ROLLBACK');throw err;}
+}
+migrateReviewHistory();
 
 // ===== 建表：Phase 0 的基础结构（version 1）=====
 // 每一张“子表”都用 course_id 指向 courses(id)，

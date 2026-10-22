@@ -105,6 +105,7 @@ function renderMistakeDetail(mistake, review = false) {
   const reviewToolbar = document.getElementById('mistakeReviewToolbar');
   if (reviewToolbar) reviewToolbar.style.display = 'none';
   document.getElementById('mistakeReadPanel').style.display = review ? 'none' : 'block';
+  if(!review&&typeof mountItemReviewHistory==='function')mountItemReviewHistory(document.getElementById('mistakeReadPanel'),'mistake',mistake.id);
   document.getElementById('mistakeReviewPanel').style.display = review ? 'block' : 'none';
   document.getElementById('mistakeEditError').textContent = '';
   if (typeof closeMistakeEdit === 'function' && mistakeEditPending) closeMistakeEdit();

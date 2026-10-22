@@ -30,6 +30,14 @@ try{
    coursesAiSettings.configure({provider:'mock',model:'deepseek-flash',retain:false,auto:false});await requestReviewFeedback();check(reviewFeedbackState.provider==='mock'&&reviewFeedbackState.result.judgment==='uncertain','Mock is explicitly not an evaluation');
    settings();const calls=coursesAiSettings.status().calls;renderWorkbenchAttempt();check(coursesAiSettings.status().calls===calls,'render does not call model');
    await requestReviewFeedback();check(reviewFeedbackState.result&&reviewFeedbackState.provider==='deepseek'&&!reviewFeedbackState.error,'official adapter feedback '+mode+': '+reviewFeedbackState.error);
+   check(reviewFeedbackState.savedVersion===2&&!reviewFeedbackState.savePayload,'Mock and real feedback persist as separate immutable versions');
+   if(mode==='self_explain'){
+   const originalApi=requestApi,callsBefore=coursesAiSettings.status().calls;
+   try{requestApi=async(url,options)=>{if(url.endsWith('/feedback')&&options?.method==='POST')throw Error('synthetic save failure');return originalApi(url,options);};await requestReviewFeedback();}
+   finally{requestApi=originalApi;}
+   check(reviewFeedbackState.saveError&&reviewFeedbackState.savePayload&&wb('Attempt').querySelector('[data-feedback-retry-save]'),'failed persistence exposes a separate save retry');
+   await saveReviewFeedbackHistory();check(reviewFeedbackState.savedVersion===3&&!reviewFeedbackState.savePayload&&coursesAiSettings.status().calls===callsBefore+1,'retry only saves; never requests model twice');
+   }
    check(wb('Attempt').textContent.includes('错误与遗漏')&&wb('Attempt').textContent.includes('解析步骤')&&!wb('Attempt').querySelector('.review-ai-draft img')&&!window.feedbackInjected,'escaped structured explanation');
    check(JSON.stringify(reviewWorkbench.attempt)===original,'feedback cannot mutate attempt');check(JSON.stringify(await api('GET','/review-items/'+type+'/'+row.id+'/state'))===JSON.stringify(stateBefore),'feedback cannot mutate progress');
    if(mode==='cloze')check(reviewWorkbench.attempt.grade===3&&wb('Attempt').textContent.includes('不覆盖原判分'),'alias objective Good preserved despite AI disagreeing');
@@ -46,12 +54,16 @@ try{
  let q=await api('GET','/mistakes/'+open.id+'/review');q=await api('POST','/mistakes/'+open.id+'/review',{action:'start',requestId:'feedback-open-start-${index}',expectedVersion:q.version});
  q=await api('POST','/mistakes/'+open.id+'/review/events',{action:'reveal_answer',firstAnswer:'不会',durationMs:1000,requestId:'feedback-open-answer-${index}',expectedVersion:q.version});
  await openMistakeDetail(open.id,true);check(el('mistakeReviewPanel').querySelector('[data-feedback-generate]'),'native standard feedback entry');settings();await requestReviewFeedback();check(reviewFeedbackState.result&&reviewFeedbackState.input.student_answer==='不会','native standard uses saved independent answer');
+ check(reviewFeedbackState.savedVersion===1,'native feedback saved to actual round');const callsAtRestore=coursesAiSettings.status().calls;
+ await openMistakeDetail(open.id,true);for(let i=0;i<100&&!reviewFeedbackState?.result;i++)await new Promise(r=>setTimeout(r,10));
+ check(reviewFeedbackState.savedVersion===1&&reviewFeedbackState.result&&coursesAiSettings.status().calls===callsAtRestore,'reopening a round restores saved feedback without a model call');
  check(JSON.stringify(await api('GET','/mistakes/'+open.id+'/review'))===JSON.stringify(q),'native manual judgment remains untouched');
  // Native choice engine (also used by retry): existing objective result, no workbench clone.
  const row=await api('POST','/mistakes',{title:'选择重做${index}',content:'1+1=?',answerContent:'2',mistakeType:'execution',questionFormat:'choice',choiceType:'single',options:[{id:'A',text:'1'},{id:'B',text:'2'}],correctOption:'B'});
  let p=await api('GET','/mistakes/'+row.id+'/review');p=await api('POST','/mistakes/'+row.id+'/review',{action:'start',requestId:'feedback-start-${index}',expectedVersion:p.version});
  p=await api('POST','/mistakes/'+row.id+'/review/events',{action:'choose',selectedOption:'B',durationMs:1000,requestId:'feedback-choice-${index}',expectedVersion:p.version});
  await openMistakeDetail(row.id,true);check(el('mistakeReviewPanel').querySelector('[data-feedback-generate]'),'native choice feedback entry');settings();await requestReviewFeedback();check(reviewFeedbackState.result&&reviewFeedbackState.input.objective_result==='correct','native objective feedback uses original engine');
+ check(reviewFeedbackState.savedVersion===1,'choice feedback links to original objective round');
  check(JSON.stringify(await api('GET','/mistakes/'+row.id+'/review'))===JSON.stringify(p),'native grading unchanged');
  check(!JSON.stringify(localStorage).includes('synthetic-feedback-key')&&!JSON.stringify(sessionStorage).includes('synthetic-feedback-key'),'key never persisted');
  check(document.documentElement.scrollWidth<=innerWidth+1,'mobile layout fits');

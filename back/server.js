@@ -1068,6 +1068,22 @@ app.post('/api/courses/:courseId/review-items/:itemType/:itemId/attempts/:attemp
   const s=reviewScope(req);res.json(db.applyReviewAttempt(s.courseId,s.type,s.id,req.params.attemptId,req.body));
 }));
 
+app.get('/api/courses/:courseId/review-items/:itemType/:itemId/history',mistakeApi((req,res)=>{
+  res.set('Cache-Control','no-store');
+  const s=reviewScope(req);res.json(db.listItemReviewHistory(s.courseId,s.type,s.id,req.query));
+}));
+app.post('/api/courses/:courseId/review-items/:itemType/:itemId/history/reading',mistakeApi((req,res)=>{
+  res.set('Cache-Control','no-store');
+  const s=reviewScope(req);res.json(db.startReadingHistory(s.courseId,s.type,s.id,req.body));
+}));
+app.get('/api/courses/:courseId/review-items/:itemType/:itemId/history/:historyKey',mistakeApi((req,res)=>{
+  res.set('Cache-Control','no-store');
+  const s=reviewScope(req);res.json(db.getItemReviewHistory(s.courseId,s.type,s.id,req.params.historyKey,req.query.beforeFeedbackId));
+}));
+app.post('/api/courses/:courseId/review-items/:itemType/:itemId/history/:historyKey/feedback',mistakeApi((req,res)=>{
+  res.set('Cache-Control','no-store');
+  const s=reviewScope(req);res.json(db.saveItemReviewFeedback(s.courseId,s.type,s.id,req.params.historyKey,req.body));
+}));
 app.get('/api/ai/health', aiApi((req, res) => {
   res.json(aiService.health());
 }));

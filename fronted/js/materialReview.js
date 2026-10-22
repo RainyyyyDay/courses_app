@@ -184,6 +184,11 @@ function createReadingReview(kind, label, resumeId, options = {}) {
       const row = await api(queue.ids[queue.index]);
       if (request !== state.request || !current() || state.queue !== queue) return;
       state.row = row; el('Title').textContent = row.title;
+      if(!options.readOnly&&queue.sessionItems?.[row.id]){
+        try{await requestApi(`${API}/courses/${queue.courseId}/review-items/${kind==='notes'?'note':'material'}/${row.id}/history/reading`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionItemId:queue.sessionItems[row.id]})});}
+        catch{if(request===state.request&&current())el('Error').textContent='阅读内容快照未保存，重新加载可重试；不影响原复习操作。';}
+        if(request!==state.request||!current()||state.queue!==queue)return;
+      }
       el('Status').textContent = `当前状态：${row.review_status === 'reviewed' ? '已复习' : '未复习'}`;
       el('Content').textContent = row.content || (row.file_url ? '' : '暂无正文或附件');
       if (row.file_url) {
