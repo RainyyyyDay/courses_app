@@ -23,16 +23,22 @@ function scenario(base,courseId){return `window.COURSES_API_BASE=${JSON.stringif
    closeReviewWorkbench();await pauseCenterReview();
    await openReviewWorkbench('note',id,{mode:'cloze'});
    const bounds=wb('Dialog').getBoundingClientRect();check(bounds.left>=0&&bounds.right<=innerWidth&&bounds.top>=0&&bounds.bottom<=innerHeight,'entire dialog fits viewport');
-   out.dataset.result='passed';out.textContent='visual cloze: selection, undo, safe editing, mobile find, preview, save/reload and alias grading passed';document.body.append(out);return;
+   out.dataset.result='passed';out.textContent='visual cloze: selection, exit, undo, safe editing, mobile find, save/reload and alias grading passed';document.body.append(out);return;
   }
   const row=await api('POST','/notes',{title:'选词挖空',content:'光合作用发生在叶绿体中。叶绿体含有叶绿素。'});
   const original=row.content;
   await openReviewWorkbench('note',row.id,{sourceText:original,mode:'cloze'});
   const source=el('clozeSource');check(source.textContent===original,'prefills full original text');
+  check(el('clozeExitMode').disabled,'exit control is grey before entering cloze mode');
   const select=(node,start,end)=>{source.focus();const r=document.createRange();r.setStart(node,start);r.setEnd(node,end);const s=getSelection();s.removeAllRanges();s.addRange(r);source.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));};
-  const index=source.firstChild.data.indexOf('叶绿体');select(source.firstChild,index,index+3);el('clozeMakeBlank').click();
+  el('clozeMakeBlank').click();
+  check(el('clozeMakeBlank').textContent==='确定'&&el('clozeMakeBlank').disabled&&el('clozeMakeBlank').classList.contains('is-picking'),'first click enters grey continuous picking mode');
+  const index=source.firstChild.data.indexOf('叶绿体');select(source.firstChild,index,index+3);
+  check(!el('clozeMakeBlank').disabled&&el('clozeMakeBlank').classList.contains('is-ready'),'selection lights up confirm');
+  el('clozeMakeBlank').click();
   check(readWorkbenchMaterial().blanks[0].answer==='叶绿体','selection auto-captures answer');
   check(readWorkbenchMaterial().prompt==='光合作用发生在【b1】中。叶绿体含有叶绿素。','only selected occurrence is blanked');
+  check(el('clozeMakeBlank').textContent==='确定'&&el('clozeMakeBlank').disabled,'confirm returns to grey for the next selection');
   check(!el('clozeSettings').open&&wb('Blanks').querySelector('[data-blank=id]').type==='hidden','numbering and advanced settings hidden');
   const chip=source.querySelector('[data-cloze-id]');chip.querySelector('button').click();
   check(el('clozeSettings').open&&wb('Blanks').firstElementChild.open,'chip opens answer settings');
@@ -49,10 +55,12 @@ function scenario(base,courseId){return `window.COURSES_API_BASE=${JSON.stringif
   // Mobile fallback chooses a remaining occurrence without changing the existing one.
   el('clozeFindText').value='叶绿体';el('clozeFindButton').click();check(el('clozeMatches').children.length===1,'find excludes existing chips');el('clozeMatches').firstElementChild.click();
   check(readWorkbenchMaterial().blanks.length===2,'mobile fallback adds second blank');
-  const before=JSON.stringify(readWorkbenchMaterial());el('clozePreviewToggle').click();
-  check(source.hidden&&el('clozePreview').querySelectorAll('input').length===2,'preview displays inline answer inputs');
-  check(!el('clozePreview').textContent.includes('叶绿体'),'preview does not reveal answers');
-  el('clozePreview').querySelector('input').value='试填';check(JSON.stringify(readWorkbenchMaterial())===before,'preview never changes formal answers');el('clozePreviewToggle').click();
+  check(!el('clozeExitMode').disabled,'exit mode is enabled only after entering cloze selection');
+  el('clozeExitMode').click();
+  check(el('clozeExitMode').disabled&&el('clozeMakeBlank').textContent==='选中文字并挖空'&&!source.picking,'exit returns to idle controls');
+  el('clozeFindText').value='叶绿体';el('clozeFindButton').click();check(el('clozeStatus').textContent.includes('进入挖空模式'),'text finder requires cloze mode');
+  el('clozeMakeBlank').click();
+  check(!el('clozeExitMode').disabled&&el('clozeMakeBlank').textContent==='确定','re-enter restores active cloze controls');
   // Backspace adjacent to a chip cancels it and restores text; undo keeps metadata.
   const second=source.querySelectorAll('[data-cloze-id]')[1],r=document.createRange();r.setStartAfter(second);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);
   const deletion=new InputEvent('beforeinput',{inputType:'deleteContentBackward',bubbles:true,cancelable:true});source.dispatchEvent(deletion);
@@ -81,8 +89,8 @@ function scenario(base,courseId){return `window.COURSES_API_BASE=${JSON.stringif
  }catch(error){out.dataset.result='failed';out.textContent=error.stack;document.body.append(out);}
 });`;}
 for(const viewport of [[1280,960],[390,844]])test('visual cloze authoring and existing practice '+viewport.join('x'),{timeout:90000},async()=>fixture(async({base,ids,temp,serve})=>{
- const chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find(fs.existsSync);assert.ok(chrome);
+ const chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].find(fs.existsSync);assert.ok(chrome);
  const screenshot=path.join(os.tmpdir(),'courses-cloze-editor-'+viewport.join('x')+'.png');
- const html=await runBrowser({chrome,profile:path.join(temp,'cloze-profile'),url:await serve(),viewport,screenshot,blockedUrls:['http://localhost:3000/*','http://127.0.0.1:3000/*'],initScript:scenario(base,ids.courseId)});
+ const html=await runBrowser({chrome,profile:path.join(temp,'cloze-profile'),url:await serve(),viewport,screenshot,noSandbox:true,blockedUrls:['http://localhost:3000/*','http://127.0.0.1:3000/*'],initScript:scenario(base,ids.courseId)});
  const result=html.match(/<pre id="regressionResult"[^>]*>[\s\S]*?<\/pre>/)?.[0];assert.match(result||'',/data-result="passed"/,result||html.slice(-2000));console.log('CLOZE_SCREENSHOT '+screenshot);
 },{legacy:false}));

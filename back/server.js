@@ -351,6 +351,18 @@ function readingReviewApi(handler, kind = 'material') {
     }
   };
 }
+function readingRecallBody(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  if (Object.keys(body).length === 1 && Object.keys(body)[0] === 'reviewStatus'
+    && ['reviewed','unreviewed'].includes(body.reviewStatus)) {
+    return {legacy:true,status:body.reviewStatus,recall:body.reviewStatus==='reviewed'?'clear':'forgotten'};
+  }
+  if (Object.keys(body).length === 1 && Object.keys(body)[0] === 'recall'
+    && ['clear','vague','forgotten'].includes(body.recall)) {
+    return {legacy:false,status:body.recall==='clear'?'reviewed':'unreviewed',recall:body.recall};
+  }
+  return null;
+}
 for (const kind of ['material','note']) {
   const plural = kind === 'note' ? 'notes' : 'materials';
   app.patch(`/api/courses/:courseId/${plural}/:${kind}Id`, readingReviewApi((req,res,row) => {
@@ -366,14 +378,17 @@ app.get('/api/courses/:courseId/materials/:materialId/review', readingReviewApi(
   res.json({...row, nodes: db.listMaterialNodes(row.id)});
 }));
 app.patch('/api/courses/:courseId/materials/:materialId/review', readingReviewApi((req, res, row) => {
-  const body = req.body;
-  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'reviewStatus')
-    || !['reviewed','unreviewed'].includes(body.reviewStatus)) return res.status(400).json({code:'INVALID_ARGUMENT', message:'reviewStatus 必须是 reviewed 或 unreviewed'});
+  const body = readingRecallBody(req.body);
+  if (!body) return res.status(400).json({code:'INVALID_ARGUMENT', message:'复习结果必须是 recall: clear / vague / forgotten'});
   const planItemId = planReviewItemId(req);
   const sessionItemId = sessionReviewItemId(req);
-  const updated = sessionItemId !== null ? db.saveSessionReadingReview(sessionItemId,row,'material',body.reviewStatus,db.setMaterialReviewStatus,planItemId)
-    : planItemId === null ? db.setMaterialReviewStatus(row.id, row.course_id, body.reviewStatus)
-    : db.savePlanReadingReview(planItemId,row,'material',body.reviewStatus,db.setMaterialReviewStatus);
+  const updated = body.legacy
+    ? (sessionItemId !== null ? db.saveSessionReadingReview(sessionItemId,row,'material',body.status,db.setMaterialReviewStatus,planItemId)
+      : planItemId === null ? db.setMaterialReviewStatus(row.id, row.course_id, body.status)
+      : db.savePlanReadingReview(planItemId,row,'material',body.status,db.setMaterialReviewStatus))
+    : (sessionItemId !== null ? db.saveSessionRecallReview(sessionItemId,row,'material',body.recall,db.setMaterialReviewStatus,planItemId)
+      : planItemId === null ? db.setMaterialReviewStatus(row.id, row.course_id, body.status)
+      : db.savePlanRecallReview(planItemId,row,'material',body.recall,db.setMaterialReviewStatus));
   res.json({...updated, nodes: db.listMaterialNodes(row.id)});
 }));
 
@@ -381,14 +396,17 @@ app.get('/api/courses/:courseId/notes/:noteId/review', readingReviewApi((req, re
   res.json({...row, nodes: db.listNoteNodes(row.id)});
 }, 'note'));
 app.patch('/api/courses/:courseId/notes/:noteId/review', readingReviewApi((req, res, row) => {
-  const body = req.body;
-  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'reviewStatus')
-    || !['reviewed','unreviewed'].includes(body.reviewStatus)) return res.status(400).json({code:'INVALID_ARGUMENT', message:'reviewStatus 必须是 reviewed 或 unreviewed'});
+  const body = readingRecallBody(req.body);
+  if (!body) return res.status(400).json({code:'INVALID_ARGUMENT', message:'复习结果必须是 recall: clear / vague / forgotten'});
   const planItemId = planReviewItemId(req);
   const sessionItemId = sessionReviewItemId(req);
-  const updated = sessionItemId !== null ? db.saveSessionReadingReview(sessionItemId,row,'note',body.reviewStatus,db.setNoteReviewStatus,planItemId)
-    : planItemId === null ? db.setNoteReviewStatus(row.id, row.course_id, body.reviewStatus)
-    : db.savePlanReadingReview(planItemId,row,'note',body.reviewStatus,db.setNoteReviewStatus);
+  const updated = body.legacy
+    ? (sessionItemId !== null ? db.saveSessionReadingReview(sessionItemId,row,'note',body.status,db.setNoteReviewStatus,planItemId)
+      : planItemId === null ? db.setNoteReviewStatus(row.id, row.course_id, body.status)
+      : db.savePlanReadingReview(planItemId,row,'note',body.status,db.setNoteReviewStatus))
+    : (sessionItemId !== null ? db.saveSessionRecallReview(sessionItemId,row,'note',body.recall,db.setNoteReviewStatus,planItemId)
+      : planItemId === null ? db.setNoteReviewStatus(row.id, row.course_id, body.status)
+      : db.savePlanRecallReview(planItemId,row,'note',body.recall,db.setNoteReviewStatus));
   res.json({...updated, nodes: db.listNoteNodes(row.id)});
 }, 'note'));
 
@@ -1055,6 +1073,24 @@ app.post('/api/ai/outline', (req, res) => {
   if (!outline) return res.status(422).json({ message: '没能从这段正文里提炼出大纲' });
   res.json({ outline });
 });
+
+// BYOK：前端把用户自己的 Key 发到这里，我们转发给 AI 服务（它只认 /api/ai/classify）
+app.post('/api/ai/test', async (req, res) => {
+  const base = String(process.env.AI_API_BASE || 'http://127.0.0.1:3001').replace(/\/+$/, '');
+  try {
+    const upstream = await fetch(`${base}/api/ai/classify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body || {}),
+      signal: AbortSignal.timeout(60000),
+    });
+    const payload = await upstream.json().catch(() => null);
+    if (!payload) return res.status(502).json({ ok: false, error: 'AI_INVALID_RESPONSE' });
+    res.status(upstream.status).json(payload);
+  } catch (err) {
+    res.status(502).json({ ok: false, error: 'AI_UNAVAILABLE', message: err.message });
+  }
+});
 app.get('/api/courses/:courseId/review-items/:itemType/:itemId/materials/:modeId',mistakeApi((req,res)=>{
   const s=reviewScope(req);res.json(db.getReviewMaterial(s.courseId,s.type,s.id,req.params.modeId,req.query.view==='practice'));
 }));
@@ -1129,6 +1165,108 @@ app.post('/api/ocr', upload.single('file'), async (req, res) => {
 
 // 默认只监听本机：接口没有任何鉴权，绑 0.0.0.0 等于把整个数据库暴露给同网段的任何人。
 // 需要让别的机器访问时显式设 HOST=0.0.0.0，并自行承担风险。
+// ===== 导图交接（与导图工具的 courses-handoff 协议对接） =====
+const handoffCrypto = require('node:crypto');
+const handoffs = new Map(); // token -> { courseId, type, id }
+
+function handoffRow(entry) {
+  return entry.type === 'note'
+    ? { row: db.findNote(entry.id), table: 'note' }
+    : { row: db.findMaterial(entry.id), table: 'material' };
+}
+
+function handoffMapId(entry) {
+  return 'courses-' + handoffCrypto.createHash('sha256')
+    .update(`${entry.type}:${entry.id}:${entry.courseId}`).digest('hex').slice(0, 32);
+}
+
+function handoffRevision(row) {
+  return handoffCrypto.createHash('sha256')
+    .update(String(row?.mindmap_json || '') + '\u0000' + String(row?.outline || ''))
+    .digest('hex').slice(0, 32);
+}
+
+app.post('/api/courses/:courseId/:collection/:id/handoff', (req, res) => {
+  if (!['materials', 'notes'].includes(req.params.collection)) return res.status(404).json({ message: '不支持的类型' });
+  const type = req.params.collection === 'notes' ? 'note' : 'material';
+  const courseId = Number(req.params.courseId);
+  const id = Number(req.params.id);
+  const { row } = handoffRow({ type, id });
+  if (!row || row.course_id !== courseId) return res.status(404).json({ message: '内容不存在' });
+  const token = handoffCrypto.randomBytes(32).toString('hex');
+  handoffs.set(token, { courseId, type, id });
+  res.json({ token, bridge: '/api/mindmap-handoffs' });
+});
+
+app.get('/api/mindmap-handoffs/:token', (req, res) => {
+  const entry = handoffs.get(req.params.token);
+  if (!entry) return res.status(404).json({ message: '交接已失效，请从课程页重新打开' });
+  const { row } = handoffRow(entry);
+  if (!row) return res.status(404).json({ message: '内容不存在' });
+  let map = null;
+  try { map = row.mindmap_json ? JSON.parse(row.mindmap_json) : null; } catch { map = null; }
+  res.json({
+    version: 1,
+    mapId: handoffMapId(entry),
+    revision: handoffRevision(row),
+    title: row.title || '思维导图',
+    outline: row.outline || '',
+    map,
+    source: 'courses_app',
+  });
+});
+
+app.put('/api/mindmap-handoffs/:token', (req, res) => {
+  const entry = handoffs.get(req.params.token);
+  if (!entry) return res.status(404).json({ message: '交接已失效，请从课程页重新打开' });
+  const { row } = handoffRow(entry);
+  if (!row) return res.status(404).json({ message: '内容不存在' });
+  const expected = handoffRevision(row);
+  const given = req.body?.revision;
+  if (typeof given === 'string' && given !== expected) {
+    return res.status(409).json({ message: '课程里的内容已更新，请在导图工具里重新打开后再回传' });
+  }
+  if (!req.body?.map || !Array.isArray(req.body.map.nodes)) {
+    return res.status(400).json({ message: '导图数据格式不正确' });
+  }
+  const updated = entry.type === 'note'
+    ? db.setNoteMindmap(row.id, row.course_id, { mindmap_json: JSON.stringify(req.body.map), mindmap_image: '' })
+    : db.setMaterialMindmap(row.id, row.course_id, { mindmap_json: JSON.stringify(req.body.map), mindmap_image: '' });
+  res.json({ revision: handoffRevision(updated) });
+});
+
+// ===== 资料/笔记：更换或清除附件 =====
+function replaceResourceFile(kind, req, res) {
+  const isNote = kind === 'note';
+  const row = isNote ? db.findNote(Number(req.params.id)) : db.findMaterial(Number(req.params.id));
+  if (!row || row.course_id !== Number(req.params.courseId)) {
+    return res.status(404).json({ message: '内容不存在' });
+  }
+  if (!req.file) return res.status(400).json({ message: '请选择要上传的文件' });
+  if (row.file_url) removeUpload(row.file_url);
+  const url = '/uploads/' + req.file.filename;
+  res.json(isNote
+    ? db.setNoteFile(row.id, row.course_id, url, req.file.mimetype)
+    : db.setMaterialFile(row.id, row.course_id, url, req.file.mimetype));
+}
+
+app.put('/api/courses/:courseId/materials/:id/file', upload.single('file'), (req, res) => replaceResourceFile('material', req, res));
+app.put('/api/courses/:courseId/notes/:id/file', upload.single('file'), (req, res) => replaceResourceFile('note', req, res));
+
+app.delete('/api/courses/:courseId/materials/:id/file', (req, res) => {
+  const row = db.findMaterial(Number(req.params.id));
+  if (!row || row.course_id !== Number(req.params.courseId)) return res.status(404).json({ message: '内容不存在' });
+  if (row.file_url) removeUpload(row.file_url);
+  res.json(db.setMaterialFile(row.id, row.course_id, '', ''));
+});
+
+app.delete('/api/courses/:courseId/notes/:id/file', (req, res) => {
+  const row = db.findNote(Number(req.params.id));
+  if (!row || row.course_id !== Number(req.params.courseId)) return res.status(404).json({ message: '内容不存在' });
+  if (row.file_url) removeUpload(row.file_url);
+  res.json(db.setNoteFile(row.id, row.course_id, '', ''));
+});
+
 // ===== 导图回传：只更新大纲/导图字段，不动附件与正文 =====
 function mindmapPayload(body) {
   const payload = {};

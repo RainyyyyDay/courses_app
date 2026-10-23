@@ -29,7 +29,7 @@ test('unified content cards open details without duplicate View or AI buttons',{
    check(document.documentElement.scrollWidth<=innerWidth+1,'long cards fit screen: '+type);
    row.click();await detail(type);
    if(type==='mistake'){el('mistakeAiToggle').click();check(!el('mistakeAiPanel').hidden&&el('mistakeAiToggle').textContent==='AI 复习建议','mistake AI remains in detail');resetMistakeAi();}
-   else {const details=el('resourceAiPanel').querySelector('details');details.querySelector('summary').click();check(details.open,'resource AI remains in detail: '+type);}
+   else check(!el('resourceAiPanel'),'legacy resource AI panel removed from detail: '+type);
    row=await show(type);row.focus();row.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await detail(type);
    row=await show(type);row.focus();const space=new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true});row.dispatchEvent(space);check(space.defaultPrevented,'Space does not scroll');await detail(type);
    row=await show(type);const view=currentView,edit=[...row.querySelectorAll('.mistake-actions button')].find(b=>b.textContent==='编辑');

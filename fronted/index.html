@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>课内</title>
-  <link rel="stylesheet" href="style.css?v=20261023-ai-apply-4" />
+  <link rel="stylesheet" href="style.css?v=20261024-cloze-exit-mode-1" />
 </head>
 <body>
 
@@ -567,6 +567,8 @@
           </div>
         </section>
 
+        <section id="mistakeEditReviewModeHost" class="edit-card review-method-card"></section>
+
         <section class="edit-card">
           <div class="edit-card-head">
             <span class="edit-card-icon">🔖</span>
@@ -783,6 +785,7 @@
             <textarea id="tagPickerOutline" rows="6" placeholder="- 第一章&#10;  - 1.1 极限&#10;  - 1.2 连续"></textarea>
           </div>
         </section>
+        <section id="tagPickerReviewModeHost" class="edit-card review-method-card" style="display:none;"></section>
         <section id="tagPickerMindmapBlock" class="edit-card" style="display:none;">
           <div class="edit-card-head">
             <span class="edit-card-icon">🗺️</span>
@@ -1120,8 +1123,8 @@
   <script src="js/config.js"></script>
   <script src="js/state.js"></script>
   <script src="js/utils.js?v=20261021-confirm-layer-1"></script>
-  <script src="js/ai.js?v=20261023-global-presets-8"></script>
-  <script src="js/aiSettings.js?v=20261023-current-models-12"></script>
+  <script src="js/ai.js?v=20261024-ai-context-2"></script>
+  <script src="js/aiSettings.js?v=20261024-ai-draft-accept-1"></script>
 
   <!-- 课程 -->
   <script src="js/courses.js"></script>
@@ -1130,43 +1133,75 @@
   <!-- 四类资源（列表页） -->
   <script src="js/tags.js"></script>
   <script src="js/readingBrowse.js"></script>
-  <script src="js/materials.js?v=20261021-cards-4"></script>
-  <script src="js/notes.js?v=20261021-cards-4"></script>
+  <script src="js/materials.js?v=20261024-review-mode-1"></script>
+  <script src="js/notes.js?v=20261024-review-mode-1"></script>
   <script src="js/assessments.js"></script>
   <script src="js/ocrBrowser.js"></script>
-  <script src="js/outlineMap.js"></script>
+  <script src="js/outlineMap.js?v=20261024-handoff-autorefresh-1"></script>
   <script src="js/mistakes.js?v=20261021-cards-4"></script>
 
   <!-- 录入流程：手动输入 + 选标签 -->
-  <script src="js/manualEntry.js"></script>
-  <script src="js/tagPicker.js?v=20261021-settings-2"></script>
-  <script src="js/tagPickerView.js"></script>
+  <script src="js/manualEntry.js?v=20261024-review-mode-1"></script>
+  <script src="js/tagPicker.js?v=20261024-ai-draft-accept-2"></script>
+  <script src="js/tagPickerView.js?v=20261024-collapse-3"></script>
 
   <!-- 详情页 -->
   <script src="js/page.js?v=20261022-history-1"></script>
   <script src="js/itemReviewHistory.js?v=20261023-domestic-presets-7"></script>
   <script src="js/nodeDetail.js"></script>
-  <script src="js/resourceDetail.js?v=20261022-history-1"></script>
-  <script src="js/materialReview.js?v=20261022-history-1"></script>
+  <script src="js/resourceDetail.js?v=20261024-upload-mindmap-1"></script>
+  <script src="js/materialReview.js?v=20261024-auto-mode-2"></script>
   <script src="js/noteReview.js"></script>
-  <script src="js/mistakeDetail.js?v=20261022-history-1"></script>
-  <script src="js/mistakeAi.js?v=20261023-ai-source-json-6"></script>
+  <script src="js/mistakeDetail.js?v=20261024-auto-mode-2"></script>
+  <script src="js/mistakeAi.js?v=20261024-ai-context-2"></script>
   <script src="js/mistakeAnswerAi.js?v=20261023-global-presets-8"></script>
-  <script src="js/resourceAi.js?v=20261023-global-presets-8"></script>
-  <script src="js/clozeEditor.js?v=20261023-1"></script>
-  <script src="js/reviewWorkbench.js?v=20261023-ai-source-json-6"></script>
+  <script src="js/resourceAi.js?v=20261024-ai-context-2"></script>
+  <script src="js/reviewMethodChoice.js?v=20261024-ai-draft-accept-2"></script>
+  <script src="js/clozeEditor.js?v=20261024-cloze-exit-mode-1"></script>
+  <script src="js/reviewWorkbench.js?v=20261024-ai-draft-accept-2"></script>
   <script src="js/reviewFeedback.js?v=20261023-global-presets-8"></script>
-  <script src="js/reviewMaterialAi.js?v=20261023-global-presets-8"></script>
+  <script src="js/reviewMaterialAi.js?v=20261024-ai-draft-accept-2"></script>
   <dialog id="mistakeAiDialog" aria-labelledby="mistakeAiDialogTitle" oncancel="event.preventDefault();resetMistakeAi()" onclick="if(event.target===this)resetMistakeAi()">
     <header class="mistake-ai-dialog-head"><div><h2 id="mistakeAiDialogTitle" tabindex="-1">AI 复习建议</h2><p id="mistakeAiDialogQuestionTitle" class="mistake-ai-note"></p></div><button type="button" class="tag-sheet-close" onclick="resetMistakeAi()" aria-label="关闭 AI 复习建议">×</button></header>
     <div id="mistakeAiDialogBody" class="tag-sheet-body"></div>
     <footer id="mistakeAiDialogFoot" class="tag-sheet-foot"></footer>
   </dialog>
-  <script src="js/mistakeQueue.js"></script>
+  <dialog id="creationModeAdviceDialog" class="creation-mode-advice-dialog" aria-labelledby="creationModeAdviceHeading" oncancel="event.preventDefault();closeCreationReviewSuggestion()" onclick="if(event.target===this)closeCreationReviewSuggestion()">
+    <header class="mistake-ai-dialog-head"><div><h2 id="creationModeAdviceHeading" tabindex="-1">AI 建议复习方式</h2><p class="mistake-ai-note">点击本入口即表示允许读取当前正文和附件，并发送给 AI；不会自动保存 OCR 或采用建议。</p></div><button type="button" class="tag-sheet-close" onclick="closeCreationReviewSuggestion()" aria-label="关闭 AI 建议">×</button></header>
+    <div class="tag-sheet-body creation-mode-advice-body">
+      <p id="creationModeAdviceStatus" role="status" aria-live="polite"></p>
+      <progress id="creationModeAdviceProgress" aria-label="正在读取和分析"></progress>
+      <div class="creation-mode-advice-context">
+        <label>你的复习目标
+          <select id="creationModeAdviceGoal" onchange="invalidateCreationAdviceResult()">
+            <option value="">暂时不确定</option>
+            <option value="remember">记住事实和细节</option>
+            <option value="understand">理解并讲清</option>
+            <option value="compare">辨析易混内容</option>
+            <option value="practice">独立练习</option>
+            <option value="read">只想阅读熟悉</option>
+          </select>
+        </label>
+        <label>补充说明（可选）
+          <textarea id="creationModeAdviceExtra" rows="3" maxlength="2000" oninput="invalidateCreationAdviceResult()" placeholder="例如：我总把这两个概念混淆；老师要求能举例；我只想快速看一遍……"></textarea>
+        </label>
+        <p class="mistake-ai-note">AI 会综合当前内容、你的目标和补充说明判断模式；错题还会参考题型、分类、答案解析和错因。</p>
+      </div>
+      <section id="creationModeAdviceResult" class="creation-mode-advice-result" hidden>
+        <h3 id="creationModeAdviceTitle"></h3>
+        <p id="creationModeAdviceReason"></p>
+        <p id="creationModeAdviceSource" class="mistake-ai-note"></p>
+      </section>
+    </div>
+    <footer class="tag-sheet-foot">
+      <div class="modal-actions"><button type="button" class="btn-cancel" onclick="closeCreationReviewSuggestion()">关闭</button><button type="button" id="creationModeAdviceRetry" onclick="retryCreationReviewSuggestion()" hidden>重新读取</button><button type="button" class="btn-primary" id="creationModeAdviceAnalyze" onclick="analyzeCreationReviewAdvice()" hidden>分析复习方式</button><button type="button" class="btn-primary" id="creationModeAdviceAdopt" onclick="adoptCreationReviewSuggestion()" hidden>采用建议</button></div>
+    </footer>
+  </dialog>
+  <script src="js/mistakeQueue.js?v=20261024-auto-mode-2"></script>
   <script src="js/courseSearch.js"></script>
   <script src="js/reviewPicker.js"></script>
   <script src="js/reviewPlans.js"></script>
-  <script src="js/reviewCenter.js?v=20261021-rename-1"></script>
+  <script src="js/reviewCenter.js?v=20261024-auto-mode-3"></script>
 
   <!-- 知识框架 -->
   <script src="js/knowledgeTree.js"></script>

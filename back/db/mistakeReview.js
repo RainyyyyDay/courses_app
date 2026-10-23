@@ -189,8 +189,8 @@ function applyMistakeReview(id, body, startOnly = false, planItemId = null, sess
     } else if (operation.action === 'recall') {
       firstAnswer=operation.firstAnswer;answerRevealed=true;
       recall = operation.recall;
-      stage = recall === 'forgotten' ? 'completed' : 'answer';
-      if (recall === 'forgotten') { status = 'unreviewed'; result = 'forgotten'; }
+      // 清楚/模糊/不记得都先展示答案；最终只有明确判断正确或已掌握才算通过。
+      stage = 'answer';
     } else if (operation.action === 'reveal_answer') {
       firstAnswer=operation.firstAnswer;answerRevealed=true;
       stage = 'answer';

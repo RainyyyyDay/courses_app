@@ -7,14 +7,14 @@ const recommend=(row,explicit,ai)=>context.recommendReviewMode('mistake',row,exp
 const row=type=>({mistake_type:type,question_format:'open',question_format_confirmed:1});
 test('rules choose usable native engines without AI; all categories have an escape path',()=>{
   for(const type of ['knowledge','thinking','unclassified'])assert.equal(recommend(row(type)).mode,'standard');
-  assert.equal(recommend(row('execution')).mode,'retry');
+  assert.equal(recommend(row('execution')).mode,'standard');
   assert.ok(recommend(row('knowledge')).alternatives.includes('cloze'));
   for(const mode of ['standard','self_explain','contrast','retry'])assert.ok(recommend(row('thinking')).alternatives.includes(mode));
   assert.ok(recommend(row('execution')).alternatives.includes('standard'));
   for(const type of ['knowledge','thinking','execution','unclassified']){
     assert.equal(recommend({...row(type),question_format_confirmed:0}).mode,'standard');
-    assert.equal(recommend({...row(type),question_format:'choice',options_json:'bad JSON'}).mode,type==='execution'?'retry':'standard');
-    assert.equal(recommend({...row(type),question_format:'choice',options_json:'[{"id":"A","text":"a"},{"id":"B","text":"b"}]',choice_ready:1}).mode,'choice_reproduction');
+    assert.equal(recommend({...row(type),question_format:'choice',options_json:'bad JSON'}).mode,'standard');
+    assert.equal(recommend({...row(type),question_format:'choice',options_json:'[{"id":"A","text":"a"},{"id":"B","text":"b"}]',choice_ready:1}).mode,'standard');
   }
 });
 test('current explicit choice wins over confirmed AI, which wins over rules; invalid legacy suggestions are ignored',()=>{

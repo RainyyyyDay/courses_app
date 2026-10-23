@@ -3,7 +3,7 @@
 const fs=require('node:fs');
 const {spawn}=require('node:child_process');
 
-async function runBrowser({chrome,profile,url,viewport,screenshot,noSandbox,initScript,blockedUrls}) {
+async function runBrowser({chrome,profile,url,viewport,screenshot,noSandbox,initScript,blockedUrls,timeoutMs=120000,returnOnTimeout=false}) {
   const browser=spawn(chrome,['--headless=new','--disable-gpu','--no-first-run','--no-default-browser-check',
     ...(noSandbox ? ['--no-sandbox','--disable-software-rasterizer'] : []),
     '--remote-debugging-port=0','--user-data-dir='+profile,'--window-size='+viewport.join(','),'about:blank'],{windowsHide:true});
@@ -34,7 +34,7 @@ async function runBrowser({chrome,profile,url,viewport,screenshot,noSandbox,init
     if(initScript){await page('Page.enable');await page('Page.addScriptToEvaluateOnNewDocument',{source:initScript});}
     if(blockedUrls){await page('Network.enable');await page('Network.setBlockedURLs',{urls:blockedUrls});}
     await page('Page.navigate',{url});
-    const deadline=Date.now()+120000;
+    const deadline=Date.now()+timeoutMs;
     while(Date.now()<deadline) {
       try {
         const {result}=await page('Runtime.evaluate',{expression:"document.getElementById('regressionResult') ? document.documentElement.outerHTML : null",returnByValue:true});
@@ -46,6 +46,7 @@ async function runBrowser({chrome,profile,url,viewport,screenshot,noSandbox,init
       await new Promise(resolve=>setTimeout(resolve,100));
     }
     const {result}=await page('Runtime.evaluate',{expression:'document.documentElement.outerHTML',returnByValue:true});
+    if(returnOnTimeout)return result.value;
     throw new Error('Browser scenarios timed out: '+String(result.value).slice(-4000));
   }finally {
     for(const request of pending.values()){clearTimeout(request.timeout);request.reject(new Error('Browser closed'));}pending.clear();

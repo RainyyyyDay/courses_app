@@ -20,6 +20,8 @@
 
 正常网站右下角新增“AI 设置”，错题建议与答案/解析草稿共用标签页内临时 Key。保留 Key 和保存新错题后的自动分析均需显式同意；自动分析默认关闭，只生成待确认的内存草稿。未实现账户登录、永久 Key 或主后端整合，Python 继续复用已有权限依赖。范围、安全边界、宿主身份钩子及验收见 [第二轮说明](../docs/ai-settings-round-two.md)。下文“未做统一设置”等为此前记录，以本节为当前状态。
 
+上传/编辑资料、笔记或错题的新增入口使用 `POST /api/ai/review-mode-advice`。请求 `input` 为 `{kind:"material|note|mistake",title,content,goal?,extra_context?,mistake_type?}`；前端会先把当前正文和附件 OCR 合并，最多发送 4000 字，并额外提交用户选择的目标和最多 2000 字补充说明。响应仍为待人工采用的 `{provider,result:{review_method,reason,needs_review:true}}`，模型只能返回 `cloze/self_explain/reading/contrast/retry`；标准复习是系统固定兜底。该路由不读取数据库、不自动采用、不保存材料或评分。
+
 ## 可选按钮：生成参考答案与解析草稿（2026-10-21）
 
 入口在新增错题、编辑错题的“解析 / 错因”输入区下方，按钮为“AI 生成答案与解析（可选）”。默认折叠，不要求使用；展开后选 DeepSeek 官方、输入临时 Key 并确认费用，再点击“生成草稿（不保存）”。Mock 只演示流程，明确不提供本题答案，不能把它当成真实解答。图片题先手工或 OCR 校对题干，不自动读取/上传附件。修改了 Python 路由，使用前须重启 3002，再 Ctrl+F5。

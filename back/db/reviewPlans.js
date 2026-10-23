@@ -133,5 +133,16 @@ function savePlanReadingReview(planItemId,row,type,status,setStatus) {
     db.exec('COMMIT'); return updated;
   } catch(err) { db.exec('ROLLBACK'); throw err; }
 }
+function savePlanRecallReview(planItemId,row,type,recall,setStatus) {
+  db.exec('BEGIN');
+  try {
+    const item = reviewPlanContext(planItemId,row.course_id,type,row.id);
+    if(!['clear','vague','forgotten'].includes(recall)) planError(400,'INVALID_ARGUMENT','回忆结果不合法');
+    const updated = setStatus(row.id,row.course_id,recall==='clear'?'reviewed':'unreviewed');
+    // 只有清楚回忆才算完成计划任务；模糊/不记得保留任务，之后再复习。
+    if(recall==='clear') completePlanItem(item);
+    db.exec('COMMIT'); return updated;
+  } catch(err) { db.exec('ROLLBACK'); throw err; }
+}
 module.exports = {listPlanCandidates,listReviewPlans,getReviewPlan,listPlanItems,createReviewPlan,updateReviewPlan,deleteReviewPlan,
-  reviewPlanContext,completePlanItem,savePlanReadingReview};
+  reviewPlanContext,completePlanItem,savePlanReadingReview,savePlanRecallReview};

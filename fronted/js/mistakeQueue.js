@@ -291,7 +291,8 @@ function renderMistakeQueueBanner() {
   const pending = mistakeStorageGet(mistakePendingKey(state)) || state.pending;
   // 最后一题不再有「下一题 / 完成」按钮：判完自动收尾。
   const last = mistakeQueue.index + 1 === mistakeQueue.ids.length;
-  box.innerHTML = `<strong>第 ${mistakeQueue.index + 1} / ${mistakeQueue.ids.length} 题</strong> · 已完成 ${mistakeQueue.index + (completed ? 1 : 0)} 题
+  const modeName = p?.mode?.name || AI_REVIEW_METHODS[readReviewAiMethod({courseId:mistakeQueue.courseId,type:'mistake',id:state.id})] || '标准复习';
+  box.innerHTML = `<strong>第 ${mistakeQueue.index + 1} / ${mistakeQueue.ids.length} 条</strong> · 已处理 ${mistakeQueue.index + (completed ? 1 : 0)} 条 · 错题 · ${escapeHtml(modeName)}
     <div class="mistake-toolbar">${last ? '' : `<button id="mistakeQueueNext" onclick="nextMistakeQueueItem()" ${!completed || pending || mistakeReviewBusy || mistakeQueueLoading ? 'disabled' : ''}>下一题</button>`}<button onclick="pauseMistakeQueue()">返回列表，稍后继续</button><button onclick="endMistakeQueue()">结束本轮</button></div>${p && !valid ? '<p class="mistake-inline-error">本题已改变分类或缺少内容，请退出并补齐；不会自动跳过。</p>' : ''}`;
 }
 async function nextMistakeQueueItem() {
@@ -479,8 +480,8 @@ async function startMistakeCompleteConfetti(perfect) {
   stopMistakeCompleteConfetti();
   const css = document.getElementById('mistakeCompleteConfetti');
   if (!perfect || !css) return;
-  // 系统开了「减少动态效果」就什么都不放。
-  if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  // 完成庆祝是用户明确期待的反馈：即使系统开了「减少动态效果」也照常放，
+  // 只是时长由动画本身控制（这条之前会静默吞掉彩带）。
   const lib = document.getElementById('mistakeLibConfetti');
   if (typeof confetti === 'function' && lib) {
     try {

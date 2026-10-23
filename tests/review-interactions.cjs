@@ -5,7 +5,7 @@ async function reviewInteractionChecks(courseId){
   const row=await api('POST','/mistakes',{title:'七模式路径验证',content:'中国的首都是？2+2=?',answerContent:'北京，4',mistakeType:'thinking',questionFormat:'open'});
   const identity={courseId,id:row.id};
   check(recommendReviewMode('mistake',row).mode==='standard','thinking deterministic fallback');
-  check(recommendReviewMode('mistake',{...row,mistake_type:'execution'}).mode==='retry','execution deterministic retry');
+  check(recommendReviewMode('mistake',{...row,mistake_type:'execution'}).mode==='standard','unselected execution uses standard fallback');
   check(recommendReviewMode('mistake',{...row,mistake_type:'knowledge'}).mode==='standard','knowledge deterministic standard');
   check(recommendReviewMode('mistake',{...row,question_format_confirmed:0,mistake_type:'execution'}).mode==='standard','unconfirmed format is not guessed');
   check(recommendReviewMode('mistake',row,'reading','cloze').mode==='reading','explicit selection beats confirmed AI');

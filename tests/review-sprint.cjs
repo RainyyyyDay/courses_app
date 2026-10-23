@@ -174,8 +174,10 @@ function scenario(base,courseId){return `window.COURSES_API_BASE=${JSON.stringif
     addReviewBlank();removeReviewBlank(wb('Blanks').lastElementChild.querySelector('button'));check(wb('Blanks').children.length===1,'manual add/remove blank');
     await saveWorkbenchMaterial();check(!reviewWorkbench&&!wb('Dialog').open&&[...document.querySelectorAll('.toast')].some(n=>n.textContent==='保存成功'),'manual material save closes preparation dialog with success toast');
     await openReviewWorkbench('note',note.id);check(reviewWorkbench.version===1&&!wb('Error').textContent,'saved materials reopen without losing input');
-    const original=wb('Prompt').value;await requestWorkbenchDraft();check(wb('Prompt').value===original&&reviewWorkbench.aiDraft,'AI generates separate draft without overwrite');
-    await adoptWorkbenchDraft(false);check(wb('Prompt').value===original,'fill-empty preserves manual prompt');undoWorkbenchDraft();
+    const original=wb('Prompt').value;await requestWorkbenchDraft();
+    check(reviewWorkbench.aiDraft&&wb('Draft').querySelectorAll('button').length===2,'AI draft enters editable form with adopt/reject');
+    [...wb('Draft').querySelectorAll('button')].find(button=>button.textContent==='不采纳').click();
+    check(wb('Prompt').value===original,'reject restores original prompt');
     const bounds=wb('Dialog').getBoundingClientRect();check(bounds.left>=0&&bounds.right<=innerWidth+1&&bounds.top>=0&&bounds.bottom<=innerHeight+1,'workbench fits viewport');
     closeReviewWorkbench();await openReviewWorkbench('note',note.id);check(wb('Prompt').value===original,'saved materials reopen');closeReviewWorkbench();
     const second=await api('POST','/courses/${courseId}/notes',{title:'隔离另一条',content:'不同材料'});await openReviewWorkbench('note',second.id);

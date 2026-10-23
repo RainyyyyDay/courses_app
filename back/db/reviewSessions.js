@@ -180,6 +180,22 @@ function saveSessionReadingReview(sessionItemId,row,type,status,setStatus,planIt
     db.exec('COMMIT');return result;
   } catch(err) {db.exec('ROLLBACK');throw err;}
 }
+function saveSessionRecallReview(sessionItemId,row,type,recall,setStatus,planItemId=null) {
+  db.exec('BEGIN');
+  try {
+    const item=reviewSessionContext(sessionItemId,row.course_id,type,row.id,planItemId);
+    if(!['clear','vague','forgotten'].includes(recall)) planError(400,'INVALID_ARGUMENT','回忆结果不合法');
+    if(item.status==='completed') {db.exec('COMMIT');return row;} // 响应丢失重试，不再改写历史或内容。
+    assertSessionItemWritable(item);
+    const passed=recall==='clear';
+    const task=item.plan_item_id ? reviewPlanContext(item.plan_item_id,row.course_id,type,row.id) : null;
+    const result=setStatus(row.id,row.course_id,passed?'reviewed':'unreviewed');
+    completeSessionItem(item,null,null,passed?'passed':'failed');
+    db.prepare('UPDATE review_session_items SET exposure_only=0 WHERE id=?').run(item.id);
+    if(task && passed) completePlanItem(task);
+    db.exec('COMMIT');return result;
+  } catch(err) {db.exec('ROLLBACK');throw err;}
+}
 function changeReviewSession(courseId,id,action,body={}) {
   if(!body || typeof body!=='object' || Array.isArray(body) || Object.keys(body).some(key=>key!=='position')) planError(400,'INVALID_ARGUMENT','会话操作参数不合法');
   db.exec('BEGIN');
@@ -219,4 +235,4 @@ function listSessionCandidates(courseId) {
   return [['material',listMaterials(courseId)],['note',listNotes(courseId)],['mistake',listMistakes(courseId)]].flatMap(([type,rows])=>rows.map(row=>({...row,type,nodes:row.nodes || row.knowledge || [],reviewable:canReview(type,row) ? 1 : 0})));
 }
 module.exports={listReviewSessions,getReviewSession,renameReviewSession,createReviewSession,repeatReviewSession,reviewSessionContext,assertSessionItemWritable,
-  completeSessionItem,touchReviewSession,saveSessionReadingReview,changeReviewSession,skipReviewSessionItem,listSessionCandidates};
+  completeSessionItem,touchReviewSession,saveSessionReadingReview,saveSessionRecallReview,changeReviewSession,skipReviewSessionItem,listSessionCandidates};

@@ -8,7 +8,7 @@ test('resource AI suggestions reach real inline material and note practice',{tim
     const before=snapshot();
     const chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find(fs.existsSync);assert.ok(chrome);
     for(const [index,viewport]of [[1280,960],[390,844]].entries()){
-      const script=`window.COURSES_API_BASE=${JSON.stringify(base)};addEventListener('load',async()=>{
+      const script=`window.COURSES_API_BASE=${JSON.stringify(base)};window.COURSES_SHOW_LEGACY_RESOURCE_AI=true;addEventListener('load',async()=>{
  const out=document.createElement('pre');out.id='regressionResult';const el=id=>document.getElementById(id),check=(v,m)=>{if(!v)throw Error(m);};
  const c=${ids.courseId},api=async(method,url,body)=>{const r=await requestApi(API+'/courses/'+c+url,{method,...(body?{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});if(!r.ok)throw Error('test API '+r.status);return r.json();};
  try{

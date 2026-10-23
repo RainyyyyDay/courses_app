@@ -48,6 +48,12 @@ function setNoteMindmap(id, courseId, fields) {
   return findNote(id);
 }
 
+function setNoteFile(id, courseId, fileUrl, fileType) {
+  db.prepare('UPDATE notes SET file_url = ?, file_type = ? WHERE id = ? AND course_id = ?')
+    .run(fileUrl || '', fileType || '', id, courseId);
+  return findNote(id);
+}
+
 // 新建笔记；nodeIds 可选，不传就是原来那条“没有标签”的笔记
 // content 是“手动输入”的正文；上传文件录入时传空字符串
 function createNote(courseId, title, fileUrl, fileType, source, nodeIds, content, outline, mindmapJson, mindmapImage) {
@@ -167,6 +173,7 @@ module.exports = {
   setNoteReviewStatus,
   setNoteFavorite,
   setNoteMindmap,
+  setNoteFile,
   renameNote,
   deleteNote,
   listNoteNodes,

@@ -20,14 +20,13 @@ test('material AI shared settings produce editable drafts and reuse confirmed pr
    wb('Editor').querySelector('.review-ai-generator').open=true;
    coursesAiSettings.configure({provider:'deepseek',model:'deepseek-flash',apiKey:'synthetic-material-key',retain:true,consent:true,auto:false});
    await requestWorkbenchDraft(true);
-   check(reviewWorkbench.aiDraftReal&&wb('DraftPrompt')&&wb('DraftAccept')&&!reviewWorkbench.attempt&&wb('Prompt').value===original,'real draft preview neither overwrites nor starts');
-   check(reviewWorkbench.inline&&!wb('Dialog').open&&wb('DraftAccept').getBoundingClientRect().width===16,'styled draft stays inline with visible compact consent control');
+   check(reviewWorkbench.aiDraftReal&&wb('Draft')&&!reviewWorkbench.attempt&&wb('Prompt').value!==original,'real draft preview fills the editable form without starting');
+   check(reviewWorkbench.inline&&!wb('Dialog').open&&wb('Draft').querySelectorAll('button').length===2,'styled draft stays inline with only adopt/reject controls');
    check(getComputedStyle(wb('Editor').querySelector('[data-material-ai-generate]')).backgroundColor==='rgb(74, 108, 247)','generation uses existing blue primary style');
-   await adoptWorkbenchDraft(false);check(wb('Error').textContent.includes('勾选')&&wb('Prompt').value===original,'real draft adoption requires confirmation');
-   if(mode==='cloze')wb('Prompt').value='';
-   if(wb('DraftReference'))wb('DraftReference').value='北京是首都；人工编辑过的要点';
-   wb('DraftAccept').checked=true;await adoptWorkbenchDraft(false);
-   check(mode==='cloze'?wb('Blanks').querySelector('[data-blank=answer]').value==='北京':wb('Reference').value.includes('人工编辑'),'edited draft enters only explicitly selected empty fields');
+   if(mode==='cloze')wb('Blanks').querySelector('[data-blank=answer]').value='北京';
+   if(wb('Reference'))wb('Reference').value='北京是首都；人工编辑过的要点';
+   adoptWorkbenchGeneratedMaterial();
+   check(wb('Draft').textContent.includes('已采纳'),'main editable draft is adopted explicitly');
    await saveWorkbenchMaterial(true);check(reviewWorkbench.attempt?.modeId===mode,'confirmed material starts existing selected engine');
    if(mode==='cloze'){wb('Attempt').querySelector('[data-review-blank]').value='北京市';await submitWorkbenchAttempt('submit');check(reviewWorkbench.attempt.grade===3,'existing alias objective grading reused');}
    else {wb('Answer')&&(wb('Answer').value='我的独立讲解');if(mode==='contrast')for(const n of wb('Attempt').querySelectorAll('[data-contrast-field]'))n.value='我的独立比较';await submitWorkbenchAttempt('submit');await submitWorkbenchAttempt('judge',2);check(reviewWorkbench.attempt.grade===2,'existing open grading cap reused');}
@@ -37,7 +36,7 @@ test('material AI shared settings produce editable drafts and reuse confirmed pr
    check(wb('Error').textContent&&JSON.stringify(readWorkbenchMaterial())===JSON.stringify(prior),'upstream failure preserves form and does not silently mock');
    wb('Prompt').value='INSUFFICIENT';await requestWorkbenchDraft(true);check(!reviewWorkbench.aiDraft&&wb('Draft').textContent.includes('补充比较对象'),'insufficient source explains missing information without fabricated material');
    wb('Prompt').value='北京是首都';const pending=requestWorkbenchDraft(true);coursesAiSettings.clear();await pending;check(!reviewWorkbench.aiDraft,'clearing settings cancels pending generation');
-   const calls=coursesAiSettings.status().calls;await requestWorkbenchDraft(true);check(coursesAiSettings.status().calls===calls&&wb('Error').textContent.includes('Key'),'missing key blocks before model request');
+   const calls=coursesAiSettings.status().calls;await requestWorkbenchDraft(true);check(coursesAiSettings.status().calls===calls&&wb('Error').textContent.includes('AI API'),'missing API blocks before model request');
    closeReviewWorkbench();
   }
   check(!JSON.stringify(localStorage).includes('synthetic-material-key')&&!JSON.stringify(sessionStorage).includes('synthetic-material-key'),'key never persisted');

@@ -15,9 +15,10 @@ function createReadingReview(kind, label, resumeId, options = {}) {
         || saved.ids.some(id => !Number.isSafeInteger(id) || id < 1) || new Set(saved.ids).size !== saved.ids.length
         || !Number.isInteger(saved.index) || saved.index < 0 || saved.index > saved.ids.length || !saved.results || typeof saved.results !== 'object') return null;
       saved.kind = kind;
-      saved.skipped ||= saved.ids.slice(0,saved.index).filter(id=>saved.results[id] !== 'reviewed');
-      for (const id of Object.keys(saved.results)) if (saved.results[id] !== 'reviewed') delete saved.results[id];
-      if (saved.pending?.status !== 'reviewed') saved.pending = null;
+      saved.skipped ||= saved.ids.slice(0,saved.index).filter(id=>!saved.results[id]);
+      for (const id of Object.keys(saved.results)) if (!['reviewed','clear','exposed','vague','forgotten'].includes(saved.results[id])) delete saved.results[id];
+      if (!['reviewed','clear','exposed','vague','forgotten'].includes(saved.pending?.status)) saved.pending = null;
+      if (!['vague','forgotten'].includes(saved.recallAgain?.status)) saved.recallAgain = null;
       return saved;
     } catch { return null; }
   }
@@ -114,7 +115,7 @@ function createReadingReview(kind, label, resumeId, options = {}) {
       sessionId:options.sessionId || null,sessionItems:options.sessionItems || null};
     store(state.queue); await state.show();
   };
-  const successes = () => 0; // This legacy reader records exposure, not retrieval mastery.
+  const successes = () => Object.values(state.queue?.results || {}).filter(value=>value==='reviewed'||value==='clear').length;
   state.start = async () => {
     const s = state.selection;
     if (!s || !s.ids.size || s.loading || state.busy) return;
@@ -151,21 +152,54 @@ function createReadingReview(kind, label, resumeId, options = {}) {
     if(status && options.planItems)params.set('planItemId',options.planItems[id]);
     if(status && state.queue.sessionItems?.[id])params.set('sessionItemId',state.queue.sessionItems[id]);
     const context=params.size ? '?'+params : '';
-    const response = await requestApi(`${API}/courses/${courseId}/${kind}/${id}/review${context}`, status ? {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewStatus:status})} : undefined);
+    const exposure=status==='exposure';
+    const recall=status==='reviewed'?'clear':status;
+    const response = await requestApi(`${API}/courses/${courseId}/${kind}/${id}/review${context}`,
+      status ? {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(exposure?{reviewStatus:'reviewed'}:{recall})} : undefined);
     const row = await response.json();
-    if (row.id !== id || row.course_id !== courseId || !['reviewed','unreviewed'].includes(row.review_status) || status && row.review_status !== status) throw new Error(`${label}复习响应无效，请重新确认`);
+    const expected=(exposure||recall==='clear')?'reviewed':'unreviewed';
+    if (row.id !== id || row.course_id !== courseId || !['reviewed','unreviewed'].includes(row.review_status) || status && row.review_status !== expected) throw new Error(`${label}复习响应无效，请重新确认`);
     return row;
+  };
+  const reviewModeForRow = row => {
+    if(!row||typeof workbenchSelection!=='function')return 'standard';
+    try{
+      const context={courseId:state.queue.courseId,type:kind==='notes'?'note':'material',
+        id:row.id,row,sessionId:state.queue.sessionId,sessionItemId:state.queue.sessionItems?.[row.id]};
+      return readReviewActive(context)?.mode||workbenchSelection(context).mode;
+    }catch{return 'standard';}
+  };
+  const reviewProgressText = row => {
+    const inCenter=!!(options.sessionId&&typeof centerReview!=='undefined'&&centerReview?.session?.id===options.sessionId);
+    const session=inCenter?centerReview.session:null;
+    const current=inCenter?centerReview.position+1:state.queue.index+1;
+    const total=inCenter?session.total:state.queue.ids.length;
+    const processed=inCenter?Math.max(0,session.total-(session.pending||0)):
+      new Set([...Object.keys(state.queue.results||{}),...(state.queue.skipped||[])]).size;
+    const mode=row?reviewModeForRow(row):null;
+    return `第 ${current} / ${total} 条 · 已处理 ${processed} 条 · ${label} · ${mode?(AI_REVIEW_METHODS[mode]||'复习'):'加载中…'}`;
   };
   state.actions = () => {
     if (!current() || state.queue.finished) return;
     if(options.readOnly){el('Actions').innerHTML='<p>本项已处理，可使用上方按钮查看其他项目。</p>';return;}
     const queue = state.queue, disabled = !state.row || state.busy || queue.pending ? 'disabled' : '';
-    el('Progress').textContent = `第 ${queue.index+1} / ${queue.ids.length} 条 · 已处理 ${queue.index} 条 · 仅阅读曝光，不自动评分`;
-    el('Actions').innerHTML = `<button data-material-review="reviewed" onclick="saveMaterialReview('reviewed')" ${disabled}>已复习</button>${queue.pending ? `<button onclick="retryMaterialReview()" ${state.busy ? 'disabled' : ''}>重试上次保存</button>` : ''}<button id="materialReviewNext" onclick="nextMaterialReview()" ${disabled}>跳过此条</button><button onclick="pauseMaterialReview()" ${state.busy ? 'disabled' : ''}>退出，稍后继续</button><button onclick="endMaterialReview()" ${state.busy ? 'disabled' : ''}>结束本轮</button>`;
+    el('Progress').textContent = reviewProgressText(state.row);
+    if(queue.recallAgain&&state.row&&queue.recallAgain.id===state.row.id){
+      const weak=queue.recallAgain.status==='forgotten'?'不记得':'模糊';
+      el('Actions').innerHTML=`<div class="review-recall-again" role="status"><strong>已再次温习</strong><p>你选择了“${weak}”。内容已重新展示，但本次不计成功复习；只有选择“清楚”才算通过。</p><button type="button" id="materialReviewNext" onclick="nextMaterialReview()" ${disabled}>看完，继续下一条</button></div>`;
+      if(options.sessionId && typeof renderCenterReviewToolbar==='function')renderCenterReviewToolbar();
+      return;
+    }
+    const mode=reviewModeForRow(state.row);
+    const assessment=mode==='reading'
+      ? `<p class="mistake-ai-note">当前是阅读标记：只记录曝光，不计成功复习；掌握情况需切换到标准复习再作答。</p><button data-material-review="exposure" onclick="saveMaterialReview('exposure')" ${disabled}>已阅读（仅曝光）</button>`
+      : `<div class="review-recall-actions" aria-label="这遍回忆得怎么样"><button data-material-review="reviewed" onclick="saveMaterialReview('reviewed')" ${disabled}>清楚</button><button data-material-review="vague" onclick="saveMaterialReview('vague')" ${disabled}>模糊</button><button data-material-review="forgotten" onclick="saveMaterialReview('forgotten')" ${disabled}>不记得</button></div><p class="mistake-ai-note">“清楚”计为成功复习；“模糊/不记得”会再次展示内容，但不计成功。</p>`;
+    el('Actions').innerHTML = `${assessment}${queue.pending ? `<button onclick="retryMaterialReview()" ${state.busy ? 'disabled' : ''}>重试上次保存</button>` : ''}<button id="materialReviewNext" onclick="nextMaterialReview()" ${disabled}>跳过此条</button><button onclick="pauseMaterialReview()" ${state.busy ? 'disabled' : ''}>退出，稍后继续</button><button onclick="endMaterialReview()" ${state.busy ? 'disabled' : ''}>结束本轮</button>`;
     if(options.sessionId && typeof renderCenterReviewToolbar==='function')renderCenterReviewToolbar();
   };
   state.show = async () => {
     const queue = state.queue; if (!queue || queue.courseId !== currentCourseId) return;
+    if(typeof resetResourceAi==='function')resetResourceAi();
     const request = ++state.request; activeReadingReview = state;
     currentView = {type:'readingReview',reviewKind:kind}; showPageOnly('materialReviewPage');
     document.getElementById('readingReviewHeading').textContent = `${label}复习`;
@@ -174,9 +208,10 @@ function createReadingReview(kind, label, resumeId, options = {}) {
     el('Complete').style.display = queue.finished ? 'block' : 'none'; el('Item').style.display = queue.finished ? 'none' : 'block';
     if (queue.finished || queue.index === queue.ids.length) {
       if (options.onFinish) { queue.active = false; store(queue); await options.onFinish(); return; }
-      el('Progress').textContent = `已处理 ${queue.ids.length} / ${queue.ids.length} 条 · 成功复习 ${successes()} 条`;
+      const exposures=Object.values(queue.results||{}).filter(value=>value==='exposed').length;
+      el('Progress').textContent = `已处理 ${queue.ids.length} / ${queue.ids.length} 条 · 成功复习 ${successes()} 条 · 仅曝光 ${exposures} 条`;
       el('Actions').innerHTML = ''; el('Complete').style.display = 'block';
-      el('Complete').innerHTML = `<h2>本轮${label}复习完成</h2><p>成功复习 ${successes()} 条，跳过 ${queue.skipped.length} 条。跳过的内容保留原有状态。</p><button onclick="pauseMaterialReview()">返回${label}列表</button>`;
+      el('Complete').innerHTML = `<h2>本轮${label}复习完成</h2><p>成功复习 ${successes()} 条，仅阅读曝光 ${exposures} 条，跳过 ${queue.skipped.length} 条。后两项都不计成功掌握。</p><button onclick="pauseMaterialReview()">返回${label}列表</button>`;
       return;
     }
     state.actions();
@@ -197,7 +232,7 @@ function createReadingReview(kind, label, resumeId, options = {}) {
         renderResourcePreview(type,url,el('Preview')); el('OpenFile').href = url; el('OpenFile').style.display = 'inline-block';
       }
       state.actions();
-      if(!options.readOnly&&typeof mountResourceAi==='function')mountResourceAi(el('Item'),kind==='notes'?'note':'material',row,
+      if(globalThis.COURSES_SHOW_LEGACY_RESOURCE_AI===true&&!options.readOnly&&typeof mountResourceAi==='function')mountResourceAi(el('Item'),kind==='notes'?'note':'material',row,
         {sessionId:queue.sessionId,sessionItemId:queue.sessionItems?.[row.id]});
     } catch (err) {
       if (request !== state.request || !current()) return;
@@ -207,26 +242,47 @@ function createReadingReview(kind, label, resumeId, options = {}) {
   };
   const advance = async () => {
     if(state.queue.sessionId && !options.onFinish && state.queue.index+1<state.queue.ids.length)await recordedReviewAction(state.queue.sessionId,'position',{position:state.queue.index+1});
+    if(state.queue.sessionId)await syncCenterReviewCounts(state.queue);
     state.queue.index++; state.queue.finished = state.queue.index === state.queue.ids.length; store(state.queue); await state.show();
   };
+  const syncCenterReviewCounts = async queue => {
+    if(typeof centerReview==='undefined'||!centerReview||centerReview.session.id!==queue.sessionId)return;
+    try{
+      const latest=await(await requestApi(reviewSessionApi(queue.sessionId))).json();
+      if(centerReview?.session.id===queue.sessionId)centerReview.session=latest;
+    }catch{ /* 计数刷新失败不改变已确认的判分；进入下一项后仍可重新同步。 */ }
+  };
   state.save = async status => {
-    if (!current() || !state.row || state.busy || state.queue.pending || status !== 'reviewed' || options.readOnly) return;
-    state.queue.pending = {id:state.row.id,status:'reviewed'}; store(state.queue); await state.retry();
+    if (!current() || !state.row || state.busy || state.queue.pending || !['reviewed','clear','exposure','vague','forgotten'].includes(status) || options.readOnly) return;
+    const savedStatus=status==='clear'?'reviewed':status;
+    state.queue.recallAgain=null;
+    state.queue.pending = {id:state.row.id,status:savedStatus}; store(state.queue); await state.retry();
   };
   state.retry = async () => {
     const queue = state.queue, pending = queue?.pending;
     if (!current() || !pending || state.busy || pending.id !== queue.ids[queue.index]) return;
     state.busy = true; state.actions(); el('Error').textContent = '';
     try {
-      const row = await api(pending.id,'reviewed');
+      const row = await api(pending.id,pending.status);
       if (!current() || state.queue !== queue) return;
-      queue.results[row.id] = 'reviewed'; queue.pending = null;
-      await advance();
+      queue.pending = null;
+      if(pending.status==='vague'||pending.status==='forgotten'){
+        queue.results[row.id]=pending.status;
+        queue.recallAgain={id:row.id,status:pending.status};
+        state.row=row;store(queue);await syncCenterReviewCounts(queue);state.actions();
+      }else if(pending.status==='exposure'){
+        queue.results[row.id]='exposed';queue.recallAgain=null;
+        await advance();
+      }else{
+        queue.results[row.id] = 'reviewed';queue.recallAgain=null;
+        await advance();
+      }
     } catch (err) { if (current()) el('Error').textContent = err.message + '；保存未确认，不会自动跳题，可重试。'; }
     finally { state.busy = false; state.actions(); }
   };
   state.skip = async () => {
     if (!current() || !state.row || state.busy || state.queue.pending || options.readOnly) return;
+    if(state.queue.recallAgain?.id===state.row.id){state.queue.recallAgain=null;await advance();return;}
     state.busy = true;
     try {
       if(state.queue.sessionId)await recordedReviewAction(`${state.queue.sessionId}/items/${state.queue.sessionItems[state.row.id]}`,'skip');

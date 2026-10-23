@@ -43,6 +43,7 @@ const coursesAiSettings = (() => {
   }
   const node=id=>document.getElementById('coursesAi'+id);
   const status=()=>({provider,preset:selectedPreset,model,baseUrl,retain,auto,configured,hasKey:!!key,connectionState,epoch,calls,drafts:drafts.size});
+  const realReady=()=>provider!=='mock'&&!!key;
   function serviceName(kind,url){
     if(kind==='mock')return 'Mock 演示';
     if(kind!=='compatible')return presets.deepseek.name;
@@ -99,7 +100,10 @@ const coursesAiSettings = (() => {
     for(const prefix of ['mistakeAi','mistakeCreateAi','mistakeCreateAnswerAi','mistakeEditAnswerAi']){
       const select=document.getElementById(prefix+'Provider');if(select){select.value='shared';changeMistakeAiProvider(prefix);}
     }
-    message=provider==='mock'?'已应用 Mock 演示；未启用真实 AI。':`已应用 ${providerLabel()} / ${model}。现在可测试连接${retain?'。':'；Key 仅供下一次请求，测试也会使用这次 Key。'}`;refresh();
+    message=provider==='mock'?'已应用 Mock 演示；未启用真实 AI。':`已应用 ${providerLabel()} / ${model}。现在可测试连接${retain?'。':'；Key 仅供下一次请求，测试也会使用这次 Key。'}`;
+    refresh();
+    if(typeof refreshReviewMethodApiAvailability==='function')refreshReviewMethodApiAvailability();
+    if(typeof refreshWorkbenchAiAvailability==='function')refreshWorkbenchAiAvailability();
   }
   function read(){
     if(provider==='mock')return null;
@@ -126,6 +130,8 @@ const coursesAiSettings = (() => {
       if(typeof clearMistakeAiKey==='function')clearMistakeAiKey(prefix);
     }
     refresh();
+    if(typeof refreshReviewMethodApiAvailability==='function')refreshReviewMethodApiAvailability();
+    if(typeof refreshWorkbenchAiAvailability==='function')refreshWorkbenchAiAvailability();
   }
   function open(){
     node('Provider').value=selectedPreset;node('Workspace').value=workspaceId;node('BaseUrl').value=baseUrl;node('CustomModel').value=provider==='compatible'?model:'';node('Model').value=provider==='deepseek'?model:'deepseek-flash';node('Key').value='';node('Retain').checked=retain;
@@ -267,5 +273,5 @@ const coursesAiSettings = (() => {
   // Host calls this on verified login/logout/account switch. It supplies no browser-trusted identity.
   addEventListener('courses-ai-identity-changed',clear);
   if(document.readyState==='loading')addEventListener('DOMContentLoaded',mount,{once:true});else mount();
-  return Object.freeze({status,label,describe,configure,read,track,valid,clear,open,captureCreation,afterCreated,identityChanged:clear});
+  return Object.freeze({status,label,describe,configure,read,track,valid,clear,open,captureCreation,afterCreated,identityChanged:clear,realReady});
 })();
