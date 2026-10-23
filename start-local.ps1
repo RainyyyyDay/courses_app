@@ -68,7 +68,14 @@ try {
         Write-Host '  修复：cd ocr-trial; npm install; cd ..; node tools/prepare-ocr-web.cjs' -ForegroundColor Yellow
     }
 
-    Start-LocalAi
+    # AI 服务是可选的：起不来不影响网站本身
+    try { Start-LocalAi }
+    catch {
+        $aiReason = [string]$_.Exception.Message
+        if ($aiReason -like 'Traceback*' -or [string]::IsNullOrWhiteSpace($aiReason)) { $aiReason = 'Python AI 依赖未就绪' }
+        Write-Host "提示：AI 服务未启动（$aiReason）。网站照常可用，仅 AI 相关功能不可用。" -ForegroundColor Yellow
+        Write-Host '  需要 AI 时请按启动说明准备 Python 依赖，或暂时忽略。' -ForegroundColor Yellow
+    }
 
     if (Test-LoopbackPort 3000) {
         Write-Host '3000 端口已有服务在运行，直接打开页面。' -ForegroundColor Green
