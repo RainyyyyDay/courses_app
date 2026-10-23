@@ -70,7 +70,21 @@
           var existing = null;
           try { existing = row && row.mindmap_json ? JSON.parse(row.mindmap_json) : null; } catch (e) { existing = null; }
           if (existing && Array.isArray(existing.nodes) && existing.nodes.length) {
-            try { window.Mindmap.openDocument(existing); return true; } catch (e) { /* 退回新建 */ }
+            try {
+              if (typeof window.Mindmap.openInMemory === 'function') {
+                return Promise.resolve(window.Mindmap.openInMemory(existing)).then(function () { return true; });
+              }
+              window.Mindmap.openDocument(existing);
+              return true;
+            } catch (e1) {
+              // 有些数据 openDocument 会拒（缺字段等），退回直接替换当前文档
+              try {
+                if (typeof window.Mindmap.replaceDocument === 'function') {
+                  window.Mindmap.replaceDocument(JSON.parse(JSON.stringify(existing)));
+                  return true;
+                }
+              } catch (e2) { /* 继续退回新建 */ }
+            }
           }
           try { window.Mindmap.openDocument(buildMap()); return true; } catch (e) { return false; }
         });
@@ -91,7 +105,7 @@
     btn.id = 'coursesSendBack';
     btn.type = 'button';
     var label = new URLSearchParams(location.search).get('label') || '';
-    btn.textContent = label ? ('回传到《' + label + '》') : '回传到课程网站';
+    btn.textContent = (label ? ('回传到《' + label + '》') : '回传到课程网站') + ' v3';
     btn.style.cssText = [
       'position:fixed', 'right:18px', 'bottom:18px', 'z-index:99999',
       'padding:10px 16px', 'border:0', 'border-radius:10px',
