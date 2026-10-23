@@ -29,7 +29,7 @@ test('assessment API preserves old records and attachments, validates edits and 
 },{legacy:false}));
 
 test('assessment edit and completion work in desktop and mobile pages',{timeout:90000},async()=>fixture(async({api,base,ids,temp,serve})=>{
- const url=await serve(),chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find(fs.existsSync);assert.ok(chrome);
+ const url=await serve(),chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].find(fs.existsSync);assert.ok(chrome);
  for(const [i,viewport]of [[1280,960],[390,844]].entries()){
   const row=await api('POST','/courses/'+ids.courseId+'/assessments',{title:'待编辑'+i,deadline:'2020-01-01',requirement:'原要求'},201);
   const script=`window.COURSES_API_BASE=${JSON.stringify(base)};addEventListener('load',async()=>{const out=document.createElement('pre');out.id='regressionResult';const check=(v,m)=>{if(!v)throw Error(m);};try{
@@ -41,6 +41,6 @@ test('assessment edit and completion work in desktop and mobile pages',{timeout:
    openAssessmentModal();document.getElementById('assessTitle').value='';await addAssessment();check(document.getElementById('assessError').textContent&&document.getElementById('assessmentModal').classList.contains('show'),'invalid name preserves editor');closeAssessmentModal();
    check(document.documentElement.scrollWidth<=innerWidth+1,'no horizontal overflow');check([...document.querySelectorAll('.assessment-actions button')].every(b=>b.getBoundingClientRect().width>0),'actions visible');out.textContent='PASS';
   }catch(e){out.textContent='FAIL '+e.stack;}document.body.append(out);});`;
-  const html=await runBrowser({chrome,profile:path.join(temp,'assessment-'+i),url,viewport,initScript:script,screenshot:path.join(os.tmpdir(),'courses-assessments-'+viewport.join('x')+'.png')});const result=html.match(/<pre id="regressionResult">[\s\S]*?<\/pre>/)?.[0];assert.match(result||'',/>PASS</,result||'no result');
+  const html=await runBrowser({chrome,profile:path.join(temp,'assessment-'+i),url,viewport,noSandbox:true,initScript:script,screenshot:path.join(os.tmpdir(),'courses-assessments-'+viewport.join('x')+'.png')});const result=html.match(/<pre id="regressionResult">[\s\S]*?<\/pre>/)?.[0];assert.match(result||'',/>PASS</,result||'no result');
  }
 },{legacy:false}));

@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {fixture}=require('./mistake-format.cjs'),{runBrowser}=require('./browser-driver.cjs');
 test('answer and explanation share one confirmation per draft and show adoption success',{timeout:90000},async()=>fixture(async({base,ids,temp,serve,api,snapshot})=>{
- const url=await serve(),chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find(fs.existsSync);assert.ok(chrome);
+ const url=await serve(),chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].find(fs.existsSync);assert.ok(chrome);
  const row=await api('POST','/courses/'+ids.courseId+'/mistakes',{title:'填入测试',content:'1+1=?',answerContent:'旧答案',explanation:'旧解析',questionFormat:'open',mistakeType:'thinking'},201),before=snapshot();
  for(const [index,viewport]of [[1280,960],[390,844]].entries()){
  const script=`window.COURSES_API_BASE=${JSON.stringify(base)};addEventListener('load',async()=>{const out=document.createElement('pre');out.id='regressionResult';const check=(v,m)=>{if(!v)throw Error(m);};try{
@@ -22,7 +22,7 @@ test('answer and explanation share one confirmation per draft and show adoption 
   }
   out.textContent='PASS';
  }catch(e){out.textContent='FAIL '+e.stack;}document.body.append(out);});`;
- const html=await runBrowser({chrome,profile:path.join(temp,'adoption-'+index),url,viewport,initScript:script});const result=html.match(/<pre id="regressionResult">[\s\S]*?<\/pre>/)?.[0];assert.match(result||'',/>PASS</,result||'no result');
+ const html=await runBrowser({chrome,profile:path.join(temp,'adoption-'+index),url,viewport,noSandbox:true,initScript:script});const result=html.match(/<pre id="regressionResult">[\s\S]*?<\/pre>/)?.[0];assert.match(result||'',/>PASS</,result||'no result');
  }
  assert.deepEqual(snapshot(),before,'adoption never saves business data');
 },{legacy:false}));
