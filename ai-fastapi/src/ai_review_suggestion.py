@@ -1,4 +1,5 @@
 """JSON-only material/note mode suggestions. No DB, files, or automatic adoption."""
+from .ai_provider import request_config
 from uuid import uuid4
 from .ai_mistake import (AIError, Classifier, Config, DeepSeekProvider,
                          _length, _trim, _read_body, _with_disconnect)
@@ -69,16 +70,11 @@ def register(app, *, dependencies=None):
         headers={'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff', 'X-Request-ID':str(uuid4())}
         try:
             gate.check_rate();body=await _read_body(request)
-            if not isinstance(body, dict) or set(body)-{'provider','input','api_key','model','confirm_cost'} or body.get('provider') not in ('mock','deepseek'):
+            if not isinstance(body, dict) or set(body)-{'provider','input','api_key','model','confirm_cost','base_url'} or body.get('provider') not in ('mock','deepseek','compatible'):
                 raise AIError(400, 'INVALID_INPUT')
             data=parse_resource(body.get('input'))
-            if body['provider']=='deepseek':
-                key=body.get('api_key')
-                if not isinstance(key, str) or not 1<=len(key)<=512 or not all(33<=ord(c)<=126 for c in key):
-                    raise AIError(400, 'INVALID_API_KEY')
-                if body.get('confirm_cost') is not True:raise AIError(400, 'COST_CONFIRMATION_REQUIRED')
-                if body.get('model') not in ('deepseek-flash','deepseek-v4-pro'):raise AIError(400, 'INVALID_INPUT')
-                config=Config(provider='deepseek', api_key=key, model=body['model']);provider=ReviewProvider(config)
+            if body['provider']!='mock':
+                config=request_config(body);provider=ReviewProvider(config)
             else:
                 if body.get('api_key'):raise AIError(400, 'INVALID_INPUT')
                 config=Config();provider=MockReviewProvider()

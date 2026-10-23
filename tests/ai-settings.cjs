@@ -5,7 +5,7 @@ const {fixture}=require('./mistake-format.cjs'),{runBrowser}=require('./browser-
 const root=path.resolve(__dirname,'..');
 function settings(){
   const events={},ctx=vm.createContext({document:{readyState:'loading',getElementById:()=>null},addEventListener:(n,f)=>events[n]=f,
-    AbortController,setTimeout,clearTimeout,console});
+    AbortController,setTimeout,clearTimeout,URL,console});
   vm.runInContext(fs.readFileSync(path.join(root,'fronted/js/aiSettings.js'),'utf8'),ctx);
   return {service:vm.runInContext('coursesAiSettings',ctx),events,ctx};
 }
@@ -110,3 +110,48 @@ test('shared AI website settings work across entries, automatic drafts protect e
   }
   assert.deepEqual(snapshot(),before,'AI configuration and drafts never write grades, sessions or plans');
 },{legacy:false}));
+
+
+test('custom compatible settings isolate credentials and preserve cancellation',()=>{
+  const {service:s}=settings();
+  const custom={...config,provider:'compatible',baseUrl:'https://models.example/v1',model:'vendor/model-v2'};
+  for(const change of [{baseUrl:'http://example.com'},{baseUrl:'https://user:secret@example.com'},{model:'bad model'},{consent:false}])assert.throws(()=>s.configure({...custom,...change}));
+  s.configure({...custom,retain:false});const once=s.read();assert.equal(once.provider,'compatible');assert.equal(once.baseUrl,custom.baseUrl);assert.equal(once.model,custom.model);assert.throws(()=>s.read(),/没有 Key/);
+  assert.ok(!JSON.stringify(s.status()).includes(config.apiKey));
+  s.configure(custom);const lease=s.read();let cancelled=false;s.track(lease,()=>cancelled=true);
+  s.configure(config);assert.ok(cancelled);assert.equal(s.valid(lease),false);assert.equal(s.read().provider,undefined);
+});
+
+test('custom API settings work in desktop and mobile UI',{timeout:90000},async()=>fixture(async({base,temp,serve})=>{
+  const url=await serve();
+  const chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find(fs.existsSync);assert.ok(chrome);
+  for(const [i,viewport]of [[1280,960],[390,844]].entries()){
+    const initScript=`window.COURSES_API_BASE=${JSON.stringify(base)};window.COURSES_AI_API_BASE='/api';
+      const originalFetch=fetch;let hits=[];
+      window.fetch=async(url,options)=>{if(String(url).includes('/api/ai/')){const body=JSON.parse(options.body);hits.push(body);return new Response(JSON.stringify({ok:true,provider:body.provider,model:body.model,action:body.action}));}return originalFetch(url,options);};
+      addEventListener('load',async()=>{const out=document.createElement('pre');out.id='regressionResult';const el=id=>document.getElementById('coursesAi'+id),check=(v,m)=>{if(!v)throw Error(m);};try{
+        coursesAiSettings.open();el('Provider').value='compatible';el('Provider').dispatchEvent(new Event('change'));
+        check(!el('Custom').hidden&&el('ModelLabel').hidden,'custom fields visible');
+        el('BaseUrl').value='https://models.example/v1';el('CustomModel').value='vendor/model-v2';el('Key').value='synthetic-custom-key';el('Retain').checked=true;el('Consent').checked=true;el('Apply').click();
+        check(coursesAiSettings.status().provider==='compatible'&&el('Key').value==='','applied custom config, key hidden');
+        el('Test').click();while(el('Test').disabled)await new Promise(r=>setTimeout(r,20));
+        check(hits.length===1&&hits[0].provider==='compatible'&&hits[0].base_url==='https://models.example/v1'&&hits[0].model==='vendor/model-v2','custom credentials delivered only to same origin');
+        check(el('Message').textContent.includes('成功'),'custom connection test');
+        el('Close').click();coursesAiSettings.open();check(el('CustomModel').value==='vendor/model-v2'&&el('BaseUrl').value==='https://models.example/v1','reopen restores endpoint and model');
+        el('BaseUrl').value='https://other.example/v1';el('Consent').checked=true;el('Apply').click();check(coursesAiSettings.status().baseUrl==='https://models.example/v1','cannot reuse hidden key for another endpoint');
+        el('Clear').click();check(!coursesAiSettings.status().hasKey,'clear key');
+        check(document.documentElement.scrollWidth<=innerWidth+1,'no horizontal overflow');out.textContent='PASS';
+      }catch(e){out.textContent='FAIL '+e.stack;}document.body.append(out);});`;
+    const html=await runBrowser({chrome,profile:path.join(temp,'custom-'+i),url,viewport,initScript,blockedUrls:['https://models.example/*','https://other.example/*']});
+    assert.match(html,/<pre id="regressionResult">PASS<\/pre>/);
+  }
+}));
+
+
+test('shared source names follow credentials rather than a fixed vendor',()=>{
+ const {service:s}=settings();
+ const glm={...config,provider:'compatible',baseUrl:'https://open.bigmodel.cn/api/paas/v4',model:'glm-5.3-flash'};
+ s.configure(glm);assert.match(s.label(),/智谱 GLM \/ glm-5.3-flash/);assert.match(s.describe(s.read()),/智谱 GLM/);
+ s.configure(config);assert.match(s.describe(s.read()),/DeepSeek 官方/);
+ s.configure({...glm,baseUrl:'https://example.com/v1'});assert.match(s.describe(s.read()),/自定义兼容接口/);
+});

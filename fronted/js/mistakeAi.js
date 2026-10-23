@@ -215,7 +215,7 @@ async function requestMistakeAi() {
   mistakeAiElement('Confirm').disabled = true;
   mistakeAiElement('Method').disabled = true;
   mistakeAiElement('Panel').setAttribute('aria-busy', 'true');
-  mistakeAiElement('Status').textContent = deepseek?'正在请求 DeepSeek 官方（可能计费），不会自动重试…':'正在分类，请稍候…';
+  mistakeAiElement('Status').textContent = deepseek?'正在请求 '+coursesAiSettings.describe(deepseek)+'（可能计费），不会自动重试…':'正在分类，请稍候…';
   try {
     const pending=classifyMistakeWithAi(input, { signal: state.controller.signal, deepseek });
     clearMistakeAiKey('mistakeAi');if(deepseek)deepseek.apiKey='';
@@ -230,7 +230,7 @@ async function requestMistakeAi() {
     mistakeAiElement('Method').value = usable ? result.review_method : '';
     mistakeAiElement('Confirmation').textContent = '';
     mistakeAiElement('Result').hidden = false;
-    mistakeAiElement('Status').textContent = usable ? (deepseek?'DeepSeek 官方建议已生成，请人工复核。临时输入已清空，共享 Key 遵循 AI 设置。原错题分类未改变。':'建议已生成，请人工复核。原错题分类未改变。')
+    mistakeAiElement('Status').textContent = usable ? (deepseek?coursesAiSettings.describe(deepseek)+'建议已生成，请人工复核。临时输入已清空，共享 Key 遵循 AI 设置。原错题分类未改变。':'建议已生成，请人工复核。原错题分类未改变。')
       : 'AI 暂未给出可用建议，请人工选择';
   } catch (err) {
     if (!mistakeAiIsCurrent(state) || err.name === 'AbortError') return;
@@ -357,7 +357,7 @@ async function requestMistakeCreateAi() {
   mistakeCreateAiElement('Get').disabled = true;
   mistakeCreateAiElement('Adopt').disabled = true;
   mistakeCreateAiElement('Panel').setAttribute('aria-busy','true');
-  mistakeCreateAiElement('Status').textContent = deepseek?'正在请求 DeepSeek 官方（可能计费），不会自动重试…':'正在获取建议…';
+  mistakeCreateAiElement('Status').textContent = deepseek?'正在请求 '+coursesAiSettings.describe(deepseek)+'（可能计费），不会自动重试…':'正在获取建议…';
   try {
     const pending=classifyMistakeWithAi(input,{signal:draft.controller.signal,deepseek});
     clearMistakeAiKey('mistakeCreateAi');if(deepseek)deepseek.apiKey='';
@@ -369,7 +369,7 @@ async function requestMistakeCreateAi() {
     renderMistakeAiAnalysis('mistakeCreateAi',result);
     mistakeCreateAiElement('Result').hidden = false;
     // Never preselect or overwrite an explicit manual selection from an AI response.
-    mistakeCreateAiElement('Status').textContent = (deepseek?'DeepSeek 官方建议；临时输入已清空，共享 Key 遵循 AI 设置。':'')+'建议仅供参考；采用建议或手动选择后，才会随错题保存。';
+    mistakeCreateAiElement('Status').textContent = (deepseek?coursesAiSettings.describe(deepseek)+'建议；临时输入已清空，共享 Key 遵循 AI 设置。':'')+'建议仅供参考；采用建议或手动选择后，才会随错题保存。';
   } catch (err) {
     if (current() && err.name!=='AbortError') mistakeCreateAiElement('Error').textContent = err.message;
   } finally {

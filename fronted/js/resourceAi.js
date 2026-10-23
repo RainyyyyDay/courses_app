@@ -130,11 +130,11 @@ function resourceAiCurrent(s){return resourceAiState===s&&currentCourseId===s.co
 async function fetchResourceAi(input,{signal,deepseek}={}){
   const endpoint=new URL((globalThis.COURSES_AI_API_BASE??API).replace(/\/$/,'')+'/ai/review-suggestion',location.href);
   if(endpoint.origin!==location.origin||endpoint.username||endpoint.password||!(endpoint.protocol==='https:'||endpoint.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(endpoint.hostname)))throw mistakeAiError('AI_TEMP_KEY_ORIGIN');
-  let body=JSON.stringify({provider:deepseek?'deepseek':'mock',input,...(deepseek?{api_key:deepseek.apiKey,model:deepseek.model,confirm_cost:deepseek.confirmCost}:{})});
+  let body=JSON.stringify({provider:deepseek?(deepseek.provider||'deepseek'):'mock',input,...(deepseek?{api_key:deepseek.apiKey,model:deepseek.model,confirm_cost:deepseek.confirmCost,...(deepseek.provider==='compatible'?{base_url:deepseek.baseUrl}:{})}:{})});
   if(new TextEncoder().encode(body).length>16384)throw mistakeAiError('BODY_TOO_LARGE');
   const controller=new AbortController(),abort=()=>controller.abort();
   signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
-  const release=coursesAiSettings.track(deepseek,abort),timer=setTimeout(abort,20000);
+  const release=coursesAiSettings.track(deepseek,abort),timer=setTimeout(abort,100000);
   try{
     if(controller.signal.aborted)throw Object.assign(new Error('已取消'),{name:'AbortError'});
     const response=await fetch(endpoint.href,{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',body,signal:controller.signal});
@@ -142,7 +142,7 @@ async function fetchResourceAi(input,{signal,deepseek}={}){
     if(controller.signal.aborted||!coursesAiSettings.valid(deepseek))throw Object.assign(new Error('已取消'),{name:'AbortError'});
     if(!response.ok)throw mistakeAiError(data?.error||data?.detail,response.status);
     const result=data?.result;
-    if(data?.provider!==(deepseek?'deepseek':'mock')||!Object.hasOwn(AI_SELECTABLE_METHODS,result?.review_method)||typeof result.reason!=='string'||!result.reason.trim()||result.reason.length>500||result.needs_review!==true)throw mistakeAiError('INVALID_RESPONSE');
+    if(data?.provider!==(deepseek?(deepseek.provider||'deepseek'):'mock')||!Object.hasOwn(AI_SELECTABLE_METHODS,result?.review_method)||typeof result.reason!=='string'||!result.reason.trim()||result.reason.length>500||result.needs_review!==true)throw mistakeAiError('INVALID_RESPONSE');
     return {review_method:result.review_method,reason:result.reason,needs_review:true};
   }catch(err){if(controller.signal.aborted)throw Object.assign(new Error('请求已取消或超时；可手动重试。'),{name:'AbortError'});throw err.code?err:mistakeAiError('NETWORK_ERROR');}
   finally{body=null;release();clearTimeout(timer);signal?.removeEventListener('abort',abort);}
@@ -155,10 +155,10 @@ async function requestResourceAi(){
   let credentials;
   try{
     credentials=coursesAiSettings.read();s.busy=true;s.controller=new AbortController();el('Fields').disabled=true;el('Confirm').disabled=true;
-    el('Status').textContent=credentials?'正在请求 DeepSeek 官方（可能计费）；不会自动采用…':'正在获取 Mock 规则演示，不调用真实模型…';
+    el('Status').textContent=credentials?'正在请求 '+coursesAiSettings.describe(credentials)+'（可能计费）；不会自动采用…':'正在获取 Mock 规则演示，不调用真实模型…';
     const pending=fetchResourceAi(input,{signal:s.controller.signal,deepseek:credentials});if(credentials)credentials.apiKey='';
     const result=await pending;if(!resourceAiCurrent(s))return;
-    s.result=result;s.resultUsable=true;s.resultInput=JSON.stringify(input);el('Status').textContent=(credentials?'DeepSeek 官方建议：':'Mock 规则演示：')+AI_REVIEW_METHODS[result.review_method]+'；'+result.reason;
+    s.result=result;s.resultUsable=true;s.resultInput=JSON.stringify(input);el('Status').textContent=(credentials?coursesAiSettings.describe(credentials)+' 建议：':'Mock 规则演示：')+AI_REVIEW_METHODS[result.review_method]+'；'+result.reason;
     // A response must not replace a choice made before/during this request.
     if(!el('Method').value)el('Method').value=result.review_method;
   }catch(err){if(resourceAiCurrent(s))el('Error').textContent=err.message;}

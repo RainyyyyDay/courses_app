@@ -185,19 +185,25 @@ class Config:
     provider: str = "mock"
     api_key: str = field(default="", repr=False)
     model: str = "deepseek-flash"
+    base_url: str = ""
     timeout_ms: int = 15000
     max_concurrent: int = 2
     rate_max: int = 30
     rate_window_ms: int = 60000
 
     def __post_init__(self):
-        if self.provider not in {"mock", "deepseek"} or self.model not in {"deepseek-flash", "deepseek-v4-pro"}:
+        if self.provider not in {"mock", "deepseek", "compatible"} or (self.provider != "compatible" and self.model not in {"deepseek-flash", "deepseek-v4-pro"}):
             raise ValueError("Invalid AI configuration")
         for value, maximum in [(self.timeout_ms, 120000), (self.max_concurrent, 100),
                                (self.rate_max, 10000), (self.rate_window_ms, 3600000)]:
             if type(value) is not int or not 1 <= value <= maximum:
                 raise ValueError("Invalid AI configuration")
-        if self.provider == "deepseek" and not self.api_key.strip():
+        if self.provider == "compatible":
+            from .ai_provider import endpoint
+            endpoint(self.base_url)
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}", self.model):
+                raise ValueError("Invalid AI configuration")
+        if self.provider in {"deepseek", "compatible"} and not self.api_key.strip():
             raise ValueError("Invalid AI configuration")
 
     @classmethod
@@ -225,9 +231,10 @@ class Config:
 
 
 class AIError(Exception):
-    def __init__(self, status, code, *, source=None, retry_after=None):
+    def __init__(self, status, code, *, source=None, retry_after=None, details=None):
         super().__init__(code)
         self.status, self.code, self.source, self.retry_after = status, code, source, retry_after
+        self.details = details or {}
 
 
 class MockProvider:
@@ -247,14 +254,23 @@ class DeepSeekProvider:
 
     async def complete_json(self, data, prompt):
         import httpx
-        async with httpx.AsyncClient(transport=self.transport, timeout=None, follow_redirects=False, trust_env=False) as client:
-            async with client.stream("POST", "https://api.deepseek.com/chat/completions",
-                                     headers={"Authorization": "Bearer " + self.config.api_key, "Content-Type": "application/json"},
-                                     json={"model": self.config.model, "stream": False, "max_tokens": 1600,
-                                           "thinking": {"type": "disabled"}, "response_format": {"type": "json_object"},
-                                           "messages": [{"role": "system", "content": prompt},
+        url = "https://api.deepseek.com/chat/completions"
+        headers = {"Authorization": "Bearer " + self.config.api_key, "Content-Type": "application/json"}
+        extensions = {}
+        from urllib.parse import urlsplit
+        glm_json = self.config.provider == 'compatible' and urlsplit(self.config.base_url).hostname == 'open.bigmodel.cn' and self.config.model.lower().startswith('glm-')
+        if self.config.provider == 'compatible':
+            from .ai_provider import public_target
+            url, host_headers, extensions = await public_target(self.config.base_url)
+            headers.update(host_headers)
+        async with httpx.AsyncClient(transport=self.transport, timeout=httpx.Timeout(self.config.timeout_ms / 1000, connect=8), follow_redirects=False, trust_env=False) as client:
+            async with client.stream("POST", url, headers=headers, extensions=extensions,
+                                     json={"model": self.config.model, "stream": False, "max_tokens": 8192 if self.config.provider == "compatible" and self.config.model.lower().startswith("glm-5.") else 1600,
+                                           **({"thinking": {"type": "disabled"}, "response_format": {"type": "json_object"}} if self.config.provider == "deepseek" else {}),
+                                           **({"response_format": {"type":"json_object"}} if glm_json else {}),
+                                           "messages": [{"role": "system", "content": prompt + "\n必须输出合法 JSON 对象，键名和字符串使用双引号，不添加 Markdown 代码围栏或说明。"},
                                                         {"role": "user", "content": json.dumps(data, ensure_ascii=False)}]}) as response:
-                if not 200 <= response.status_code < 300:
+                if self.config.provider != "compatible" and not 200 <= response.status_code < 300:
                     code, status = {401: ("AI_AUTH_FAILED", 502), 402: ("AI_BALANCE_UNAVAILABLE", 503),
                                     429: ("AI_UPSTREAM_RATE_LIMITED", 503)}.get(response.status_code, ("AI_UNAVAILABLE", 502))
                     raise AIError(status, code, source="error")
@@ -264,6 +280,33 @@ class DeepSeekProvider:
                     if size > 65536:
                         raise AIError(502, "AI_UNAVAILABLE", source="error")
                     chunks.append(chunk)
+                if self.config.provider == "compatible":
+                    try:
+                        payload = _json(b"".join(chunks).decode("utf-8"))
+                    except (ValueError, UnicodeError):
+                        if not 200 <= response.status_code < 300:
+                            from .ai_provider import upstream_failure
+                            raise upstream_failure(response.status_code, {}) from None
+                        raise AIError(502, "AI_RESPONSE_FORMAT", source="error") from None
+                    if not 200 <= response.status_code < 300 or isinstance(payload, dict) and 'error' in payload:
+                        from .ai_provider import upstream_failure
+                        raise upstream_failure(response.status_code, payload)
+                    try:
+                        choice = payload["choices"][0]
+                        content = choice.get("message", {}).get("content")
+                    except (KeyError, IndexError, TypeError, AttributeError):
+                        raise AIError(502, "AI_RESPONSE_FORMAT", source="error") from None
+                    if choice.get("finish_reason") == "length":
+                        raise AIError(502, "AI_OUTPUT_LIMIT", source="error")
+                    if choice.get("finish_reason") != "stop":
+                        raise AIError(502, "AI_RESPONSE_FORMAT", source="error")
+                    if not isinstance(content, str) or not content.strip():
+                        raise AIError(502, "AI_EMPTY_RESPONSE", source="error")
+                    try:
+                        fenced = re.fullmatch(r"\s*```(?:json)?\s*\n([\s\S]*?)\n```\s*", content, re.IGNORECASE)
+                        return _json(fenced.group(1) if fenced else content)
+                    except ValueError:
+                        raise AIError(502, "AI_INVALID_JSON", source="error") from None
                 payload = _json(b"".join(chunks).decode("utf-8"))
                 choice = payload["choices"][0]
                 if choice.get("finish_reason") != "stop" or not isinstance(choice.get("message", {}).get("content"), str):
@@ -295,7 +338,7 @@ class Classifier:
         if not all(data.get(k) for k in ("question", "student_answer")):
             return fallback(), "input_fallback"
         return await self.run(data, lambda result: normalize_result(
-            result, self.rules, require_analysis=self.config.provider == 'deepseek', data=data))
+            result, self.rules, require_analysis=self.config.provider != 'mock', data=data))
 
     async def run(self, data, normalize):
         """Reuse cancellation, bounded concurrency and timeout for JSON draft tasks."""
@@ -323,7 +366,14 @@ class Classifier:
             raise
         except AIError:
             raise
-        except Exception:
+        except Exception as exc:
+            import httpx
+            if isinstance(exc, httpx.ConnectTimeout):
+                raise AIError(504, "AI_CONNECT_TIMEOUT", source="error") from None
+            if isinstance(exc, httpx.TimeoutException):
+                raise AIError(504, "AI_TIMEOUT", source="error") from None
+            if self.config.provider == 'compatible' and isinstance(exc, httpx.ConnectError):
+                raise AIError(502, "AI_CONNECTION_FAILED", source="error") from None
             raise AIError(502, "AI_UNAVAILABLE", source="error") from None
 
 

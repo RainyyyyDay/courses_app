@@ -13,7 +13,7 @@ function renderReviewFeedback(){
   const s=reviewFeedbackState;if(!s?.host?.isConnected)return;
   const labels={correct:'基本正确',partial:'部分正确 / 有遗漏',incorrect:'需要修正',uncertain:'信息不足，暂不能判断'},r=s.result;
   const lines=(title,values)=>values.length?'<h4>'+title+'</h4><ol>'+values.map(v=>'<li>'+escapeHtml(v)+'</li>').join('')+'</ol>':'';
-  s.host.innerHTML='<details class="review-ai-generator" '+(s.open?'open':'')+'><summary>AI 批改与错误解析<span class="ai-optional-tag">可选</span></summary><p class="ai-help">仅发送本轮题面、已提交的首次作答及参考要点，不读取附件。使用共用 AI 设置，DeepSeek 可能计费；不自动改写作答、评分、进度或排期。</p>'
+  s.host.innerHTML='<details class="review-ai-generator" '+(s.open?'open':'')+'><summary>AI 批改与错误解析<span class="ai-optional-tag">可选</span></summary><p class="ai-help">仅发送本轮题面、已提交的首次作答及参考要点，不读取附件。使用共用 AI 设置，当前所选 AI 服务可能计费；不自动改写作答、评分、进度或排期。</p>'
     +'<div class="ai-action-row"><button type="button" onclick="coursesAiSettings.open()">AI 设置</button><button type="button" class="ai-primary" data-feedback-generate onclick="requestReviewFeedback()" '+(s.busy?'disabled':'')+'>'+(s.busy?'正在批改…':r?'重新获取批改（可能计费）':'AI 帮我批改与解析')+'</button>'+(s.busy?'<button type="button" onclick="reviewFeedbackState?.controller?.abort()">取消请求</button>':'')+'</div>'
     +'<p role="alert" class="mistake-inline-error">'+escapeHtml(s.error)+'</p>'
     +(s.result?'<p class="ai-help" data-feedback-save-status>'+escapeHtml(s.savedVersion?'批改已保存到本轮历史 · 版本 '+s.savedVersion:s.saveError||'正在保存本轮批改…')+'</p>':'')
@@ -42,15 +42,15 @@ async function requestReviewFeedback(){
     const endpoint=new URL((globalThis.COURSES_AI_API_BASE??API).replace(/\/$/,'')+'/ai/review-feedback',location.href);
     if(endpoint.origin!==location.origin||endpoint.username||endpoint.password||!(endpoint.protocol==='https:'||endpoint.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname)))throw mistakeAiError('AI_TEMP_KEY_ORIGIN');
     credentials=coursesAiSettings.read();
-    body=JSON.stringify({provider:credentials?'deepseek':'mock',...(credentials?{api_key:credentials.apiKey,model:credentials.model,confirm_cost:credentials.confirmCost}:{}),input:s.input});
+    body=JSON.stringify({provider:credentials?(credentials.provider||'deepseek'):'mock',...(credentials?{api_key:credentials.apiKey,model:credentials.model,confirm_cost:credentials.confirmCost,...(credentials.provider==='compatible'?{base_url:credentials.baseUrl}:{})}:{}),input:s.input});
     if(credentials)credentials.apiKey='';
     s.busy=true;s.open=true;s.controller=new AbortController();renderReviewFeedback();
-    release=coursesAiSettings.track(credentials,()=>s.controller.abort());timer=setTimeout(()=>s.controller.abort(),20000);
+    release=coursesAiSettings.track(credentials,()=>s.controller.abort());timer=setTimeout(()=>s.controller.abort(),100000);
     networkStarted=true;const response=await fetch(endpoint.href,{method:'POST',headers:{'Content-Type':'application/json'},body,cache:'no-store',signal:s.controller.signal});const data=await response.json().catch(()=>null);
     if(!feedbackCurrent(s))return;
     if(s.controller.signal.aborted||!coursesAiSettings.valid(credentials))throw Object.assign(new Error('已取消'),{name:'AbortError'});
     if(!response.ok)throw mistakeAiError(data?.error||data?.detail,response.status);
-    if(data?.provider!==(credentials?'deepseek':'mock')||!validateReviewFeedback(data.feedback,s.input))throw mistakeAiError('INVALID_RESPONSE');
+    if(data?.provider!==(credentials?(credentials.provider||'deepseek'):'mock')||!validateReviewFeedback(data.feedback,s.input))throw mistakeAiError('INVALID_RESPONSE');
     s.result=data.feedback;s.provider=data.provider;s.savedVersion=null;s.saveError='';
     s.savePayload={requestId:reviewRequestId(),provider:data.provider,model:credentials?credentials.model:'',feedback:data.feedback};
     await saveReviewFeedbackHistory(s);

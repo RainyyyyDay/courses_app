@@ -6,7 +6,7 @@
  * 加载顺序见 index.html 底部的 <script> 列表；本文件依赖前面已加载的文件。
  */
 
-const API = globalThis.COURSES_API_BASE ?? 'http://localhost:3000/api';
+const API = globalThis.COURSES_API_BASE ?? (['http:', 'https:'].includes(globalThis.location?.protocol) && globalThis.location?.port === '3000' ? '/api' : 'http://localhost:3000/api');
 const MANUAL_CONFIG = {
   material: {
     heading: '手动输入资料',

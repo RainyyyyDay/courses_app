@@ -2,11 +2,11 @@
 async function fetchReviewMaterialDraft(input,credentials,signal){
   const endpoint=new URL((globalThis.COURSES_AI_API_BASE??API).replace(/\/$/,'')+'/ai/material-draft',location.href);
   if(endpoint.origin!==location.origin||endpoint.username||endpoint.password||!(endpoint.protocol==='https:'||endpoint.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname)))throw mistakeAiError('AI_TEMP_KEY_ORIGIN');
-  let body=JSON.stringify({provider:'deepseek',api_key:credentials.apiKey,model:credentials.model,confirm_cost:credentials.confirmCost,input});
+  let body=JSON.stringify({provider:credentials.provider||'deepseek',api_key:credentials.apiKey,model:credentials.model,confirm_cost:credentials.confirmCost,...(credentials.provider==='compatible'?{base_url:credentials.baseUrl}:{}),input});
   if(new TextEncoder().encode(body).length>16384)throw mistakeAiError('BODY_TOO_LARGE');
   const controller=new AbortController(),abort=()=>controller.abort();
   if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
-  const timer=setTimeout(abort,20000),release=coursesAiSettings.track(credentials,abort);
+  const timer=setTimeout(abort,100000),release=coursesAiSettings.track(credentials,abort);
   try{
     if(controller.signal.aborted)throw Object.assign(new Error('已取消'),{name:'AbortError'});
     const response=await fetch(endpoint.href,{method:'POST',headers:{'Content-Type':'application/json'},body,signal:controller.signal,cache:'no-store'});
@@ -14,7 +14,7 @@ async function fetchReviewMaterialDraft(input,credentials,signal){
     if(controller.signal.aborted||!coursesAiSettings.valid(credentials))throw Object.assign(new Error('已取消'),{name:'AbortError'});
     if(!response.ok)throw mistakeAiError(data?.error||data?.detail,response.status);
     const draft=data?.draft;
-    if(data?.provider!=='deepseek'||data.mode_id!==input.mode_id||draft?.needs_review!==true||typeof draft.needs_more_information!=='boolean'||!Array.isArray(draft.caveats)||draft.caveats.length>3||draft.caveats.some(v=>typeof v!=='string'||v.length>300)
+    if(data?.provider!==(credentials.provider||'deepseek')||data.mode_id!==input.mode_id||draft?.needs_review!==true||typeof draft.needs_more_information!=='boolean'||!Array.isArray(draft.caveats)||draft.caveats.length>3||draft.caveats.some(v=>typeof v!=='string'||v.length>300)
       ||(draft.material===null?(!draft.needs_more_information||!draft.caveats.length):!validReviewMaterialDraft(input.mode_id,draft.material)))throw mistakeAiError('INVALID_RESPONSE');
     return draft;
   }catch(err){
@@ -30,7 +30,7 @@ function validReviewMaterialDraft(mode,m){
 }
 function renderEditableReviewDraft(s,draft){
   const m=draft.material;
-  wb('Draft').innerHTML='<p>'+escapeHtml(s.aiDraftReal?'DeepSeek 草稿，尚未验证正确；原材料未改变。':'Mock 演示草稿，不代表真实分析；参考要点请人工核对。')+'</p><p>'+escapeHtml((draft.caveats||[]).join('；'))+'</p>';
+  wb('Draft').innerHTML='<p>'+escapeHtml(s.aiDraftReal?(s.aiDraftSource||'AI')+' 草稿，尚未验证正确；原材料未改变。':'Mock 演示草稿，不代表真实分析；参考要点请人工核对。')+'</p><p>'+escapeHtml((draft.caveats||[]).join('；'))+'</p>';
   if(!m)return;
   const input=(label,id,value,rows=3)=>wbInput(label,'Draft'+id,value,rows);
   wb('Draft').insertAdjacentHTML('beforeend',input('草稿题面 / 正文','Prompt',m.prompt,5)

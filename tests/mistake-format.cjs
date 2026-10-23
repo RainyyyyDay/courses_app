@@ -15,7 +15,7 @@ async function fixture(run,{legacy=true}={}){
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'courses-format-')),back=path.join(temp,'back');fs.mkdirSync(back);
   let child,staticServer;
   try{
-    for(const file of ['server.js','aiProxy.js','db.js'])fs.copyFileSync(path.join(root,'back',file),path.join(back,file));
+    for(const file of ['server.js','aiProxy.js','localAiGateway.js','db.js'])fs.copyFileSync(path.join(root,'back',file),path.join(back,file));
     for(const folder of ['db','ai','ocr'])fs.cpSync(path.join(root,'back',folder),path.join(back,folder),{recursive:true,filter:p=>fs.statSync(p).isDirectory()||p.endsWith('.js')});
     const env={...process.env,NODE_PATH:path.join(root,'back/node_modules'),AI_PROVIDER:'mock',AI_ENABLE_REAL:'false',OCR_PROVIDER:'mock'};
     delete env.NODE_OPTIONS;delete env.NPM_CONFIG_NODE_OPTIONS;

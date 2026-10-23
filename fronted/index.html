@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>课内</title>
-  <link rel="stylesheet" href="style.css?v=20261022-feedback-1" />
+  <link rel="stylesheet" href="style.css?v=20261023-ai-apply-4" />
 </head>
 <body>
 
@@ -1126,8 +1126,8 @@
   <script src="js/config.js"></script>
   <script src="js/state.js"></script>
   <script src="js/utils.js?v=20261021-confirm-layer-1"></script>
-  <script src="js/ai.js?v=20261021-resources-3"></script>
-  <script src="js/aiSettings.js?v=20261022-feedback-1"></script>
+  <script src="js/ai.js?v=20261023-ai-provider-5"></script>
+  <script src="js/aiSettings.js?v=20261023-ai-source-json-6"></script>
 
   <!-- 课程 -->
   <script src="js/courses.js"></script>
@@ -1156,12 +1156,13 @@
   <script src="js/materialReview.js?v=20261022-history-1"></script>
   <script src="js/noteReview.js"></script>
   <script src="js/mistakeDetail.js?v=20261022-history-1"></script>
-  <script src="js/mistakeAi.js?v=20261021-actions-state-1"></script>
-  <script src="js/mistakeAnswerAi.js?v=20261021-settings-2"></script>
-  <script src="js/resourceAi.js?v=20261022-saved-context-1"></script>
-  <script src="js/reviewWorkbench.js?v=20261022-feedback-1"></script>
-  <script src="js/reviewFeedback.js?v=20261022-history-1"></script>
-  <script src="js/reviewMaterialAi.js?v=20261021-reference-content-1"></script>
+  <script src="js/mistakeAi.js?v=20261023-ai-source-json-6"></script>
+  <script src="js/mistakeAnswerAi.js?v=20261023-ai-source-json-6"></script>
+  <script src="js/resourceAi.js?v=20261023-ai-source-json-6"></script>
+  <script src="js/clozeEditor.js?v=20261023-1"></script>
+  <script src="js/reviewWorkbench.js?v=20261023-ai-source-json-6"></script>
+  <script src="js/reviewFeedback.js?v=20261023-ai-source-json-6"></script>
+  <script src="js/reviewMaterialAi.js?v=20261023-ai-source-json-6"></script>
   <dialog id="mistakeAiDialog" aria-labelledby="mistakeAiDialogTitle" oncancel="event.preventDefault();resetMistakeAi()" onclick="if(event.target===this)resetMistakeAi()">
     <header class="mistake-ai-dialog-head"><div><h2 id="mistakeAiDialogTitle" tabindex="-1">AI 复习建议</h2><p id="mistakeAiDialogQuestionTitle" class="mistake-ai-note"></p></div><button type="button" class="tag-sheet-close" onclick="resetMistakeAi()" aria-label="关闭 AI 复习建议">×</button></header>
     <div id="mistakeAiDialogBody" class="tag-sheet-body"></div>
