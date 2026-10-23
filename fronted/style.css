@@ -20,6 +20,7 @@ button:focus-visible { outline:2px solid #8fa8ff; outline-offset:2px; }
 button:disabled { opacity:.55; cursor:not-allowed; }
 button:is(.ai-primary,.btn-confirm,.btn-primary) { background:#4a6cf7; border-color:#4a6cf7; color:#fff; }
 button:is(.ai-primary,.btn-confirm,.btn-primary):hover:not(:disabled) { background:#3e5fe3; border-color:#3e5fe3; }
+button.ai-primary:disabled { background:#e9edf5; border-color:#d8dfeb; color:#8490a4; opacity:1; }
 button:is(.btn-danger,.edit-btn-danger) { background:#fff1f0; border-color:#f5c8c5; color:#c83e3e; }
 
 /* ===== 基础布局（只保证元素能排开，不美化） ===== */
@@ -1805,6 +1806,14 @@ body.mistake-edit-open { overflow: hidden; }
 
 /* 删除 / 上传 两个并排键 */
 .edit-file-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.mindmap-generation-actions { margin: 8px 2px 0; }
+.mindmap-generation-note {
+  margin: 7px 2px 9px; color: #7a8497; font-size: 12px; line-height: 1.65;
+}
+.mindmap-generation-note.mindmap-ai-unavailable { color: #8a5a22; }
+.mindmap-generation-actions .edit-btn:disabled {
+  cursor: not-allowed; opacity: .52; background: #f4f6fa; color: #7f8898;
+}
 .edit-btn {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 9px 14px; border: 1px solid #dbe0ea; border-radius: 9px;

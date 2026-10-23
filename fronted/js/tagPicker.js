@@ -126,12 +126,8 @@ async function openTagPicker(mode, resourceType, resourceId) {
     if (gen) gen.style.display = isResource && mode === 'manual' && pendingManual?.content ? 'inline-flex' : 'none';
     const mindmapBlock = document.getElementById('tagPickerMindmapBlock');
     if (mindmapBlock) mindmapBlock.style.display = isResource ? 'block' : 'none';
-    // 上传叫「根据大纲生成」，编辑叫「重新生成」
-    if (mindmapBlock) {
-      const genMapBtn = mindmapBlock.querySelector('.edit-file-actions button:nth-child(2)');
-      if (genMapBtn) genMapBtn.textContent = mode === 'edit' ? '重新生成' : '根据大纲生成';
-    }
     renderPickerMindmapSummary();
+    refreshMindmapAiAvailability();
   }
   const resourceFields = document.getElementById('tagPickerResourceFields');
   if (resourceFields) {
@@ -301,6 +297,7 @@ function closeTagPicker() {
   const outlineInput = document.getElementById('tagPickerOutline');
   if (outlineInput) outlineInput.value = '';
   pendingMindmapJson = '';
+  pendingMindmapSource = '';
   const resourceContent = document.getElementById('tagPickerResourceContent');
   if (resourceContent) resourceContent.value = '';
   renderPickerResourceSummary();
@@ -314,12 +311,14 @@ function openResourceCreate(type) {
   pendingUploadFile = null;
   pendingManual = null;
   pendingMindmapJson = '';
+  pendingMindmapSource = '';
   return openTagPicker('upload', type, null);
 }
 
 // ===== 上传弹窗里的思维导图 =====
 let pendingMindmapJson = '';
 let pendingMindmapImage = '';
+let pendingMindmapSource = '';
 let pickerExistingFile = null;
 let pendingResourceRemoveFile = false;
 
@@ -367,6 +366,7 @@ function renderPickerMindmapSummary() {
   const parts = [];
   if (pendingMindmapJson) parts.push(`${count} 个节点`);
   if (pendingMindmapImage) parts.push('含导图截图');
+  if (pendingMindmapSource) parts.push(pendingMindmapSource);
   box.innerHTML = `<span class="mistake-create-file-icon">🗺️</span><div><strong>已关联思维导图</strong><small>${parts.join(' · ')} · 保存后可在详情页查看</small></div>`;
   if (clear) clear.style.display = 'inline-flex';
   renderPickerMindmapPreview();
@@ -383,7 +383,7 @@ function renderPickerMindmapPreview() {
   const outline = mindmapToOutline(map);
   host.style.display = 'block';
   host.innerHTML = outline
-    ? renderOutlineSvg(outline, { boxWidth: 120 })
+    ? renderOutlineSvg(outline, { boxWidth: 120, fit: true, fitHeight: 180 })
     : '<div class="empty">这张导图没有可预览的文字节点</div>';
 }
 
@@ -396,6 +396,7 @@ function importPickerMindmap(input) {
       const map = JSON.parse(String(reader.result || ''));
       if (!Array.isArray(map.nodes) || !map.nodes.length) throw new Error('JSON 里没有 nodes');
       pendingMindmapJson = JSON.stringify(map);
+      pendingMindmapSource = '导入导图';
       renderPickerMindmapSummary();
       showToast(`已导入导图，共 ${countMindmapNodes(map)} 个节点`);
     } catch (err) {
@@ -409,17 +410,38 @@ function importPickerMindmap(input) {
   input.value = '';
 }
 
-function generatePickerMindmap() {
+async function generatePickerMindmap(mode = 'basic') {
   const outline = (document.getElementById('tagPickerOutline')?.value || '').trim();
   if (!outline) { showToast('先在上面填写大纲，或者先自动生成大纲'); return; }
-  const title = (document.getElementById('tagPickerMindmapTitle')?.value || '').trim()
+  if (mode === 'ai' && !mindmapAiReady()) {
+    showToast('AI 润色需要先接入真实 API；现在可以使用基础生成');
+    return;
+  }
+  let title = (document.getElementById('tagPickerMindmapTitle')?.value || '').trim()
     || (document.getElementById('tagPickerName')?.value || '').trim() || '思维导图';
-  const map = outlineToMindmap(outline, title);
-  pendingMindmapJson = JSON.stringify(map);
-  // 重新生成后，旧的导图截图已过期
-  pendingMindmapImage = '';
-  renderPickerMindmapSummary();
-  showToast(`已生成导图，共 ${countMindmapNodes(map)} 个节点`);
+  const button = document.getElementById(mode === 'ai' ? 'tagPickerMindmapAi' : 'tagPickerMindmapBasic');
+  const original = button?.textContent || '';
+  if (button) button.textContent = mode === 'ai' ? 'AI 润色中…' : '切分中…';
+  setMindmapGenerationBusy(true);
+  const state = tagPickerState;
+  try {
+    const generated = await generateMindmapOutline(outline, title, mode);
+    if (tagPickerState !== state) return;
+    const outlineInput = document.getElementById('tagPickerOutline');
+    if (outlineInput) outlineInput.value = generated.outline;
+    title = (document.getElementById('tagPickerMindmapTitle')?.value || '').trim() || generated.title || title;
+    const map = outlineToMindmap(generated.outline, title);
+    pendingMindmapJson = JSON.stringify(map);
+    pendingMindmapImage = '';
+    pendingMindmapSource = mode === 'ai' ? 'AI 润色' : '基础规则切分';
+    renderPickerMindmapSummary();
+    showToast(`${mode === 'ai' ? 'AI 已润色' : '已按基础规则切分'}，共 ${countMindmapNodes(map)} 个节点，可继续修改`);
+  } catch (err) {
+    showToast(err.message);
+  } finally {
+    if (button) button.textContent = original;
+    setMindmapGenerationBusy(false);
+  }
 }
 
 // 中心主题可编辑：改了就把导图根节点的文字一起改掉
@@ -441,6 +463,7 @@ function updatePickerMindmapTitle() {
 function clearPickerMindmap() {
   pendingMindmapJson = '';
   pendingMindmapImage = '';
+  pendingMindmapSource = '';
   renderPickerMindmapSummary();
 }
 

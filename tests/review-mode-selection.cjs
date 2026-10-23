@@ -88,12 +88,15 @@ test('upload/edit default mode, AI adoption, and total-review weak recall UI', {
         check(document.querySelector('#tagPickerReviewMethod option[value="self_explain"]').disabled
           &&document.querySelector('#tagPickerReviewMethod option[value="contrast"]').disabled
           &&!document.getElementById('tagPickerReviewApiNote').hidden,'AI-dependent modes disabled without real API');
+        const adviceButton=document.getElementById('tagPickerReviewModeAdvice');
+        check(adviceButton.disabled&&adviceButton.getAttribute('aria-disabled')==='true','AI advice disabled without real API');
+        openCreationReviewSuggestion('tagPicker');
+        check(!document.getElementById('creationModeAdviceDialog').open,'AI advice cannot open without real API');
         coursesAiSettings.configure({provider:'deepseek',model:'deepseek-flash',apiKey:'synthetic-mode-key',retain:true,consent:true,auto:false});
         check(!document.querySelector('#tagPickerReviewMethod option[value="self_explain"]').disabled
           &&!document.querySelector('#tagPickerReviewMethod option[value="contrast"]').disabled
-          &&document.getElementById('tagPickerReviewApiNote').hidden,'AI-dependent modes enable with real API');
-        coursesAiSettings.clear();
-        coursesAiSettings.configure({provider:'mock',model:'deepseek-flash',retain:false,auto:false});
+          &&document.getElementById('tagPickerReviewApiNote').hidden
+          &&!adviceButton.disabled,'AI-dependent modes and advice enable with real API');
         document.getElementById('tagPickerName').value='上传方式测试';
         document.getElementById('tagPickerResourceContent').value='光合作用把光能转成化学能。';
         pendingUploadFile=new File(['fake image bytes'],'photosynthesis.png',{type:'image/png'});
@@ -106,7 +109,7 @@ test('upload/edit default mode, AI adoption, and total-review weak recall UI', {
           if(String(url).includes('/ai/review-mode-advice')){
             const body=JSON.parse(options.body);
             window.__reviewAdviceBody=body;
-            return new Response(JSON.stringify({provider:'mock',result:{review_method:'cloze',reason:'事实需要逐空回忆。',needs_review:true}}),{status:200,headers:{'Content-Type':'application/json'}});
+            return new Response(JSON.stringify({provider:'deepseek',result:{review_method:'cloze',reason:'事实需要逐空回忆。',needs_review:true}}),{status:200,headers:{'Content-Type':'application/json'}});
           }
           if(String(url).includes('/ai/material-draft')){
             return new Response(JSON.stringify({provider:'deepseek',mode_id:'cloze',draft:{material:{prompt:'光合作用把光能【ai1】。',reference:'',rubric:'',blanks:[{id:'ai1',answer:'转成化学能',aliases:['转化为化学能'],hint:'能量变化'}],objects:[],dimensions:[]},needs_more_information:false,caveats:['请核对生成空位。'],needs_review:true}}),{status:200,headers:{'Content-Type':'application/json'}});
@@ -134,6 +137,9 @@ test('upload/edit default mode, AI adoption, and total-review weak recall UI', {
         check(document.getElementById('tagPickerReviewMethod').value==='','AI result is not auto-adopted');
         document.getElementById('creationModeAdviceAdopt').click();
         check(document.getElementById('tagPickerReviewMethod').value==='cloze','explicit adoption fills manual selector');
+        coursesAiSettings.clear();
+        coursesAiSettings.configure({provider:'mock',model:'deepseek-flash',retain:false,auto:false});
+        check(adviceButton.disabled,'AI advice disables again after the real key is cleared');
         check(!document.getElementById('tagPickerClozeSetup').hidden,'cloze setup button appears after mode selection');
         check(typeof openClozeModeSetup==='function','cloze setup handler exists');
         document.getElementById('tagPickerClozeSetup').click();

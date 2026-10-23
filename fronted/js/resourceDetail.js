@@ -132,39 +132,68 @@ function renderResourceDetail(resourceType, item) {
   if (!hasOutline && !item.mindmap_image) {
     if (mapBox) mapBox.innerHTML = '<div class="empty">还没有大纲，写一段再点“用大纲生成导图”。</div>';
   }
-  // 导图入口：跳去她的工具编辑，或把她导出的文件传回来（编辑内容在「编辑标签」弹窗里）
-  const head = outlineSection?.querySelector('.detail-section-title');
-  if (head) {
-    let edit = head.querySelector('.open-mindmap-btn');
-    if (!edit) {
-      edit = document.createElement('button');
-      edit.type = 'button';
-      edit.className = 'edit-mini-btn open-mindmap-btn';
-      edit.textContent = '在导图中编辑';
-      head.appendChild(edit);
-    }
-    edit.onclick = () => {
-      window.__mindmapTarget = {
-        courseId: currentCourseId,
-        resourceType,
-        id: item.id,
-        label: item.title || '',
-        baseline: {mindmap_json:item.mindmap_json||'',mindmap_image:item.mindmap_image||'',outline:item.outline||''}
-      };
-      openMindmapEditor(item.mindmap_json, item.title, item.outline);
+  // 导图入口：基础规则始终可用；AI 润色只有真实 API 可用时才能点击。
+  const actionHost = document.getElementById('resourceDetailMindmapActions');
+  if (actionHost) {
+    const sourceOutline = String(item.outline || '').trim() || outlineText;
+    const makeButton = (className, text) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `edit-btn ${className}`;
+      button.textContent = text;
+      button.dataset.mindmapGenerate = className.startsWith('ai-') ? 'ai' : 'basic';
+      return button;
     };
+    const basic = makeButton('open-mindmap-btn', '基础生成');
+    basic.disabled = !sourceOutline;
+    basic.title = sourceOutline ? '按固定规则切成适合导图的层级，不调用 AI' : '请先填写大纲';
+    const ai = makeButton('ai-mindmap-btn', 'AI 润色生成');
+    const editExisting = item.mindmap_json
+      ? Object.assign(document.createElement('button'), {
+          type: 'button',
+          className: 'edit-btn edit-existing-mindmap-btn',
+          textContent: '继续编辑',
+        })
+      : null;
+    const back = Object.assign(document.createElement('button'), {
+      type: 'button',
+      className: 'edit-btn reupload-mindmap-btn',
+      textContent: '上传导图',
+    });
+    actionHost.replaceChildren(basic, ai, ...(editExisting ? [editExisting] : []), back);
 
-    let back = head.querySelector('.reupload-mindmap-btn');
-    if (!back) {
-      back = document.createElement('button');
-      back.type = 'button';
-      back.className = 'edit-mini-btn reupload-mindmap-btn';
-      back.style.marginLeft = '6px';
-      back.textContent = '上传导图';
-      head.appendChild(back);
-    }
+    window.__mindmapTarget = {
+      courseId: currentCourseId,
+      resourceType,
+      id: item.id,
+      label: item.title || '',
+      baseline: {mindmap_json:item.mindmap_json||'',mindmap_image:item.mindmap_image||'',outline:item.outline||''}
+    };
+    const openGenerated = async (mode, button) => {
+      if (!sourceOutline) { showToast('请先填写大纲'); return; }
+      const original = button.textContent;
+      let editorWindow = null;
+      try { editorWindow = window.open('', '_blank'); } catch {}
+      button.textContent = mode === 'ai' ? 'AI 润色中…' : '切分中…';
+      setMindmapGenerationBusy(true);
+      try {
+        const generated = await generateMindmapOutline(sourceOutline, item.title || '', mode);
+        await openMindmapEditor(item.mindmap_json, generated.title || item.title || '', generated.outline,
+          { startNew: true, targetWindow: editorWindow });
+      } catch (err) {
+        try { if (editorWindow && !editorWindow.closed) editorWindow.close(); } catch {}
+        showToast(err.message);
+      } finally {
+        button.textContent = original;
+        setMindmapGenerationBusy(false);
+      }
+    };
+    basic.onclick = () => void openGenerated('basic', basic);
+    ai.onclick = () => void openGenerated('ai', ai);
+    if (editExisting) editExisting.onclick = () => void openMindmapEditor(item.mindmap_json, item.title, item.outline);
     back.onclick = () => reuploadMindmap(resourceType, item.id);
   }
+  refreshMindmapAiAvailability();
 }
 
 // 文件预览独立于正文：图片缩略图、PDF 预览入口，其它格式提供下载。

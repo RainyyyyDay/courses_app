@@ -107,10 +107,14 @@ function renderOutlineSvg(text, options = {}) {
   const width = 80 + (maxDepth + 1) * boxW + maxDepth * gapX;
   const height = Math.max(120, cursorY + 20);
   const palette = ['#3b6cf6', '#4f8df5', '#22a06b', '#c98a2b', '#8a6cf0'];
+  const fitHeight = Number.isFinite(options.fitHeight) ? Math.max(120, Math.round(options.fitHeight)) : 0;
+  const fitStyle = options.fit === true
+    ? ` style="display:block;width:100%;${fitHeight ? `height:${fitHeight}px;` : 'height:auto;'}"`
+    : '';
 
   const esc = (value) => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="'Microsoft YaHei', system-ui, sans-serif">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" font-family="'Microsoft YaHei', system-ui, sans-serif"${fitStyle}>`,
     `<rect width="${width}" height="${height}" fill="#fbfcff"/>`,
   ];
 
@@ -151,7 +155,11 @@ function renderOutlineMap(container, text, options = {}) {
     container.innerHTML = '';
     return false;
   }
-  container.innerHTML = renderOutlineSvg(value, options);
+  container.innerHTML = renderOutlineSvg(value, {
+    ...options,
+    fit: options.fit !== false,
+    fitHeight: options.fitHeight ?? 300,
+  });
   bindOutlineNodeClick(container);
   OUTLINE_MAP.current = value;
   return true;
@@ -193,7 +201,7 @@ function openOutlineFullscreen() {
   const body = document.getElementById('outlineFullscreenBody');
   if (!overlay || !body) return;
   body.innerHTML = OUTLINE_MAP.current
-    ? renderOutlineSvg(OUTLINE_MAP.current, { rootTitle: OUTLINE_MAP.currentTitle })
+    ? renderOutlineSvg(OUTLINE_MAP.current, { rootTitle: OUTLINE_MAP.currentTitle, fit: false })
     : '<div class="empty">还没有大纲</div>';
   bindOutlineNodeClick(body);
   overlay.classList.add('show');
@@ -294,17 +302,144 @@ function downloadMindmapJson(mapJson, title) {
 // 导图工具地址：她的本地服务默认 8794，部署后换成正式地址即可
 const MINDMAP_APP_URL = globalThis.MINDMAP_APP_URL || 'http://127.0.0.1:8794/';
 
-// 跳到导图工具，带上标题与大纲，让对方那边直接新建
-async function openMindmapEditor(mapJson, title, outline) {
+let mindmapGenerationBusy = false;
+
+function mindmapAiReady() {
+  return typeof coursesAiSettings !== 'undefined'
+    && typeof coursesAiSettings.realReady === 'function'
+    && coursesAiSettings.realReady();
+}
+
+function refreshMindmapAiAvailability() {
+  const ready = mindmapAiReady();
+  for (const button of document.querySelectorAll('[data-mindmap-generate]')) {
+    const ai = button.dataset.mindmapGenerate === 'ai';
+    button.disabled = mindmapGenerationBusy || (ai && !ready);
+    button.setAttribute('aria-disabled', String(button.disabled));
+    if (ai) {
+      button.title = ready
+        ? '使用已接入的真实 AI 润色大纲，生成后仍可修改'
+        : '请先在 AI 设置中接入真实 API；未接入时请使用基础生成';
+    }
+  }
+  for (const id of ['tagPickerMindmapAiNote', 'resourceDetailMindmapAiNote']) {
+    const note = document.getElementById(id);
+    if (!note) continue;
+    note.textContent = ready
+      ? 'AI 会把大纲润色成适合导图排版的层级文本；生成后仍可编辑，不自动覆盖已保存内容。'
+      : 'AI 润色需要先在「AI 设置」接入真实 API；基础生成无需 API，可直接使用。';
+    note.classList.toggle('mindmap-ai-unavailable', !ready);
+  }
+}
+
+function setMindmapGenerationBusy(busy) {
+  mindmapGenerationBusy = !!busy;
+  refreshMindmapAiAvailability();
+}
+
+async function requestBasicMindmapOutline(text, title = '') {
+  const response = await requestApi(`${API}/ai/outline`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, title, purpose: 'mindmap' }),
+  });
+  const data = await response.json();
+  if (!data || data.mode !== 'basic' || typeof data.outline !== 'string' || !data.outline.trim()) {
+    throw new Error('基础切分没有返回可用的大纲');
+  }
+  return { title, outline: data.outline.trim(), source: 'basic' };
+}
+
+async function requestAiMindmapOutline(text, title = '') {
+  if (!mindmapAiReady()) {
+    throw new Error('AI 润色尚未接入真实 API；基础生成仍然可用。');
+  }
+  const credentials = coursesAiSettings.read();
+  if (!credentials) throw new Error('没有可用的真实 AI 设置');
+  const endpoint = new URL((globalThis.COURSES_AI_API_BASE ?? API).replace(/\/$/, '') + '/ai/outline-polish', location.href);
+  if (endpoint.origin !== location.origin || endpoint.username || endpoint.password
+    || !(endpoint.protocol === 'https:'
+      || endpoint.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname))) {
+    throw mistakeAiError('AI_TEMP_KEY_ORIGIN');
+  }
+  let body = JSON.stringify({
+    provider: credentials.provider || 'deepseek',
+    api_key: credentials.apiKey,
+    model: credentials.model,
+    confirm_cost: credentials.confirmCost,
+    ...(credentials.provider === 'compatible' ? {
+      base_url: credentials.baseUrl,
+      ...(credentials.workspaceId ? { workspace_id: credentials.workspaceId } : {}),
+    } : {}),
+    input: { title, text },
+  });
+  credentials.apiKey = '';
+  if (new TextEncoder().encode(body).length > 32768) {
+    body = '';
+    throw new Error('大纲内容过长，请精简后再使用 AI 润色');
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 100000);
+  const release = coursesAiSettings.track(credentials, () => controller.abort());
+  try {
+    const response = await fetch(endpoint.href, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => null);
+    if (!coursesAiSettings.valid(credentials)) throw Object.assign(new Error('请求已取消'), { name: 'AbortError' });
+    if (!response.ok) throw mistakeAiError(data?.error, response.status);
+    const result = data?.result;
+    if (data?.provider !== (credentials.provider || 'deepseek')
+      || !result || typeof result.outline !== 'string' || !result.outline.trim()
+      || result.needs_review !== true) {
+      throw mistakeAiError('INVALID_RESPONSE');
+    }
+    return {
+      title: typeof result.title === 'string' && result.title.trim() ? result.title.trim() : title,
+      outline: result.outline.trim(),
+      source: 'ai',
+    };
+  } catch (err) {
+    if (err?.name === 'AbortError') throw new Error('AI 润色已取消或超时');
+    throw err;
+  } finally {
+    body = '';
+    clearTimeout(timer);
+    release();
+  }
+}
+
+async function generateMindmapOutline(text, title, mode = 'basic') {
+  const value = String(text || '').trim();
+  if (!value) throw new Error('先填写「重点总结 / 大纲」再生成导图');
+  return mode === 'ai'
+    ? requestAiMindmapOutline(value, title)
+    : requestBasicMindmapOutline(value, title);
+}
+
+// 跳到导图工具；生成模式只传一次性文本，不提前改写用户已保存的大纲。
+async function openMindmapEditor(mapJson, title, outline, options = {}) {
   const target = window.__mindmapTarget;
   if (!target) { showToast('请从资料详情页进入'); return; }
   const collection = target.resourceType === 'note' ? 'notes' : 'materials';
+  let editorWindow = options.targetWindow || null;
+  if (!editorWindow) {
+    try { editorWindow = window.open('', '_blank'); } catch { editorWindow = null; }
+  }
   try {
     // 走她定义的交接协议：先向后端申请一次性 token
     const response = await requestApi(`${API}/courses/${currentCourseId}/${collection}/${target.id}/handoff`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: '{}',
+      body: JSON.stringify({
+        ...(typeof outline === 'string' ? { outline } : {}),
+        ...(typeof title === 'string' && title ? { title } : {}),
+        ...(options.startNew === true ? { startNew: true } : {}),
+      }),
     });
     const data = await response.json();
     // The page may be served by the AI harness on 3002 while business APIs stay on 3000.
@@ -314,9 +449,19 @@ async function openMindmapEditor(mapJson, title, outline) {
     const url = MINDMAP_APP_URL.replace(/\/?$/, '/')
       + '?from=courses_app&bridge=' + encodeURIComponent(bridge)
       + '#handoff=' + data.token;
-    window.__mindmapEditorWindow = window.open(url, '_blank');
+    if (editorWindow && !editorWindow.closed) {
+      editorWindow.location.replace(url);
+      window.__mindmapEditorWindow = editorWindow;
+    } else {
+      window.__mindmapEditorWindow = window.open(url, '_blank');
+    }
+    if (!window.__mindmapEditorWindow) {
+      showToast('浏览器拦截了新窗口，请允许本站打开标签页后重试');
+      return;
+    }
     showToast('已打开导图工具；改完点「保存并回传课程」即可');
   } catch (err) {
+    try { if (editorWindow && !editorWindow.closed) editorWindow.close(); } catch {}
     showToast('打开导图失败：' + err.message);
   }
 }
