@@ -171,7 +171,13 @@ function closeOutlineFullscreen() {
 
 // ===== 大纲 ⇄ 导图数据（功能包的 map.json） =====
 function outlineToMindmap(text, title) {
-  const tree = parseOutlineTree(text, title || '思维导图');
+  let rootTitle = title || '思维导图';
+  // 文件上传的资料标题可能是哈希/UUID，不适合当中心主题：改用大纲首行
+  if (/^[0-9a-f][0-9a-f-]{15,}$/i.test(rootTitle.replace(/\.[a-z0-9]+$/i, ''))) {
+    const first = String(text || '').trim().split('\n')[0] || '';
+    rootTitle = first.replace(/^[-*•]\s*/, '').trim().slice(0, 40) || '思维导图';
+  }
+  const tree = parseOutlineTree(text, rootTitle);
   let seq = 0;
   const walk = (node) => ({
     id: `n${(seq += 1)}`,
@@ -180,7 +186,7 @@ function outlineToMindmap(text, title) {
   });
   return {
     id: `material-${Date.now()}`,
-    title: title || '思维导图',
+    title: rootTitle,
     nodes: [walk(tree)],
     pos: {},
     size: {},
@@ -236,10 +242,37 @@ const MINDMAP_APP_URL = globalThis.MINDMAP_APP_URL || 'http://127.0.0.1:8794/';
 function openMindmapEditor(mapJson, title, outline) {
   const params = new URLSearchParams({ from: 'courses_app', title: title || '' });
   if (outline) params.set('outline', outline);
+  // 带上回传目标：她那边即使拿不到 window.opener，也能直接调接口回传
+  const target = window.__mindmapTarget;
+  if (target) {
+    params.set('api', String(globalThis.COURSES_API_BASE || API));
+    params.set('course', String(currentCourseId));
+    params.set('type', target.resourceType);
+    params.set('id', String(target.id));
+    if (target.label) params.set('label', target.label);
+  }
   const url = MINDMAP_APP_URL.replace(/\/?$/, '/') + '?' + params.toString();
-  window.open(url, '_blank', 'noopener');
-  showToast('已在导图工具中打开；保存后用「导入导图 JSON」传回来');
+  // 不能加 noopener：她那边要靠 window.opener 把导图传回来
+  window.__mindmapEditorWindow = window.open(url, '_blank');
+  showToast('已打开导图工具；改完点那边的「回传到课程网站」即可');
 }
+
+// 导图工具点「回传到课程网站」→ 直接写入当前资料，不需要下载文件
+window.addEventListener('message', (event) => {
+  if (event.data?.type !== 'mm:send' || !event.data.map) return;
+  const target = window.__mindmapTarget;
+  if (!target) { showToast('没有正在编辑的资料'); return; }
+  const path = target.resourceType === 'note' ? 'notes' : 'materials';
+  requestApi(`${API}/courses/${currentCourseId}/${path}/${target.id}/mindmap`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    // 清掉旧截图，否则详情页会继续优先显示那张旧图
+    body: JSON.stringify({ mindmapJson: JSON.stringify(event.data.map), mindmapImage: '' }),
+  }).then(() => {
+    showToast('导图已回传并保存');
+    openResourceDetail(target.resourceType, target.id);
+  }).catch((err) => showToast('回传失败：' + err.message));
+});
 
 // 把她那边编辑/导出的文件传回来，更新当前资料/笔记的导图
 function reuploadMindmap(resourceType, id) {
@@ -275,69 +308,4 @@ function reuploadMindmap(resourceType, id) {
     reader.readAsText(file);
   };
   input.click();
-}
-
-// ===== 详情页的大纲 / 导图编辑 =====
-function resourceOutlineContext() {
-  const section = document.getElementById('resourceDetailOutlineSection');
-  if (!section) return null;
-  const resourceType = section.dataset.resourceType === 'note' ? 'note' : 'material';
-  const id = Number(section.dataset.resourceId);
-  if (!id) return null;
-  return { section, resourceType, id, path: resourceType === 'note' ? 'notes' : 'materials' };
-}
-
-async function putResourceMindmap(payload, message) {
-  const ctx = resourceOutlineContext();
-  if (!ctx) return;
-  try {
-    await requestApi(`${API}/courses/${currentCourseId}/${ctx.path}/${ctx.id}/mindmap`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    showToast(message);
-    openResourceDetail(ctx.resourceType, ctx.id);
-  } catch (err) {
-    showToast('保存失败：' + err.message);
-  }
-}
-
-function resourceOutlineValue() {
-  return (document.getElementById('resourceDetailOutlineText')?.value || '').trim();
-}
-
-function saveResourceOutline() {
-  putResourceMindmap({ outline: resourceOutlineValue() }, '大纲已保存');
-}
-
-function clearResourceOutline() {
-  putResourceMindmap({ outline: '' }, '大纲已清空');
-}
-
-function generateResourceMindmap() {
-  const outline = resourceOutlineValue();
-  if (!outline) { showToast('先写一段大纲'); return; }
-  const ctx = resourceOutlineContext();
-  const title = ctx?.section.dataset.title || '思维导图';
-  putResourceMindmap({
-    outline,
-    mindmapJson: JSON.stringify(outlineToMindmap(outline, title)),
-    mindmapImage: '',
-  }, '已按大纲生成导图');
-}
-
-function removeResourceMindmap() {
-  putResourceMindmap({ mindmapJson: '', mindmapImage: '' }, '导图已移除');
-}
-
-function openResourceMindmapEditor() {
-  const ctx = resourceOutlineContext();
-  if (!ctx) return;
-  openMindmapEditor(ctx.section.dataset.mindmapJson || '', ctx.section.dataset.title || '', resourceOutlineValue());
-}
-
-function reuploadResourceMindmap() {
-  const ctx = resourceOutlineContext();
-  if (ctx) reuploadMindmap(ctx.resourceType, ctx.id);
 }

@@ -95,18 +95,15 @@ function renderResourceDetail(resourceType, item) {
   // 大纲 + 思维导图：详情页里直接可编辑（和上传弹窗一致）
   const outlineSection = document.getElementById('resourceDetailOutlineSection');
   OUTLINE_MAP.currentTitle = item.title || '';
-  let outlineText = item.outline || '';
-  if (!outlineText && item.mindmap_json) {
+  // 导图数据是权威来源（用户在导图工具里改过）；没有导图才退回大纲文本
+  let outlineText = '';
+  if (item.mindmap_json) {
     try { outlineText = mindmapToOutline(JSON.parse(item.mindmap_json)); } catch { outlineText = ''; }
   }
+  if (!outlineText) outlineText = item.outline || '';
   if (outlineSection) {
     outlineSection.style.display = '';
-    outlineSection.dataset.resourceType = resourceType;
-    outlineSection.dataset.resourceId = String(item.id || '');
   }
-  const editor = document.getElementById('resourceDetailOutlineText');
-  if (editor) editor.value = outlineText;
-
   const hasOutline = renderOutlineMap(document.getElementById('resourceDetailOutlineMap'), outlineText, { rootTitle: item.title || '' });
   const mapBox = document.getElementById('resourceDetailOutlineMap');
   if (mapBox && item.mindmap_image) {
@@ -115,9 +112,32 @@ function renderResourceDetail(resourceType, item) {
   if (!hasOutline && !item.mindmap_image) {
     if (mapBox) mapBox.innerHTML = '<div class="empty">还没有大纲，写一段再点“用大纲生成导图”。</div>';
   }
-  if (outlineSection) {
-    outlineSection.dataset.mindmapJson = item.mindmap_json || '';
-    outlineSection.dataset.title = item.title || '';
+  // 导图入口：跳去她的工具编辑，或把她导出的文件传回来（编辑内容在「编辑标签」弹窗里）
+  const head = outlineSection?.querySelector('.detail-section-title');
+  if (head) {
+    let edit = head.querySelector('.open-mindmap-btn');
+    if (!edit) {
+      edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'edit-mini-btn open-mindmap-btn';
+      edit.textContent = '在导图中编辑';
+      head.appendChild(edit);
+    }
+    edit.onclick = () => {
+      window.__mindmapTarget = { resourceType, id: item.id, label: item.title || '' };
+      openMindmapEditor(item.mindmap_json, item.title, item.outline);
+    };
+
+    let back = head.querySelector('.reupload-mindmap-btn');
+    if (!back) {
+      back = document.createElement('button');
+      back.type = 'button';
+      back.className = 'edit-mini-btn reupload-mindmap-btn';
+      back.style.marginLeft = '6px';
+      back.textContent = '回传导图';
+      head.appendChild(back);
+    }
+    back.onclick = () => reuploadMindmap(resourceType, item.id);
   }
 }
 
