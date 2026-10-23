@@ -29,6 +29,7 @@ module.exports = {
   ...require('./knowledge'),
   ...require('./materials'),
   ...require('./notes'),
+  ...require('./readingContent'),
   ...require('./assessments'),
   ...require('./mistakes'),
   ...require('./mistakeReview'),

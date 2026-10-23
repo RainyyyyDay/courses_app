@@ -165,6 +165,8 @@ function createPdfOcrDialog(controller, options = {}) {
     dialog.querySelector('[data-pdf-cancel]').disabled = true;
     rejectSelection?.(new DOMException('已取消识别，原正文和已有结果未改动', 'AbortError'));
   };
+  const abortSelection = () => rejectSelection?.(new DOMException('已取消识别，原正文和已有结果未改动', 'AbortError'));
+  controller.signal.addEventListener('abort', abortSelection);
   dialog.querySelector('[data-pdf-cancel]').onclick = cancel;
   dialog.addEventListener('cancel', event => { event.preventDefault(); cancel(); });
   dialog.showModal();
@@ -197,7 +199,7 @@ function createPdfOcrDialog(controller, options = {}) {
       const bar = dialog.querySelector('progress');
       bar.hidden = false; bar.max = total; bar.value = done;
     },
-    close() { dialog.close(); dialog.remove(); },
+    close() { controller.signal.removeEventListener('abort', abortSelection); dialog.close(); dialog.remove(); },
   };
 }
 
@@ -307,6 +309,7 @@ async function recognizeTextInBrowser(file, onProgress, options = {}) {
     throw Object.assign(new Error('页面不是通过 http 打开'), { code: 'OCR_WEB_PROTOCOL' });
   }
 
+  ocrCheckCancelled(options.signal);
   const started = performance.now();
   const inputs = [file];
   const pages = 1;
@@ -321,7 +324,8 @@ async function recognizeTextInBrowser(file, onProgress, options = {}) {
   for (let index = 0; index < inputs.length; index += 1) {
     if (inputs.length > 1) onProgress?.(`识别第 ${index + 1}/${inputs.length} 页…`);
     else onProgress?.('浏览器端识别中…');
-    const result = await predictWithRetry(inputs[index], onProgress);
+    const result = await predictWithRetry(inputs[index], onProgress, options.signal);
+    ocrCheckCancelled(options.signal);
     const items = (result?.items || []).filter((item) => (item.score ?? 1) >= 0.5 && String(item.text || '').trim());
     for (const item of items) {
       lines.push({ text: item.text, confidence: item.score, box: item.poly });

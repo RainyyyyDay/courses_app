@@ -39,3 +39,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\start-local.ps1 -CheckOnly
 ```
 
 Word/PPT 测试使用程序生成的 OOXML ZIP 文档，通过真实 Chrome、Worker 和 fflate 验证段落/表格、分段文字、特殊字符、幻灯片顺序、范围、空白页、损坏 XML、旧格式、加密格式提示、超限、Worker 取消，以及资料正文确认流程。覆盖桌面和手机宽度，不请求真实 AI、服务端 OCR 或个人附件。不代表已经测试全部 Office/WPS 版本及复杂课件格式。
+
+
+## 上传后补充正文
+
+资料、笔记详情的“文件”标题旁有“识别附件／补充正文”入口。直接下载已经保存的附件进行本地识别，不新增上传文件；可再次选择 PDF/PPT 页码，识别结果可编辑。没有正文时“保存正文”，已有正文时可“追加并保存”或“替换并保存”，替换另有确认。也可以手动输入补充文字。
+
+本地开发后端新增 `PUT /api/courses/:courseId/materials/:materialId/content` 和 `PUT /api/courses/:courseId/notes/:noteId/content`，JSON 为 `{text, mode: "append"|"replace", expectedContent}`。必填读取时的原正文用于并发检查，冲突返回 409；正文上限 100 万字符。只更新 content，不改附件、标签、复习状态、历史或大纲。不需要数据库迁移。大网站合并时由主后端接入同等正文保存逻辑与现有鉴权，不属于 AI 推理接口。
+
+测试 `tests/existing-attachment-text.cjs` 使用隔离数据库和生成的 PPT/Word 附件，在真实浏览器验证已上传后提取、追加、替换确认、取消、并发冲突及刷新保留草稿；API 测试还检查课程隔离、无效参数、重复提交、服务重启后持久化和附件字节未变。

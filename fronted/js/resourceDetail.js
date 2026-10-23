@@ -110,6 +110,7 @@ function renderResourceDetail(resourceType, item) {
   const contentBox = document.getElementById('resourceDetailContent');
   contentSection.hidden = !hasFile || !content.trim();
   contentBox.textContent = hasFile ? content : '';
+  if (typeof mountResourceTextAction === 'function') mountResourceTextAction(resourceType, item);
 
   // 大纲 + 思维导图：详情页里直接可编辑（和上传弹窗一致）
   const outlineSection = document.getElementById('resourceDetailOutlineSection');
