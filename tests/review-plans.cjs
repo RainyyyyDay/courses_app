@@ -120,9 +120,11 @@ async function testReviewPlanApi({base,temp}) {
     assert.equal((await api('GET',review)).version,p.version);assert.equal((await api('GET',url)).completed,0);
     d.exec('DROP TRIGGER reject_mistake_event');
     d.exec('DROP TRIGGER reject_plan_completion');
-    const completed=await api('POST',review+'/events'+context,operation);
+    const recalled=await api('POST',review+'/events'+context,operation);
+    assert.equal(recalled.stage,'answer','forgotten recall reveals the reference before judgment');
+    assert.deepEqual(await api('POST',review+'/events'+context,operation),recalled,'same requestId remains idempotent');
+    const completed=await api('POST',review+'/events'+context,{action:'judge',correct:false,requestId:'plan-failed-judge',expectedVersion:recalled.version});
     assert.equal(completed.stage,'completed');assert.equal(completed.reviewStatus,'unreviewed');
-    assert.deepEqual(await api('POST',review+'/events'+context,operation),completed,'same requestId remains idempotent');
     const otherTask=(await api('GET',prefix+'/'+second.id+'/items')).find(row=>row.item_type==='mistake');
     await api('POST',review+'/events?planItemId='+otherTask.id,operation,409);
     await api('POST',review+'/events'+context,{...operation,requestId:'new-stale'},409);
@@ -164,8 +166,8 @@ async function testReviewPlanApi({base,temp}) {
       last_grade=excluded.last_grade,last_review_date=excluded.last_review_date,due_date=excluded.due_date,updated_at=excluded.updated_at`)
       .run(course.id,'material',m.id,60,5,3,0,'review',3,today,spanExam,0,20,new Date().toISOString());
     const changedSchedule=await api('GET',prefix+'/'+snapPlan.id+'/schedule');
-    assert.equal(changedSchedule.hasNewSchedule,true,'recomputed schedule is flagged for approval');
-    assert.deepEqual(changedSchedule.days.map(day=>day.date),firstSchedule.days.map(day=>day.date),'old schedule stays until applied');
+    assert.equal(changedSchedule.hasNewSchedule,false,'memory state alone does not request rescheduling');
+    assert.deepEqual(changedSchedule.days.map(day=>day.date),firstSchedule.days.map(day=>day.date),'ordinary memory updates preserve the agreed schedule');
     const applied=await api('POST',prefix+'/'+snapPlan.id+'/schedule/apply',undefined,200);
     assert.equal(applied.hasNewSchedule,false,'applying clears the pending flag');
     // 回归：未来日期已完成的旧任务 + 应用新排期，不能因为空日期而 500。

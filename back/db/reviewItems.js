@@ -157,7 +157,7 @@ function recordReviewItemGrade(courseId, type, id, body) {
   }
 }
 
-// 计划排期预览：只读，不落库。真正执行仍走 review-sessions。
+// 计划排期：首读初始化快照；普通刷新只合并进度，真正执行仍走 review-sessions。
 // 计划里选中的内容 + 各自记忆状态 + 计划参数（生成排期用）。
 function planScheduleParts(courseId, plan) {
   const rows = db.prepare('SELECT DISTINCT item_type,item_id FROM review_plan_items WHERE plan_id=? AND source_deleted=0').all(plan.id);
@@ -196,10 +196,51 @@ function scheduleStructure(days) {
     })),
   }));
 }
-function structureKey(days) {
-  return scheduleStructure(days)
-    .map(day => day.date + ':' + day.items.map(item => item.type + item.id).sort().join(','))
-    .join('|');
+// Replanning is event-driven. Normal grades and daily progress never replace a confirmed schedule.
+function planCompletionDate(value) {
+  const time = new Date(value);
+  if (!value || !Number.isFinite(time.getTime())) return null;
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(time);
+}
+function planCompletedRows(planId) {
+  return {
+    tasks: db.prepare("SELECT id,scheduled_date AS date,completed_at FROM review_plan_items WHERE plan_id=? AND source_deleted=0 AND status='completed'").all(planId),
+    sessions: db.prepare(`SELECT i.id,s.source_date AS date,i.completed_at FROM review_session_items i
+      JOIN review_sessions s ON s.id=i.session_id WHERE s.source_type='plan' AND s.source_id=?
+      AND i.source_deleted=0 AND i.status='completed' AND i.result='passed' AND i.exposure_only=0`).all(planId),
+  };
+}
+function planScheduleSnapshot(plan, items, live, applied) {
+  const completed = applied ? planCompletedRows(plan.id) : { tasks: [], sessions: [] };
+  return { days: scheduleStructure(live.days), sourceKeys: items.map(item => item.type + ':' + item.id),
+    unscheduled: live.unscheduled, feasibility: live.feasibility,
+    generatedAt: applied ? new Date().toISOString() : null, applied,
+    appliedOn: applied ? planToday() : null,
+    completedTaskIds: completed.tasks.map(row => row.id), completedSessionItemIds: completed.sessions.map(row => row.id) };
+}
+function planRescheduleReasons(plan, snapshot, items, days, today) {
+  const currentKeys = new Set(items.map(item => item.type + ':' + item.id));
+  const sourceKeys = snapshot.sourceKeys || [...new Set(snapshot.days.flatMap(day => (day.items || []).map(item => item.type + ':' + item.id)))];
+  const reasons = [];
+  if (sourceKeys.some(key => !currentKeys.has(key))) reasons.push('content_deleted');
+  const floor = snapshot.applied ? snapshot.appliedOn || planCompletionDate(snapshot.generatedAt) || plan.start_date : plan.start_date;
+  const completed = planCompletedRows(plan.id);
+  const unacknowledged = (rows, known) => {
+    const ids = new Set(known || []);
+    return rows.filter(row => Array.isArray(known) ? !ids.has(row.id)
+      : !snapshot.applied || !snapshot.generatedAt || row.completed_at > snapshot.generatedAt);
+  };
+  const changedCompletions = [...unacknowledged(completed.tasks, snapshot.completedTaskIds),
+    ...unacknowledged(completed.sessions, snapshot.completedSessionItemIds)];
+  if (changedCompletions.some(row => {
+    const completedOn = planCompletionDate(row.completed_at);
+    return row.date && completedOn && completedOn < row.date;
+  })) reasons.push('completed_early');
+  const completedLate = changedCompletions.some(row => row.date >= floor && row.date < today && planCompletionDate(row.completed_at) > row.date);
+  const unfinishedPastDay = days.some(day => day.date >= floor && day.date < today
+    && day.items.some(item => !(item.status === 'completed' && item.result === 'passed')));
+  if (completedLate || unfinishedPastDay) reasons.push('overdue');
+  return reasons;
 }
 
 // 同一天可能同时存在：排期快照、物化任务、当天会话。
@@ -242,25 +283,25 @@ function getReviewPlanSchedule(courseId, planId) {
     dailyMinutes: plan.daily_minutes, dailyMaxItems: plan.daily_max_items,
   };
   if (today >= plan.exam_date) {
-    return { ...base, days: [], occurrences: [], unscheduled: [], hasNewSchedule: false,
+    return { ...base, days: [], occurrences: [], unscheduled: [], hasNewSchedule: false, rescheduleReasons: [],
       feasibility: { feasible: false, shortfallMinutes: 0, coverage: {}, warnings: ['考试日期已过，计划不可再排期'] } };
   }
-  const result = planOccurrences({ items, states, today, examDate: plan.exam_date, profile, capacity });
-  // 已确认的排期快照：提前复习后先不自动替换，用户点「应用新排期」才切换。
-  const liveStructure = scheduleStructure(result.days);
   let snapshot = null;
   try { snapshot = plan.schedule_json ? JSON.parse(plan.schedule_json) : null; } catch { snapshot = null; }
   if (!snapshot || !Array.isArray(snapshot.days)) {
-    snapshot = { days: liveStructure, generatedAt: null, applied: false };
+    const live = planOccurrences({ items, states, today, examDate: plan.exam_date, profile, capacity });
+    snapshot = planScheduleSnapshot(plan, items, live, false);
     db.prepare('UPDATE review_plans SET schedule_json=? WHERE id=?').run(JSON.stringify(snapshot), plan.id);
   }
+  // Read the agreed schedule; do not run the scheduling algorithm on ordinary progress refreshes.
+  const result = { days: snapshot.days, occurrences: [], unscheduled: snapshot.unscheduled || [],
+    feasibility: snapshot.feasibility || { feasible: true, shortfallMinutes: 0, coverage: {}, warnings: [] } };
   const deletedKeys = new Set(db.prepare('SELECT item_type,item_id FROM review_plan_items WHERE plan_id=? AND source_deleted=1')
     .all(plan.id).map(row => row.item_type + ':' + row.item_id));
   const visibleSnapshotDays = snapshot.days.map(day => ({
     ...day,
     items: (day.items || []).filter(item => !deletedKeys.has(item.type + ':' + item.id)),
   })).filter(day => day.items.length);
-  const structureChanged = structureKey(visibleSnapshotDays) !== structureKey(liveStructure);
   // 采纳新排期后，只把「采纳之后」的会话算作这一版的完成记录：
   // 之前的提前复习不在这版排期里显示绿勾。
   // 只有用户主动「应用新排期」之后的快照才以生成时间为界；初始快照保留历史完成状态。
@@ -402,22 +443,21 @@ function getReviewPlanSchedule(courseId, planId) {
     }
     day.movedTo = [...dates].sort();
   }
-  // 未来日期已完成 = 提前完成，也应该提示有新排期可应用。
-  const hasEarlyDone = days.some(day => day.date > today && day.state === 'done');
-  // 今天按计划全部通过属于正常执行；记忆状态变化导致的未来估算差异不应再要求用户“应用新排期”。
-  // 只有提前完成未来日期，或今天没有全部通过时，才把结构差异呈现为待应用的新排期。
-  const todayDone = days.some(day => day.date === today && day.state === 'done');
-  return { ...base, ...result, days, hasNewSchedule: hasEarlyDone || (!todayDone && structureChanged) };
+  const rescheduleReasons = planRescheduleReasons(plan, snapshot, items, days, today);
+  result.occurrences = visibleSnapshotDays.flatMap(day => day.items.map(item => ({ ...item, date: day.date })));
+  return { ...base, ...result, days, hasNewSchedule: rescheduleReasons.length > 0, rescheduleReasons };
 }
 
 // 采纳当前记忆状态算出的新排期（替换快照）。
 function applyReviewPlanSchedule(courseId, planId) {
   const plan = db.prepare('SELECT * FROM review_plans WHERE id=? AND course_id=?').get(planId, courseId);
   if (!plan) planError(404, 'PLAN_NOT_FOUND', '找不到当前课程的计划');
+  const current = getReviewPlanSchedule(courseId, planId);
+  if (!current.hasNewSchedule) return current;
   if (planToday() < plan.exam_date) {
     const { items, states, profile, capacity } = planScheduleParts(courseId, plan);
     const live = planOccurrences({ items, states, today: planToday(), examDate: plan.exam_date, profile, capacity });
-    const snapshot = { days: scheduleStructure(live.days), generatedAt: new Date().toISOString(), applied: true };
+    const snapshot = planScheduleSnapshot(plan, items, live, true);
     db.prepare('UPDATE review_plans SET schedule_json=? WHERE id=?').run(JSON.stringify(snapshot), plan.id);
   }
   return getReviewPlanSchedule(courseId, planId);
