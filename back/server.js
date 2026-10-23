@@ -1080,14 +1080,16 @@ function aiApi(handler) {
 const reviewScope=req=>({courseId:mistakeCourse(req.params.courseId),type:req.params.itemType,id:positiveId(req.params.itemId)});
 app.post('/api/ai/review-draft',aiApi(async(req,res)=>res.json(await aiService.createReviewDraft(req.body))));
 
-// 重点总结 / 大纲：先用本地规则从正文提炼，不依赖模型
+// 重点总结 / 大纲：固定规则从正文提炼，或把已有大纲切成适合导图的层级
 app.post('/api/ai/outline', (req, res) => {
   const text = typeof req.body?.text === 'string' ? req.body.text : '';
   if (!text.trim()) return res.status(400).json({ message: '没有可提炼的正文' });
-  const { buildOutline } = require('./ai/outline');
-  const outline = buildOutline(text);
+  if (text.length > 100000) return res.status(413).json({ message: '正文过长，请分段整理' });
+  const { buildOutline, buildMindmapOutline } = require('./ai/outline');
+  const mindmap = req.body?.purpose === 'mindmap';
+  const outline = mindmap ? buildMindmapOutline(text) : buildOutline(text);
   if (!outline) return res.status(422).json({ message: '没能从这段正文里提炼出大纲' });
-  res.json({ outline });
+  res.json({ outline, ...(mindmap ? { mode: 'basic' } : {}) });
 });
 
 // BYOK：前端把用户自己的 Key 发到这里，我们转发给 AI 服务（它只认 /api/ai/classify）
@@ -1193,7 +1195,8 @@ function handoffRow(entry) {
 
 function handoffMapId(entry) {
   return 'courses-' + handoffCrypto.createHash('sha256')
-    .update(`${entry.type}:${entry.id}:${entry.courseId}`).digest('hex').slice(0, 32);
+    .update(`${entry.type}:${entry.id}:${entry.courseId}:${entry.outlineOverride || ''}`)
+    .digest('hex').slice(0, 32);
 }
 
 function handoffRevision(row) {
@@ -1209,8 +1212,25 @@ app.post('/api/courses/:courseId/:collection/:id/handoff', (req, res) => {
   const id = Number(req.params.id);
   const { row } = handoffRow({ type, id });
   if (!row || row.course_id !== courseId) return res.status(404).json({ message: '内容不存在' });
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  if (body.outline !== undefined && (typeof body.outline !== 'string' || body.outline.length > 30000)) {
+    return res.status(400).json({ message: '临时大纲格式不正确' });
+  }
+  if (body.title !== undefined && (typeof body.title !== 'string' || body.title.length > 200)) {
+    return res.status(400).json({ message: '临时标题格式不正确' });
+  }
+  if (body.startNew !== undefined && typeof body.startNew !== 'boolean') {
+    return res.status(400).json({ message: 'startNew 必须是布尔值' });
+  }
   const token = handoffCrypto.randomBytes(32).toString('hex');
-  handoffs.set(token, { courseId, type, id });
+  handoffs.set(token, {
+    courseId,
+    type,
+    id,
+    outlineOverride: body.outline,
+    titleOverride: body.title,
+    startNew: body.startNew === true,
+  });
   res.json({ token, bridge: '/api/mindmap-handoffs' });
 });
 
@@ -1225,9 +1245,9 @@ app.get('/api/mindmap-handoffs/:token', (req, res) => {
     version: 1,
     mapId: handoffMapId(entry),
     revision: handoffRevision(row),
-    title: row.title || '思维导图',
-    outline: row.outline || '',
-    map,
+    title: entry.titleOverride || row.title || '思维导图',
+    outline: entry.outlineOverride ?? row.outline ?? '',
+    map: entry.startNew ? null : map,
     source: 'courses_app',
   });
 });

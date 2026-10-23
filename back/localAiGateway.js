@@ -1,7 +1,7 @@
 // Local website bridge. Fixed upstream; never forwards credentials from remote callers.
 const express = require('express');
 const PATHS = new Set(['/test', '/classify', '/answer-draft', '/review-suggestion', '/review-mode-advice',
-  '/material-draft', '/review-feedback']);
+  '/material-draft', '/review-feedback', '/outline-polish']);
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 function createLocalAiGateway({ fetchImpl = fetch, timeoutMs = 95000 } = {}) {
   const router = express.Router();

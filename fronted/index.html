@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>课内</title>
-  <link rel="stylesheet" href="style.css?v=20261024-merge-1" />
+  <link rel="stylesheet" href="style.css?v=20261024-mindmap-generation-1" />
 </head>
 <body>
 
@@ -388,6 +388,8 @@
         <div class="detail-section-title">重点总结 / 大纲
           <button type="button" class="edit-mini-btn" onclick="openOutlineFullscreen()">全屏查看</button>
         </div>
+        <div id="resourceDetailMindmapActions" class="mindmap-generation-actions"></div>
+        <p id="resourceDetailMindmapAiNote" class="mindmap-generation-note" role="status"></p>
         <div id="resourceDetailOutlineMap" class="outline-map"></div>
       </section>
       <div class="detail-actions">
@@ -797,11 +799,13 @@
             <div class="edit-card-titles"><b>思维导图</b><small>可以导入导图功能导出的 JSON，也可以直接用上面的大纲生成</small></div>
           </div>
           <div class="edit-card-body">
-            <div class="edit-file-actions">
+            <div class="edit-file-actions mindmap-generation-actions">
               <button type="button" class="edit-btn" onclick="document.getElementById('tagPickerMindmapFile').click()">上传导图</button>
-              <button type="button" class="edit-btn" onclick="generatePickerMindmap()">重新生成</button>
+              <button type="button" class="edit-btn" data-mindmap-generate="basic" id="tagPickerMindmapBasic" onclick="generatePickerMindmap('basic')">基础生成</button>
+              <button type="button" class="edit-btn" data-mindmap-generate="ai" id="tagPickerMindmapAi" onclick="generatePickerMindmap('ai')" disabled>AI 润色生成</button>
               <button type="button" class="edit-btn edit-btn-danger" id="tagPickerMindmapClear" style="display:none;" onclick="clearPickerMindmap()">删除导图</button>
             </div>
+            <p id="tagPickerMindmapAiNote" class="mindmap-generation-note" role="status"></p>
             <label class="mistake-create-field" style="margin-top:8px;">中心主题
               <input id="tagPickerMindmapTitle" maxlength="40" placeholder="默认使用资料名称" oninput="updatePickerMindmapTitle()" />
             </label>
@@ -1129,7 +1133,7 @@
   <script src="js/state.js"></script>
   <script src="js/utils.js?v=20261024-merge-1"></script>
   <script src="js/ai.js?v=20261024-merge-1"></script>
-  <script src="js/aiSettings.js?v=20261024-merge-1"></script>
+  <script src="js/aiSettings.js?v=20261024-mindmap-generation-1"></script>
 
   <script src="js/attachmentPreview.js?v=20261024-attachment-preview-24"></script>
 
@@ -1144,20 +1148,20 @@
   <script src="js/notes.js?v=20261024-merge-1"></script>
   <script src="js/assessments.js?v=20261024-merge-1"></script>
   <script src="js/ocrBrowser.js?v=20261024-office-text-26"></script>
-  <script src="js/outlineMap.js?v=20261024-merge-1"></script>
+  <script src="js/outlineMap.js?v=20261024-mindmap-generation-1"></script>
   <script src="js/officeText.js?v=20261024-office-text-26"></script>
   <script src="js/mistakes.js?v=20261024-merge-1"></script>
 
   <!-- 录入流程：手动输入 + 选标签 -->
   <script src="js/manualEntry.js?v=20261024-merge-1"></script>
-  <script src="js/tagPicker.js?v=20261024-merge-1"></script>
+  <script src="js/tagPicker.js?v=20261024-mindmap-generation-1"></script>
   <script src="js/tagPickerView.js?v=20261024-merge-1"></script>
 
   <!-- 详情页 -->
   <script src="js/page.js?v=20261024-merge-1"></script>
   <script src="js/itemReviewHistory.js?v=20261023-chinese-grades-17"></script>
   <script src="js/nodeDetail.js"></script>
-  <script src="js/resourceDetail.js?v=20261024-merge-1"></script>
+  <script src="js/resourceDetail.js?v=20261024-mindmap-generation-1"></script>
   <script src="js/materialReview.js?v=20261024-merge-1"></script>
   <script src="js/noteReview.js"></script>
   <script src="js/mistakeDetail.js?v=20261024-merge-1"></script>

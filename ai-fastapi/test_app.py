@@ -10,6 +10,7 @@ from src.ai_review_suggestion import register as register_review_suggestion
 from src.ai_creation_review import register as register_creation_review
 from src.ai_material_draft import register as register_material_draft
 from src.ai_review_feedback import register as register_review_feedback
+from src.ai_outline import register as register_outline
 
 app = FastAPI()
 
@@ -31,6 +32,7 @@ register_review_suggestion(app, dependencies=[Depends(local_only)])
 register_creation_review(app, dependencies=[Depends(local_only)])
 register_material_draft(app, dependencies=[Depends(local_only)])
 register_review_feedback(app, dependencies=[Depends(local_only)])
+register_outline(app, dependencies=[Depends(local_only)])
 
 # Serve only public frontend assets, never the repository, .env or database.
 FRONTEND = Path(__file__).resolve().parents[1] / "fronted"

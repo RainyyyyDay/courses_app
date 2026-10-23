@@ -1805,6 +1805,14 @@ body.mistake-edit-open { overflow: hidden; }
 
 /* 删除 / 上传 两个并排键 */
 .edit-file-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.mindmap-generation-actions { margin: 8px 2px 0; }
+.mindmap-generation-note {
+  margin: 7px 2px 9px; color: #7a8497; font-size: 12px; line-height: 1.65;
+}
+.mindmap-generation-note.mindmap-ai-unavailable { color: #8a5a22; }
+.mindmap-generation-actions .edit-btn:disabled {
+  cursor: not-allowed; opacity: .52; background: #f4f6fa; color: #7f8898;
+}
 .edit-btn {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 9px 14px; border: 1px solid #dbe0ea; border-radius: 9px;

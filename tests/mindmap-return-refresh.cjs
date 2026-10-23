@@ -23,7 +23,6 @@ test('returning from the mindmap refreshes the open resource without navigation'
         await openCourse(${ids.courseId},'复习方式测试','materials');
         await openResourceDetail('material',${row.id});
         window.open=()=>null;
-        document.querySelector('.open-mindmap-btn').click();
         await wait(()=>window.__mindmapTarget?.baseline,'mindmap target baseline');
         const navigationDepth=navStack.length;
         const map={id:'courses-return-test',title:'导图自动刷新测试',nodes:[{id:'n1',text:'更新后的根节点',children:[{id:'n2',text:'自动刷新成功',children:[]}]}],pos:{},size:{},edges:[],v:3};
