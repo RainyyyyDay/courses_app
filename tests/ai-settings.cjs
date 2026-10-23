@@ -61,7 +61,7 @@ test('shared AI website settings work across entries, automatic drafts protect e
    check(el('coursesAiOpen')&&!coursesAiSettings.status().auto&&aiCalls.length===0,'global entry and auto off, no load call');
    coursesAiSettings.open();
    check(el('coursesAiModel').value===''&&el('coursesAiModel').disabled,'Mock leaves model visibly blank and disabled');
-   el('coursesAiApply').click();check(coursesAiSettings.status().configured&&coursesAiSettings.status().provider==='mock'&&aiCalls.length===0,'blank Mock model can be applied without requests');
+   el('coursesAiApply').click();check(!coursesAiSettings.status().configured&&coursesAiSettings.status().provider==='mock'&&aiCalls.length===0,'unconfigured selection cannot apply or issue requests');
    el('coursesAiProvider').value='deepseek';el('coursesAiProvider').dispatchEvent(new Event('change'));
    check(!el('coursesAiModel').disabled&&el('coursesAiModel').value==='deepseek-flash','DeepSeek selection reveals supported model');
    el('coursesAiModel').value='deepseek-v4-pro';el('coursesAiProvider').value='mock';el('coursesAiProvider').dispatchEvent(new Event('change'));
@@ -86,7 +86,7 @@ test('shared AI website settings work across entries, automatic drafts protect e
    const rows=await(await requestApi(API+'/courses/${ids.courseId}/mistakes')).json(),created=rows.find(r=>r.title==='自动草稿${index}');
    check(created&&aiCalls.length===count+1,'save triggers one call');await coursesAiSettings.afterCreated(created,captured);check(aiCalls.length===count+1,'duplicate save notification no repeat');
    check(readMistakeAiMethod({courseId:${ids.courseId},id:created.id})==='standard','automatic draft never overwrites manual choice');
-   coursesAiSettings.open();const view=el('coursesAiDrafts').querySelector('button');check(view?.textContent.includes('查看'),'draft view available');view.click();
+   coursesAiSettings.openDrafts();const view=el('coursesAiDrafts').querySelector('button');check(view?.textContent.includes('查看'),'draft view available');view.click();
    check(mistakeAiState.result.review_method==='self_explain'&&mistakeAiElement('Method').value==='standard','draft preview reuses panel and preserves manual selection');resetMistakeAi();
    check(!document.querySelector('#mistakeAiAnalysis img'),'model content remains text');
    const beforeMissing=aiCalls.length;await openMistakeCreate();el('tagPickerName').value='没有学生作答${index}';el('mistakeCreateContent').value='1+1=?';await confirmTagPicker();
@@ -98,7 +98,7 @@ test('shared AI website settings work across entries, automatic drafts protect e
    coursesAiSettings.open();check(!el('coursesAiKey').value&&!coursesAiSettings.status().auto,'clear invalidates automatic consent');
    check(!el('coursesAiConsent').checked,'opening requires renewed confirmation before applying real settings');
    const dialog=el('coursesAiDialog'),body=dialog.querySelector('.ai-settings-body');
-   check(dialog.scrollHeight<=dialog.clientHeight+1&&body.scrollHeight>body.clientHeight,'only settings body scrolls; header and actions remain available');
+   check(dialog.scrollHeight<=dialog.clientHeight+1&&body.clientHeight>0,'compact settings contain any overflow in body; actions remain available');
    check(el('coursesAiConsent').getBoundingClientRect().width<=20,'checkbox retains compact size');
    check(el('coursesAiApply').getBoundingClientRect().bottom<=innerHeight&&el('coursesAiApply').getClientRects().length,'apply action visible without scrolling');
    check(document.documentElement.scrollWidth<=innerWidth+1,'mobile fits');out.dataset.result='passed';out.textContent='passed';

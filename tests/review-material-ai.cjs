@@ -11,7 +11,7 @@ test('material AI shared settings produce editable drafts and reuse confirmed pr
  const api=async(method,url,body)=>(await requestApi(API+'/courses/'+${ids.courseId}+url,{method,...(body?{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})})).json();
  try{
   await openCourse(${ids.courseId},'材料生成测试','notes');
-  check(document.querySelector('#coursesAiDialog a[href="/ai-test"]'),'settings exposes independent local test page');
+  check(!document.querySelector('#coursesAiDialog a[href="/ai-test"]'),'ordinary settings omit development test tools');
   for(const [type,mode]of [['mistake','self_explain'],['material','contrast'],['note','cloze']]){
    const row=await api('POST','/'+({mistake:'mistakes',material:'materials',note:'notes'}[type]),{title:'AI材料 '+type+'${index}',content:'北京是首都，省会是省级行政中心',...(type==='mistake'?{answerContent:'北京',questionFormat:'open',mistakeType:'thinking'}:{})});
    const record=await createReviewRecord('total',[{type,id:row.id}]);await enterCenterReview(record);

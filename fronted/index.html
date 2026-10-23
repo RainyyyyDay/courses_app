@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>课内</title>
-  <link rel="stylesheet" href="style.css?v=20261023-assessment-20" />
+  <link rel="stylesheet" href="style.css?v=20261024-header-add-23" />
 </head>
 <body>
 
@@ -89,7 +89,7 @@
   <div id="listPage">
     <div class="header">
       <h1>课内</h1>
-      <button class="add-btn" onclick="openCourseModal()">＋</button>
+      <button class="add-btn" type="button" aria-label="添加课程" title="添加课程" onclick="openCourseModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg></button>
     </div>
     <!-- 👇 新增：搜索框 -->
     <div class="search-bar">
@@ -109,7 +109,7 @@
     <div class="course-header-actions">
       <button class="course-search-entry" id="totalReviewOpen" type="button" onclick="openTotalReview()">复习</button>
       <button class="course-search-entry" id="courseSearchOpen" type="button" onclick="openCourseSearch()">搜索本课程</button>
-      <button class="add-btn" id="treeBtn" onclick="event.stopPropagation();openAddMenu(null, event)" style="display:none;" title="添加内容">＋</button>
+      <button class="add-btn" type="button" aria-label="添加内容" id="treeBtn" onclick="event.stopPropagation();openAddMenu(null, event)" style="display:none;" title="添加内容"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg></button>
     </div>
   </div>
 
@@ -1122,11 +1122,11 @@
   <script src="js/state.js"></script>
   <script src="js/utils.js?v=20261021-confirm-layer-1"></script>
   <script src="js/ai.js?v=20261023-global-presets-8"></script>
-  <script src="js/aiSettings.js?v=20261023-select-cloze-14"></script>
+  <script src="js/aiSettings.js?v=20261024-first-key-22"></script>
 
   <!-- 课程 -->
   <script src="js/courses.js"></script>
-  <script src="js/courseDetail.js"></script>
+  <script src="js/courseDetail.js?v=20261024-header-add-23"></script>
 
   <!-- 四类资源（列表页） -->
   <script src="js/tags.js"></script>
