@@ -186,6 +186,7 @@ class Config:
     api_key: str = field(default="", repr=False)
     model: str = "deepseek-flash"
     base_url: str = ""
+    workspace_id: str = field(default="", repr=False)
     timeout_ms: int = 15000
     max_concurrent: int = 2
     rate_max: int = 30
@@ -198,6 +199,11 @@ class Config:
                                (self.rate_max, 10000), (self.rate_window_ms, 3600000)]:
             if type(value) is not int or not 1 <= value <= maximum:
                 raise ValueError("Invalid AI configuration")
+        if not isinstance(self.workspace_id,str) or self.workspace_id and not re.fullmatch(r"[A-Za-z0-9_-]{1,128}",self.workspace_id):
+            raise ValueError("Invalid AI configuration")
+        if self.workspace_id:
+            from urllib.parse import urlsplit
+            if self.provider!='compatible' or urlsplit(self.base_url).hostname!='api.anthropic.com':raise ValueError("Invalid AI configuration")
         if self.provider == "compatible":
             from .ai_provider import endpoint
             endpoint(self.base_url)
@@ -256,18 +262,17 @@ class DeepSeekProvider:
         import httpx
         url = "https://api.deepseek.com/chat/completions"
         headers = {"Authorization": "Bearer " + self.config.api_key, "Content-Type": "application/json"}
+        if self.config.workspace_id:headers["anthropic-workspace-id"]=self.config.workspace_id
         extensions = {}
-        from urllib.parse import urlsplit
-        glm_json = self.config.provider == 'compatible' and urlsplit(self.config.base_url).hostname == 'open.bigmodel.cn' and self.config.model.lower().startswith('glm-')
+        from .ai_provider import completion_options
+        options = completion_options(self.config)
         if self.config.provider == 'compatible':
             from .ai_provider import public_target
             url, host_headers, extensions = await public_target(self.config.base_url)
             headers.update(host_headers)
         async with httpx.AsyncClient(transport=self.transport, timeout=httpx.Timeout(self.config.timeout_ms / 1000, connect=8), follow_redirects=False, trust_env=False) as client:
             async with client.stream("POST", url, headers=headers, extensions=extensions,
-                                     json={"model": self.config.model, "stream": False, "max_tokens": 8192 if self.config.provider == "compatible" and self.config.model.lower().startswith("glm-5.") else 1600,
-                                           **({"thinking": {"type": "disabled"}, "response_format": {"type": "json_object"}} if self.config.provider == "deepseek" else {}),
-                                           **({"response_format": {"type":"json_object"}} if glm_json else {}),
+                                     json={"model": self.config.model, "stream": False, **options,
                                            "messages": [{"role": "system", "content": prompt + "\n必须输出合法 JSON 对象，键名和字符串使用双引号，不添加 Markdown 代码围栏或说明。"},
                                                         {"role": "user", "content": json.dumps(data, ensure_ascii=False)}]}) as response:
                 if self.config.provider != "compatible" and not 200 <= response.status_code < 300:

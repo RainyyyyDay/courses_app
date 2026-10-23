@@ -103,7 +103,7 @@ async function classifyMistakeWithAi(input, { signal, timeoutMs = 100000, deepse
     if(typeof deepseek.apiKey!=='string'||! /^[\x21-\x7e]{1,512}$/.test(deepseek.apiKey))throw mistakeAiError('INVALID_API_KEY');
     if(deepseek.confirmCost!==true)throw mistakeAiError('COST_CONFIRMATION_REQUIRED');
     if(deepseek.provider==='compatible'?!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(deepseek.model):!['deepseek-flash','deepseek-v4-pro'].includes(deepseek.model))throw mistakeAiError('INVALID_INPUT');
-    endpoint=url.href;payload={api_key:deepseek.apiKey,model:deepseek.model,action:'classify',confirm_cost:true,input,...(deepseek.provider==='compatible'?{provider:'compatible',base_url:deepseek.baseUrl}:{})};
+    endpoint=url.href;payload={api_key:deepseek.apiKey,model:deepseek.model,action:'classify',confirm_cost:true,input,...(deepseek.provider==='compatible'?{provider:'compatible',base_url:deepseek.baseUrl,...(deepseek.workspaceId?{workspace_id:deepseek.workspaceId}:{})}:{})};
   }
   let body = JSON.stringify(payload);payload=null;
   if (new TextEncoder().encode(body).length > 16384) throw mistakeAiError('BODY_TOO_LARGE');

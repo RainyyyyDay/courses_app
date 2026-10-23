@@ -130,7 +130,7 @@ function resourceAiCurrent(s){return resourceAiState===s&&currentCourseId===s.co
 async function fetchResourceAi(input,{signal,deepseek}={}){
   const endpoint=new URL((globalThis.COURSES_AI_API_BASE??API).replace(/\/$/,'')+'/ai/review-suggestion',location.href);
   if(endpoint.origin!==location.origin||endpoint.username||endpoint.password||!(endpoint.protocol==='https:'||endpoint.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(endpoint.hostname)))throw mistakeAiError('AI_TEMP_KEY_ORIGIN');
-  let body=JSON.stringify({provider:deepseek?(deepseek.provider||'deepseek'):'mock',input,...(deepseek?{api_key:deepseek.apiKey,model:deepseek.model,confirm_cost:deepseek.confirmCost,...(deepseek.provider==='compatible'?{base_url:deepseek.baseUrl}:{})}:{})});
+  let body=JSON.stringify({provider:deepseek?(deepseek.provider||'deepseek'):'mock',input,...(deepseek?{api_key:deepseek.apiKey,model:deepseek.model,confirm_cost:deepseek.confirmCost,...(deepseek.provider==='compatible'?{base_url:deepseek.baseUrl,...(deepseek.workspaceId?{workspace_id:deepseek.workspaceId}:{})}:{})}:{})});
   if(new TextEncoder().encode(body).length>16384)throw mistakeAiError('BODY_TOO_LARGE');
   const controller=new AbortController(),abort=()=>controller.abort();
   signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();

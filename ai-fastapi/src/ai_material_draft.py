@@ -100,7 +100,7 @@ def register(app, *, dependencies=None):
         headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Request-ID':str(uuid4())}
         try:
             gate.check_rate();body=await _read_body(request)
-            if not isinstance(body,dict) or set(body)-{'provider','api_key','model','confirm_cost','base_url','input'} or body.get('provider') not in ('deepseek','compatible'):
+            if not isinstance(body,dict) or set(body)-{'provider','api_key','model','confirm_cost','base_url','workspace_id','input'} or body.get('provider') not in ('deepseek','compatible'):
                 raise AIError(400,'INVALID_INPUT')
             data=parse_input(body.get('input'))
             config=request_config(body)

@@ -151,7 +151,64 @@ test('custom API settings work in desktop and mobile UI',{timeout:90000},async()
 test('shared source names follow credentials rather than a fixed vendor',()=>{
  const {service:s}=settings();
  const glm={...config,provider:'compatible',baseUrl:'https://open.bigmodel.cn/api/paas/v4',model:'glm-5.3-flash'};
- s.configure(glm);assert.match(s.label(),/智谱 GLM \/ glm-5.3-flash/);assert.match(s.describe(s.read()),/智谱 GLM/);
- s.configure(config);assert.match(s.describe(s.read()),/DeepSeek 官方/);
+ s.configure(glm);assert.match(s.label(),/GLM（智谱） \/ glm-5.3-flash/);assert.equal(s.describe(s.read()),'GLM / glm-5.3-flash');
+ s.configure(config);assert.equal(s.describe(s.read()),'DeepSeek / '+config.model);
  s.configure({...glm,baseUrl:'https://example.com/v1'});assert.match(s.describe(s.read()),/自定义兼容接口/);
 });
+
+
+test('domestic presets fill endpoints and models without sharing keys across services',{timeout:90000},async()=>fixture(async({temp,serve})=>{
+ const url=await serve(),chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find(fs.existsSync);assert.ok(chrome);
+ for(const [i,viewport]of [[1280,960],[390,844]].entries()){
+  const script=`window.COURSES_AI_API_BASE='/api';const oldFetch=fetch;let hits=[];fetch=(url,options)=>{if(String(url).includes('/api/ai/test')){const body=JSON.parse(options.body);hits.push(body);return Promise.resolve(new Response(JSON.stringify({ok:true,provider:body.provider||'deepseek',model:body.model,action:'connection'})));}return oldFetch(url,options);};
+  addEventListener('load',async()=>{const out=document.createElement('pre');out.id='regressionResult';const el=id=>document.getElementById('coursesAi'+id),check=(v,m)=>{if(!v)throw Error(m);};try{
+   coursesAiSettings.open();const cases=[['zhipu','https://open.bigmodel.cn/api/paas/v4','GLM（智谱）'],['deepseek','', 'DeepSeek（深度求索）'],['qwen','https://dashscope.aliyuncs.com/compatible-mode/v1','通义千问'],['kimi','https://api.moonshot.cn/v1','Kimi'],['doubao','https://ark.cn-beijing.volces.com/api/v3','豆包'],['siliconflow','https://api.siliconflow.cn/v1','硅基流动']];
+   for(const [id,base,label]of cases){
+    el('Key').value='must-clear-on-change';el('Consent').checked=true;el('Provider').value=id;el('Provider').dispatchEvent(new Event('change'));
+    check(!el('Key').value&&!el('Consent').checked,'switch clears unsubmitted key and consent');
+    if(base){check(!el('Advanced').open&&!el('ModelPickLabel').hidden&&el('CustomModelLabel').hidden,'preset shows only model picker '+id);check(el('BaseUrl').value===base,'endpoint for '+id);check(el('CustomModel').value&&el('ModelPick').options.length>1,'model suggestions '+id);}
+    el('Key').value='synthetic-'+id;el('Retain').checked=true;el('Consent').checked=true;const before=hits.length;el('Apply').click();
+    check(hits.length===before&&coursesAiSettings.status().preset===id,'apply does not call model '+id);
+    check(el('Applied').textContent.includes(label),'effective label '+id);check(el('Applied').textContent.includes(el('Provider').selectedOptions[0].textContent),'preset and applied name agree '+id);check(coursesAiSettings.describe(coursesAiSettings.read()).split(' / ')[0]===el('Provider').selectedOptions[0].textContent.split('（')[0],'request uses short AI name '+id);check(!el('Key').value,'applied key masked');
+    el('Test').click();while(el('Test').disabled)await new Promise(r=>setTimeout(r,20));check(hits.length===before+1&&el('Message').textContent.includes('成功'),'connection '+id);
+    check(hits.at(-1).api_key==='synthetic-'+id,'own key '+id);if(base)check(hits.at(-1).base_url===base,'payload endpoint '+id);
+    el('Close').click();coursesAiSettings.open();check(el('Provider').value===id,'reopens chosen preset '+id);
+   }
+   el('Provider').value='doubao';el('Provider').dispatchEvent(new Event('change'));el('CustomModel').value='ep-my-own-endpoint';el('Key').value='synthetic-ep';el('Consent').checked=true;el('Apply').click();check(coursesAiSettings.status().model==='ep-my-own-endpoint','manual endpoint ID');
+   el('Provider').value='qwen';el('Provider').dispatchEvent(new Event('change'));el('Consent').checked=true;el('Apply').click();check(coursesAiSettings.status().preset==='doubao'&&el('Message').textContent.includes('Key'),'old service key cannot apply to another preset');
+   check(!JSON.stringify(localStorage).includes('synthetic-')&&!JSON.stringify(sessionStorage).includes('synthetic-'),'no persisted credentials');
+   check(document.documentElement.scrollWidth<=innerWidth+1,'mobile does not overflow');out.textContent='PASS';
+  }catch(e){out.textContent='FAIL '+e.stack;}document.body.append(out);});`;
+  const html=await runBrowser({chrome,profile:path.join(temp,'domestic-'+i),url,viewport,initScript:script});
+  const result=html.match(/<pre id="regressionResult">[\s\S]*?<\/pre>/)?.[0];assert.match(result||'',/>PASS</,result||'no result');
+ }
+}));
+
+
+test('foreign presets keep account verification explicit and isolate optional Claude workspace',{timeout:90000},async()=>fixture(async({temp,serve})=>{
+ const url=await serve(),chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find(fs.existsSync);assert.ok(chrome);
+ for(const [i,viewport]of [[1280,960],[390,844]].entries()){
+  const script=`window.COURSES_AI_API_BASE='/api';const originalFetch=fetch;let hits=[];fetch=(url,options)=>{if(String(url).includes('/api/ai/test')){const body=JSON.parse(options.body);hits.push(body);return Promise.resolve(new Response(JSON.stringify({ok:true,provider:'compatible',model:body.model,action:'connection'})));}return originalFetch(url,options);};
+  addEventListener('load',async()=>{const out=document.createElement('pre');out.id='regressionResult';const el=id=>document.getElementById('coursesAi'+id),check=(v,m)=>{if(!v)throw Error(m);};try{
+   coursesAiSettings.open();const cases=[['openai','https://api.openai.com/v1','OpenAI'],['gemini','https://generativelanguage.googleapis.com/v1beta/openai','Gemini（Google）'],['claude','https://api.anthropic.com/v1','Claude'],['grok','https://api.x.ai/v1','Grok']];
+   for(const [id,base,label]of cases){
+    el('Provider').value=id;el('Provider').dispatchEvent(new Event('change'));check(el('BaseUrl').value===base,'endpoint '+id);check(!el('Advanced').open&&!el('ModelPickLabel').hidden&&el('CustomModelLabel').hidden,'preset hides address and manual model '+id);check(el('CustomModel').value,'model '+id);
+    if(id==='openai'){const ids=[...el('ModelPick').options].map(o=>o.value);for(const model of ['gpt-6.1-sol','gpt-6-luna','gpt-6-astra','gpt-5.4-mini']){check(ids.includes(model),'current GPT option '+model);el('ModelPick').value=model;el('ModelPick').dispatchEvent(new Event('change'));check(el('CustomModel').value===model,'exact GPT API ID '+model);}el('ModelPick').value='gpt-6.1-sol';el('ModelPick').dispatchEvent(new Event('change'));check(el('ModelPick').selectedOptions[0].textContent.includes('均衡'),'friendly model label');}
+    const defaultModel=el('CustomModel').value;el('ModelPick').value='';el('ModelPick').dispatchEvent(new Event('change'));check(!el('CustomModelLabel').hidden,'manual model revealed');el('ModelPick').value=defaultModel;el('ModelPick').dispatchEvent(new Event('change'));check(el('CustomModelLabel').hidden&&el('CustomModel').value===defaultModel,'model selection hides manual field');
+    if(id==='claude'){check(!el('WorkspaceGroup').hidden,'workspace visible');el('Workspace').value='wrkspc_test';}else check(el('WorkspaceGroup').hidden&&!el('Workspace').value,'workspace cleared and hidden');
+    el('Key').value='synthetic-'+id;el('Retain').checked=true;el('Consent').checked=true;const before=hits.length;el('Apply').click();
+    check(hits.length===before&&coursesAiSettings.status().preset===id&&coursesAiSettings.status().connectionState==='untested','apply is not a network verification '+id);
+    check(el('Verification').textContent.includes('尚未通过')&&el('Applied').textContent.includes(label),'explicit unverified status '+id);check(el('Applied').textContent.includes(el('Provider').selectedOptions[0].textContent),'preset and applied name agree '+id);check(coursesAiSettings.describe(coursesAiSettings.read()).split(' / ')[0]===el('Provider').selectedOptions[0].textContent.split('（')[0],'request uses short AI name '+id);
+    el('Test').click();while(el('Test').disabled)await new Promise(r=>setTimeout(r,20));
+    check(hits.length===before+1&&hits.at(-1).base_url===base,'one intended endpoint '+id);check(coursesAiSettings.status().connectionState==='passed'&&el('Verification').textContent.includes('不代表所有'),'connection does not claim all capabilities');
+    if(id==='claude')check(hits.at(-1).workspace_id==='wrkspc_test','workspace sent only to Claude');else check(!hits.at(-1).workspace_id,'workspace absent elsewhere');
+    el('Close').click();coursesAiSettings.open();check(el('Provider').value===id,'preset restores');if(id==='claude')check(el('Workspace').value==='wrkspc_test','workspace restored within tab');
+   }
+   coursesAiSettings.clear();check(coursesAiSettings.status().connectionState==='untested'&&!coursesAiSettings.status().hasKey,'clear invalidates verification and key');
+   check(!JSON.stringify(localStorage).includes('synthetic-')&&!JSON.stringify(sessionStorage).includes('synthetic-'),'credentials not persisted');
+   check(document.documentElement.scrollWidth<=innerWidth+1,'no horizontal overflow');out.textContent='PASS';
+  }catch(e){out.textContent='FAIL '+e.stack;}document.body.append(out);});`;
+  const html=await runBrowser({chrome,profile:path.join(temp,'foreign-'+i),url,viewport,initScript:script});
+  const result=html.match(/<pre id="regressionResult">[\s\S]*?<\/pre>/)?.[0];assert.match(result||'',/>PASS</,result||'no result');
+ }
+}));

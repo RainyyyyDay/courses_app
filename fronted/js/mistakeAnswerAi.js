@@ -45,7 +45,7 @@ async function fetchMistakeAnswerDraft(input,{signal,deepseek=null}={}){
   let endpoint;try{endpoint=new URL(base+'/ai/answer-draft',location.href);}catch{throw mistakeAiError('AI_TEMP_KEY_ORIGIN');}
   if(endpoint.origin!==location.origin||endpoint.username||endpoint.password||!(endpoint.protocol==='https:'||
     (endpoint.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname))))throw mistakeAiError('AI_TEMP_KEY_ORIGIN');
-  let body=JSON.stringify({provider:deepseek?(deepseek.provider||'deepseek'):'mock',...(deepseek?{api_key:deepseek.apiKey,model:deepseek.model,confirm_cost:deepseek.confirmCost,...(deepseek.provider==='compatible'?{base_url:deepseek.baseUrl}:{})}:{}),input});
+  let body=JSON.stringify({provider:deepseek?(deepseek.provider||'deepseek'):'mock',...(deepseek?{api_key:deepseek.apiKey,model:deepseek.model,confirm_cost:deepseek.confirmCost,...(deepseek.provider==='compatible'?{base_url:deepseek.baseUrl,...(deepseek.workspaceId?{workspace_id:deepseek.workspaceId}:{})}:{})}:{}),input});
   if(new TextEncoder().encode(body).length>16384)throw mistakeAiError('BODY_TOO_LARGE');
   const controller=new AbortController(),abort=()=>controller.abort();
   if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});

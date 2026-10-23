@@ -16,7 +16,7 @@ SAMPLE = {'question': '1+1=?', 'student_answer': '3', 'error_type': 'careless'}
 
 
 def validate(body):
-    if not isinstance(body, dict) or set(body) - {'provider', 'base_url', 'api_key', 'model', 'action', 'confirm_cost', 'input'}:
+    if not isinstance(body, dict) or set(body) - {'provider', 'base_url','workspace_id', 'api_key', 'model', 'action', 'confirm_cost', 'input'}:
         raise AIError(400, 'INVALID_INPUT')
     if body.get('confirm_cost') is not True:
         raise AIError(400, 'COST_CONFIRMATION_REQUIRED')

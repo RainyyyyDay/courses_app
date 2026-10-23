@@ -42,7 +42,7 @@ async function requestReviewFeedback(){
     const endpoint=new URL((globalThis.COURSES_AI_API_BASE??API).replace(/\/$/,'')+'/ai/review-feedback',location.href);
     if(endpoint.origin!==location.origin||endpoint.username||endpoint.password||!(endpoint.protocol==='https:'||endpoint.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname)))throw mistakeAiError('AI_TEMP_KEY_ORIGIN');
     credentials=coursesAiSettings.read();
-    body=JSON.stringify({provider:credentials?(credentials.provider||'deepseek'):'mock',...(credentials?{api_key:credentials.apiKey,model:credentials.model,confirm_cost:credentials.confirmCost,...(credentials.provider==='compatible'?{base_url:credentials.baseUrl}:{})}:{}),input:s.input});
+    body=JSON.stringify({provider:credentials?(credentials.provider||'deepseek'):'mock',...(credentials?{api_key:credentials.apiKey,model:credentials.model,confirm_cost:credentials.confirmCost,...(credentials.provider==='compatible'?{base_url:credentials.baseUrl,...(credentials.workspaceId?{workspace_id:credentials.workspaceId}:{})}:{})}:{}),input:s.input});
     if(credentials)credentials.apiKey='';
     s.busy=true;s.open=true;s.controller=new AbortController();renderReviewFeedback();
     release=coursesAiSettings.track(credentials,()=>s.controller.abort());timer=setTimeout(()=>s.controller.abort(),100000);

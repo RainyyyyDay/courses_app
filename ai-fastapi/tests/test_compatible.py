@@ -143,3 +143,81 @@ class CustomTests(unittest.IsolatedAsyncioTestCase):
                 else:
                     normalized,source=await runner.classify({'mode_id':'standard','kind':'note','content':'原文'})
                     self.assertEqual(source,'provider');self.assertEqual(normalized['material']['prompt'],value['material']['prompt'])
+
+    async def test_domestic_provider_parameters_and_json_replies(self):
+        from src.ai_provider import completion_options
+        cases=[
+            ('https://open.bigmodel.cn/api/paas/v4','glm-5.3-flash',{'response_format':{'type':'json_object'}}),
+            ('https://api.deepseek.com','deepseek-flash',{'thinking':{'type':'disabled'}}),
+            ('https://dashscope.aliyuncs.com/compatible-mode/v1','qwen-plus',{'enable_thinking':False}),
+            *[('https://dashscope.aliyuncs.com/compatible-mode/v1',model,{'enable_thinking':False,'response_format':{'type':'json_object'}}) for model in ('qwen3.7-plus','qwen3.8-max','qwen3.8-flash')],
+            ('https://space.cn-beijing.maas.aliyuncs.com/compatible-mode/v1','qwen-plus',{'enable_thinking':False}),
+            ('https://api.moonshot.cn/v1','kimi-k3',{'reasoning_effort':'low'}),
+            ('https://ark.cn-beijing.volces.com/api/v3','doubao-seed-2-1-pro-260915',{'thinking':{'type':'disabled'}}),
+            ('https://ark.cn-beijing.volces.com/api/v3','ep-custom-id',{}),
+            ('https://api.siliconflow.cn/v1','Qwen/Qwen2.5-72B-Instruct',{'response_format':{'type':'json_object'}})]
+        for base,model,expected in cases:
+            with self.subTest(base=base,model=model):
+                config=request_config({**BODY,'base_url':base,'model':model})
+                options=completion_options(config)
+                for key,value in expected.items():self.assertEqual(options[key],value)
+                def handler(request):
+                    body=json.loads(request.content)
+                    self.assertEqual(body['model'],model)
+                    for key,value in expected.items():self.assertEqual(body[key],value)
+                    if model=='ep-custom-id':self.assertNotIn('thinking',body)
+                    return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'content':'{"connected":true}'}}]})
+                provider=DeepSeekProvider(config,transport=httpx.MockTransport(handler))
+                with patch('socket.getaddrinfo',return_value=address('8.8.8.8')):
+                    self.assertEqual(await provider.complete_json({},'JSON'),{'connected':True})
+        generic=request_config(BODY)
+        self.assertEqual(completion_options(generic),{'max_tokens':1600})
+
+    async def test_foreign_services_parameters_and_all_business_routes(self):
+        vendors=[
+          ('https://api.openai.com/v1','gpt-5.4-mini',{}),
+          *[('https://api.openai.com/v1',model,{}) for model in ('gpt-6.1-sol','gpt-6-luna','gpt-6-astra')],
+          ('https://generativelanguage.googleapis.com/v1beta/openai','gemini-3.8-flash',{}),
+          ('https://generativelanguage.googleapis.com/v1beta/openai','gemini-4-argon',{}),
+          ('https://api.anthropic.com/v1','claude-sonnet-5-5',{'workspace_id':'wrkspc_test'}),
+          ('https://api.anthropic.com/v1','claude-opus-5-5',{'workspace_id':'wrkspc_test'}),
+          ('https://api.x.ai/v1','grok-4.7',{})]
+        cases=[
+          (ai_deepseek_test,'DeepSeekProvider',dict(action='connection'),{'connected':True}),
+          (ai_deepseek_test,'DeepSeekProvider',dict(action='classify',input=dict(question='1+1=?',student_answer='3')),result('retry')),
+          (ai_answer_draft,'AnswerProvider',dict(input=dict(question='1+1=?',question_format='open')),dict(answer='2',explanation='相加',choice_answer=[],caveats=[],needs_more_information=False)),
+          (ai_review_suggestion,'ReviewProvider',dict(input=dict(kind='note',content='学习内容')),dict(review_method='standard',reason='核对要点',needs_review=True)),
+          (ai_material_draft,'MaterialProvider',dict(input=dict(kind='note',mode_id='cloze',content='首都北京')),draft('cloze')),
+          (ai_review_feedback,'FeedbackProvider',dict(input=dict(mode_id='self_explain',question='解释加减关系',student_answer='不会',reference='加减互逆',rubric='概念和例子')),feedback())]
+        async def allow():pass
+        for base,model,extra_headers in vendors:
+          for module,name,extra,value in cases:
+            with self.subTest(base=base,route=module.PATH,action=extra.get('action')):
+                app=FastAPI();module.register(app,dependencies=[Depends(allow)])
+                cls=getattr(module,name)
+                def handler(request):
+                    body=json.loads(request.content)
+                    self.assertEqual(body['model'],model)
+                    self.assertEqual(request.headers['authorization'],'Bearer '+BODY['api_key'])
+                    if 'api.openai.com' in base:
+                        self.assertIn('max_completion_tokens',body);self.assertNotIn('max_tokens',body);self.assertEqual(body['reasoning_effort'],'low')
+                    if 'anthropic.com' in base:
+                        self.assertEqual(request.headers['anthropic-workspace-id'],'wrkspc_test');self.assertNotIn('response_format',body)
+                    else:self.assertNotIn('anthropic-workspace-id',request.headers)
+                    self.assertNotIn('enable_thinking',body)
+                    return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'content':json.dumps(value)}}]})
+                with patch.object(module,name,side_effect=lambda c:cls(c,transport=httpx.MockTransport(handler))),patch('socket.getaddrinfo',return_value=address('8.8.8.8')):
+                    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test') as client:
+                        response=await client.post(module.PATH,json={**BODY,'base_url':base,'model':model,**extra_headers,**extra})
+                self.assertEqual(response.status_code,200,response.text)
+                self.assertNotIn(BODY['api_key'],response.text)
+        for changes in [dict(workspace_id='bad\r\nheader'),dict(workspace_id='wrkspc_test'),dict(workspace_id='wrkspc_test',base_url={})]:
+            with self.assertRaises(AIError):request_config({**BODY,**changes})
+
+    def test_foreign_errors_distinguish_account_quota_and_model_from_rate_limit(self):
+        from src.ai_provider import upstream_failure
+        for raw,expected in [('insufficient_quota','AI_BALANCE_UNAVAILABLE'),('invalid_api_key','AI_AUTH_FAILED'),('model_not_found','AI_MODEL_NOT_FOUND'),('rate_limit_error','AI_UPSTREAM_RATE_LIMITED')]:
+            failure=upstream_failure(429,{'error':{'code':raw,'message':BODY['api_key']}})
+            self.assertEqual(failure.code,expected)
+            self.assertNotIn(BODY['api_key'],str(failure.details))
+        self.assertEqual(upstream_failure(401,{'error':{'type':'authentication_error','message':BODY['api_key']}}).code,'AI_AUTH_FAILED')
