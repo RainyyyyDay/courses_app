@@ -30,6 +30,8 @@ async function renderResourceDetailPage(resourceType, resourceId) {
   document.getElementById('resourceDetailMeta').textContent = '';
   document.getElementById('resourceDetailTags').innerHTML = '';
   document.getElementById('resourceDetailPreview').innerHTML = '';
+  document.getElementById('resourceDetailContentSection').hidden = true;
+  document.getElementById('resourceDetailContent').textContent = '';
   document.getElementById('resourceDetailOpen').href = '#';
 
   try {
@@ -57,7 +59,7 @@ async function renderResourceDetailPage(resourceType, resourceId) {
 function renderResourceDetail(resourceType, item) {
   const label = resourceType === 'note' ? '笔记' : '资料';
   const hasFile = !!item.file_url;
-  const url = 'http://localhost:3000' + (item.file_url || '');
+  const url = attachmentUrl(item.file_url||'');
 
   document.getElementById('resourceDetailTitle').textContent = label + '详情';
   document.getElementById('resourceDetailName').textContent = item.title || '（无标题）';
@@ -92,7 +94,7 @@ function renderResourceDetail(resourceType, item) {
 
   const openEl = document.getElementById('resourceDetailOpen');
   if (hasFile) {
-    openEl.style.display = '';
+    openEl.style.display = 'none';
     openEl.href = url;
     renderResourcePreview(item.file_type, url);
   } else {
@@ -101,6 +103,13 @@ function renderResourceDetail(resourceType, item) {
       ? '<div class="detail-content">' + escapeHtml(item.content) + '</div>'
       : '<div class="empty">这条' + label + '是手动输入的，但没有填内容。</div>';
   }
+
+  // 附件和正文可以同时存在；不能因为有附件而跳过已经保存的正文。
+  const content = String(item.content || '');
+  const contentSection = document.getElementById('resourceDetailContentSection');
+  const contentBox = document.getElementById('resourceDetailContent');
+  contentSection.hidden = !hasFile || !content.trim();
+  contentBox.textContent = hasFile ? content : '';
 
   // 大纲 + 思维导图：详情页里直接可编辑（和上传弹窗一致）
   const outlineSection = document.getElementById('resourceDetailOutlineSection');
@@ -157,34 +166,17 @@ function renderResourceDetail(resourceType, item) {
   }
 }
 
-// 按文件类型做最简预览：图片直接显示、PDF 用 iframe，其它只给“打开文件”
-function renderResourcePreview(fileType, url, target = null) {
-  const box = target || document.getElementById('resourceDetailPreview');
-  box.innerHTML = '';
-
-  const type = String(fileType || '');
-
-  if (type.indexOf('image/') === 0) {
-    const img = document.createElement('img');
-    img.className = 'mistake-detail-image';
-    img.alt = '文件预览';
-    img.onerror = () => {
-      box.innerHTML = '<div class="empty">图片不存在或已丢失</div>';
-    };
-    img.src = url;
-    box.appendChild(img);
-    return;
+// 文件预览独立于正文：图片缩略图、PDF 预览入口，其它格式提供下载。
+function renderResourcePreview(fileType, value, target = null) {
+  const box=target||document.getElementById('resourceDetailPreview'),url=attachmentUrl(value),kind=attachmentKind(fileType,value);
+  box.replaceChildren();
+  if(!url){box.innerHTML='<p class="empty">附件地址不可用。</p>';return;}
+  if(kind==='image'){
+    const button=document.createElement('button');button.type='button';button.className='attachment-image-button';button.setAttribute('aria-label','放大查看图片');
+    const img=document.createElement('img');img.className='mistake-detail-image';img.alt='附件图片预览';img.loading='lazy';img.src=url;
+    img.onerror=()=>{button.replaceChildren(document.createTextNode('图片加载失败，可尝试下载原图。'));};button.append(img);button.onclick=()=>void openAttachmentPreview(url,fileType||'image/unknown','图片附件');box.append(button);
+  }else if(kind==='pdf'){
+    const card=document.createElement('div');card.className='attachment-pdf-card';card.textContent='PDF 文档 · 支持站内翻页和缩放';box.append(card);
   }
-
-  if (type === 'application/pdf') {
-    const frame = document.createElement('iframe');
-    frame.className = 'resource-pdf';
-    frame.src = url;
-    box.appendChild(frame);
-    return;
-  }
-
-  box.innerHTML =
-    '<div class="empty">该文件类型（' + escapeHtml(type || '未知') +
-    '）不支持在线预览，请点下面的“打开文件”。</div>';
+  box.insertAdjacentHTML('beforeend',attachmentActionsHtml(url,fileType,kind==='pdf'?'PDF':kind==='image'?'图片':'附件'));
 }

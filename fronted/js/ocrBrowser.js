@@ -82,8 +82,8 @@ function createEngine(backend, onProgress) {
   });
 }
 
-// ===== PDF：先用 pdf.js 每页渲染成图，再交给同一个识别引擎 =====
-const OCR_WEB_PDF = { script: null, maxPages: 10 };
+// ===== PDF：文字层优先，扫描页逐页识别 =====
+const OCR_WEB_PDF = { script: null, busy: false };
 
 function ocrWebIsPdf(file) {
   return /pdf/i.test(file?.type || '') || /\.pdf$/i.test(file?.name || '');
@@ -103,74 +103,216 @@ function loadPdfJs() {
     };
     script.onerror = () => {
       OCR_WEB_PDF.script = null;
-      reject(Object.assign(new Error('pdf.js 资源缺失，PDF 改由服务端处理'), { code: 'OCR_WEB_PDF' }));
+      reject(Object.assign(new Error('PDF 组件缺失，请重新运行一键启动后刷新页面'), { code: 'OCR_WEB_PDF' }));
     };
     document.head.appendChild(script);
   });
   return OCR_WEB_PDF.script;
 }
 
-async function renderPdfToImages(file, onProgress) {
-  const lib = await loadPdfJs();
-  const data = new Uint8Array(await file.arrayBuffer());
-  const pdf = await lib.getDocument({ data }).promise;
-  const total = Math.min(pdf.numPages, OCR_WEB_PDF.maxPages);
-  const images = [];
-  try {
-    for (let index = 1; index <= total; index += 1) {
-      onProgress?.(`渲染 PDF 第 ${index}/${total} 页…`);
-      const page = await pdf.getPage(index);
-      const viewport = page.getViewport({ scale: 2 });
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.ceil(viewport.width);
-      canvas.height = Math.ceil(viewport.height);
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-      canvas.width = 0;
-      canvas.height = 0;
-      page.cleanup();
-      if (blob) images.push(new File([blob], `page-${index}.png`, { type: 'image/png' }));
-    }
-  } finally {
-    try { pdf.destroy(); } catch { /* ignore */ }
-  }
-  return { images, totalPages: pdf.numPages, truncated: pdf.numPages > total };
+function ocrCheckCancelled(signal) {
+  if (signal?.aborted) throw new DOMException('已取消识别，原正文和已有结果未改动', 'AbortError');
 }
 
-async function predictWithRetry(input, onProgress) {
+function parsePdfPageRange(value, total) {
+  if (!String(value || '').trim()) throw new Error('请输入页码，例如 1-5, 8, 12-15');
+  const selected = new Set();
+  for (const part of String(value).replace(/，/g, ',').split(',')) {
+    const match = part.trim().match(/^(\d+)\s*(?:-\s*(\d+))?$/);
+    if (!match) throw new Error('页码格式不正确，请使用 1-5, 8 这样的格式');
+    const first = Number(match[1]), last = Number(match[2] || match[1]);
+    if (first < 1 || last < first || last > total) throw new Error(`页码须在 1–${total} 之间，起始页不能大于结束页`);
+    for (let page = first; page <= last; page += 1) selected.add(page);
+  }
+  return [...selected].sort((a, b) => a - b);
+}
+
+// 所有附件入口共用此弹窗；识别结果仅返回校对面板，不直接填入正文。
+function createPdfOcrDialog(controller, options = {}) {
+  const label = options.label || 'PDF';
+  const dialog = document.createElement('dialog');
+  dialog.className = 'pdf-ocr-dialog';
+  dialog.setAttribute('aria-label', `${label} 文字提取`);
+  dialog.innerHTML = `<h2>PDF 文字识别</h2>
+    <p data-pdf-info role="status">正在读取 PDF 页数…</p>
+    <fieldset disabled><legend>识别范围</legend>
+      <label><input type="radio" name="pdfOcrScope" value="all" checked> 全部页面</label>
+      <label><input type="radio" name="pdfOcrScope" value="range"> 指定页码</label>
+      <input data-pdf-range aria-label="指定页码" placeholder="例如 1-5, 8, 12-15" disabled>
+    </fieldset>
+    <p class="pdf-ocr-hint">优先提取已有文字，扫描页逐页识别。完成后请核对，再填入正文。</p>
+    <p data-pdf-error role="alert"></p>
+    <progress value="0" max="1" aria-label="识别进度" hidden></progress>
+    <p data-pdf-progress role="status" aria-live="polite"></p>
+    <div class="pdf-ocr-actions"><button type="button" data-pdf-start disabled>开始识别</button><button type="button" data-pdf-cancel>取消</button></div>`;
+  if (options.label) {
+    dialog.querySelector('h2').textContent = `${label} 文字提取`;
+    dialog.querySelector('[data-pdf-info]').textContent = '正在读取文档…';
+    dialog.querySelector('[data-pdf-start]').textContent = '开始提取';
+  }
+  if (options.hint) dialog.querySelector('.pdf-ocr-hint').textContent = options.hint;
+  if (options.range === false) dialog.querySelector('fieldset').hidden = true;
+  document.body.append(dialog);
+  const range = dialog.querySelector('[data-pdf-range]');
+  dialog.addEventListener('change', () => {
+    range.disabled = dialog.querySelector('input[value="all"]').checked;
+    if (!range.disabled) range.focus();
+  });
+  let rejectSelection;
+  const cancel = () => {
+    controller.abort();
+    dialog.querySelector('[data-pdf-progress]').textContent = '正在停止；当前页处理结束后退出，原正文不会改动。';
+    dialog.querySelector('[data-pdf-cancel]').disabled = true;
+    rejectSelection?.(new DOMException('已取消识别，原正文和已有结果未改动', 'AbortError'));
+  };
+  dialog.querySelector('[data-pdf-cancel]').onclick = cancel;
+  dialog.addEventListener('cancel', event => { event.preventDefault(); cancel(); });
+  dialog.showModal();
+  return {
+    async select(total) {
+      ocrCheckCancelled(controller.signal);
+      dialog.querySelector('[data-pdf-info]').textContent = options.range === false ? `${label} 文档已就绪` : `${label} 共 ${total} 页`;
+      dialog.querySelector('fieldset').disabled = false;
+      const button = dialog.querySelector('[data-pdf-start]');
+      button.disabled = false;
+      return new Promise((resolve, reject) => {
+        rejectSelection = reject;
+        button.onclick = () => {
+          try {
+            const pages = dialog.querySelector('input[value="all"]').checked
+              ? Array.from({ length: total }, (_, i) => i + 1) : parsePdfPageRange(range.value, total);
+            dialog.querySelector('fieldset').disabled = true;
+            button.disabled = true;
+            button.textContent = options.label ? '提取中…' : '识别中…';
+            dialog.querySelector('[data-pdf-error]').textContent = '';
+            rejectSelection = null;
+            resolve(pages);
+          } catch (err) { dialog.querySelector('[data-pdf-error]').textContent = err.message; }
+        };
+      });
+    },
+    progress(message, done, total) {
+      if (controller.signal.aborted) return;
+      dialog.querySelector('[data-pdf-progress]').textContent = message;
+      const bar = dialog.querySelector('progress');
+      bar.hidden = false; bar.max = total; bar.value = done;
+    },
+    close() { dialog.close(); dialog.remove(); },
+  };
+}
+
+async function recognizePdfInBrowser(file, onProgress, options = {}) {
+  // OCR 引擎推理不可强制中断；取消时等当前页结束，不再启动下一页。
+  if (OCR_WEB_PDF.busy) throw new Error('另一个 PDF 正在处理，请等待完成或取消后再试');
+  OCR_WEB_PDF.busy = true;
+  const controller = new AbortController();
+  const externalAbort = () => controller.abort();
+  options.signal?.addEventListener('abort', externalAbort, { once: true });
+  if (options.signal?.aborted) controller.abort();
+  let ui, loading, pdf;
+  const started = performance.now();
+  try {
+    if (options.interactive) ui = createPdfOcrDialog(controller);
+    const lib = await loadPdfJs();
+    ocrCheckCancelled(controller.signal);
+    loading = lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false });
+    pdf = await loading.promise;
+    ocrCheckCancelled(controller.signal);
+    const pages = ui ? await ui.select(pdf.numPages) : options.pages
+      ? parsePdfPageRange(options.pages, pdf.numPages) : Array.from({ length: pdf.numPages }, (_, i) => i + 1);
+    const lines = [], texts = [], empty = [];
+    let scoreSum = 0, scoreCount = 0, textPages = 0, scannedPages = 0;
+    for (let index = 0; index < pages.length; index += 1) {
+      ocrCheckCancelled(controller.signal);
+      const number = pages[index];
+      const report = message => { onProgress?.(message); ui?.progress(message, index, pages.length); };
+      report(`正在处理第 ${number} 页（${index + 1}/${pages.length}）…`);
+      const page = await pdf.getPage(number);
+      let canvas;
+      try {
+        const layer = await page.getTextContent();
+        ocrCheckCancelled(controller.signal);
+        let text = '';
+        for (const item of layer.items || []) {
+          if (typeof item.str === 'string') text += item.str + (item.hasEOL ? '\n' : ' ');
+        }
+        text = text.trim();
+        if (text) {
+          textPages += 1;
+          lines.push({ text, confidence: null, page: number });
+        } else {
+          scannedPages += 1;
+          report(`扫描页识别中：第 ${number} 页（${index + 1}/${pages.length}）…`);
+          const base = page.getViewport({ scale: 1 });
+          const scale = Math.min(2, Math.sqrt(6000000 / (base.width * base.height)));
+          const viewport = page.getViewport({ scale });
+          canvas = document.createElement('canvas');
+          canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+          await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+          ocrCheckCancelled(controller.signal);
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+          if (!blob) throw new Error(`第 ${number} 页无法转为图片，请重试`);
+          const result = await predictWithRetry(new File([blob], `page-${number}.png`, { type: 'image/png' }), report, controller.signal);
+          ocrCheckCancelled(controller.signal);
+          const items = (result?.items || []).filter(item => (item.score ?? 1) >= 0.5 && String(item.text || '').trim());
+          text = items.map(item => item.text).join('\n');
+          for (const item of items) {
+            lines.push({ text: item.text, confidence: item.score, box: item.poly, page: number });
+            if (Number.isFinite(item.score)) { scoreSum += item.score; scoreCount += 1; }
+          }
+        }
+        if (text) texts.push(`【第 ${number} 页】\n${text}`); else empty.push(number);
+        ui?.progress(`已完成 ${index + 1}/${pages.length} 页`, index + 1, pages.length);
+      } finally { if (canvas) { canvas.width = 0; canvas.height = 0; } page.cleanup(); }
+    }
+    ocrCheckCancelled(controller.signal);
+    if (!texts.length) throw new Error('所选页面没有识别到文字，请检查是否为空白页或换用清晰的文件');
+    const warnings = [`PDF 共 ${pdf.numPages} 页，已处理 ${pages.length} 页；直接提取 ${textPages} 页，扫描识别 ${scannedPages} 页`];
+    if (empty.length) warnings.push(`第 ${empty.join('、')} 页未识别到文字，请人工核对`);
+    warnings.push(`用时 ${((performance.now() - started) / 1000).toFixed(1)}s`);
+    return { text: texts.join('\n\n'), lines, provider: 'browser', confidence: scoreCount ? scoreSum / scoreCount : null,
+      pages: pages.length, totalPages: pdf.numPages, selectedPages: pages, textPages, scannedPages, warnings, elapsedMs: Math.round(performance.now() - started) };
+  } catch (err) {
+    ocrCheckCancelled(controller.signal);
+    throw err;
+  } finally {
+    try { await (pdf || loading)?.destroy(); } catch { /* cleanup only */ }
+    ui?.close(); options.signal?.removeEventListener('abort', externalAbort); OCR_WEB_PDF.busy = false;
+  }
+}
+
+async function predictWithRetry(input, onProgress, signal) {
+  ocrCheckCancelled(signal);
   const engine = await getOcrWebEngine(onProgress);
+  ocrCheckCancelled(signal);
   try {
     const [result] = await engine.predict(input);
     return result;
   } catch (err) {
+    ocrCheckCancelled(signal);
     // 建图成功但首帧推理失败（多见于 WebGPU），退回 WASM 再试一次。
     console.warn('识别失败，重试 WASM：', err?.message || err);
     OCR_WEB.engine = null;
     const fallback = await createEngine('wasm', onProgress);
     OCR_WEB.engine = Promise.resolve(fallback);
+    ocrCheckCancelled(signal);
     const [result] = await fallback.predict(input);
     return result;
   }
 }
 
 // 返回结构和后端 /api/ocr 对齐，方便两条路共用渲染代码。
-async function recognizeTextInBrowser(file, onProgress) {
+async function recognizeTextInBrowser(file, onProgress, options = {}) {
   if (!ocrWebAvailable()) {
     throw Object.assign(new Error('页面不是通过 http 打开'), { code: 'OCR_WEB_PROTOCOL' });
   }
 
   const started = performance.now();
-  let inputs = [file];
-  let pages = 1;
+  const inputs = [file];
+  const pages = 1;
   const warnings = [];
 
-  if (ocrWebIsPdf(file)) {
-    const rendered = await renderPdfToImages(file, onProgress);
-    if (!rendered.images.length) throw new Error('PDF 渲染失败');
-    inputs = rendered.images;
-    pages = rendered.images.length;
-    if (rendered.truncated) warnings.push(`PDF 共 ${rendered.totalPages} 页，只识别了前 ${rendered.images.length} 页`);
-  }
+  if (ocrWebIsPdf(file)) return recognizePdfInBrowser(file, onProgress, options);
 
   const lines = [];
   const texts = [];
@@ -189,8 +331,7 @@ async function recognizeTextInBrowser(file, onProgress) {
     }
   }
 
-  // 整页一个字都没认出来：多半是空白页，或 PDF 字体没嵌入导致渲染成空白。
-  // 交给服务端再试一次（服务端能读 PDF 文本层），比直接把空结果给用户好。
+  // 图片无结果时，由调用方决定是否回退服务端。
   if (!lines.length) {
     throw Object.assign(new Error('没有识别到文字（可能是空白页，或 PDF 字体未嵌入）'), { code: 'OCR_WEB_EMPTY' });
   }

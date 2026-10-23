@@ -31,3 +31,6 @@ ocr-trial/samples/
 
 # 浏览器端 OCR 运行时产物（71MB），用 node tools/prepare-ocr-web.cjs 生成
 fronted/vendor/ocr/
+
+# Word/PPT ZIP runtime: node tools/prepare-office-text.cjs
+fronted/vendor/office/

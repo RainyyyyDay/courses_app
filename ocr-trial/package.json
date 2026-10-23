@@ -13,6 +13,7 @@
   "dependencies": {
     "@paddleocr/paddleocr-js": "^0.4.2",
     "esbuild": "^0.28.2",
+    "fflate": "0.8.2",
     "pdfjs-dist": "^3.11.174"
   }
 }

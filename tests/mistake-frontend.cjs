@@ -236,7 +236,7 @@ function mistakeBrowserScenario(data) {
     const execution = currentMistakes.find(r => r.title === '浏览器执行题.pdf');
     check(execution && execution.file_type === 'application/pdf', 'upload passes type');
     await openMistakeDetail(execution.id, true);
-    check(document.getElementById('mistakeDetailFile').textContent.includes('打开'), 'PDF attachment displayed');
+    check(document.getElementById('mistakeDetailFile').querySelector('[data-attachment-preview]'), 'PDF attachment displayed');
     await submitMistakeReview('start');
     await submitMistakeReview('reveal_answer');
     await submitMistakeReview('judge', 'correct', true);

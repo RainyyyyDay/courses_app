@@ -140,11 +140,13 @@ function renderMistakeDetail(mistake, review = false) {
   const url = API.replace(/\/api\/?$/, '') + mistake.image_url;
   if (!isImageFile(mistake.file_type, mistake.image_url)) {
     fileBox.style.display = 'block';
-    fileBox.innerHTML = `<a class="detail-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">打开题目附件</a>`;
+    fileBox.innerHTML = attachmentActionsHtml(url,mistake.file_type,'题目附件');
     return;
   }
   img.onerror = () => { img.style.display = 'none'; errBox.style.display = 'block'; };
   img.style.display = 'block'; img.src = url;
+  img.tabIndex=0;img.setAttribute('role','button');img.setAttribute('aria-label','放大查看题目图片');img.onclick=()=>void openAttachmentPreview(url,mistake.file_type||'image/unknown','题目图片');img.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();img.click();}};
+  fileBox.style.display='block';fileBox.innerHTML=attachmentActionsHtml(url,mistake.file_type||'image/unknown','题目附件');
 }
 
 /* ========== 编辑错题（弹窗） ========== */
@@ -157,14 +159,11 @@ function mistakeEditIsCurrent(pending) {
 }
 
 // 附件怎么展示：图片直接显示（外面用 CSS 限制高度），其它类型给一个打开入口
-function mistakeAttachmentHtml(label, url, fileType) {
-  if (!url) return '';
-  const full = API.replace(/\/api\/?$/, '') + url;
-  if (!isImageFile(fileType, url)) {
-    return '<div class="detail-actions"><a class="detail-link" href="' + escapeHtml(full) + '" target="_blank" rel="noopener">打开' + escapeHtml(label) + '</a></div>';
-  }
-  return '<a href="' + escapeHtml(full) + '" target="_blank" rel="noopener">' +
-    '<img class="mistake-detail-image mistake-detail-image-capped" id="mistakeDetail' + escapeHtml(label) + '" src="' + escapeHtml(full) + '" alt="' + escapeHtml(label) + '" /></a>';
+function mistakeAttachmentHtml(label, value, fileType) {
+  if(!value)return '';
+  const url=attachmentUrl(value);if(!url)return '<p class="ai-help">附件地址不可用。</p>';
+  const image=attachmentKind(fileType,value)==='image';
+  return (image?`<button type="button" class="attachment-image-button" data-attachment-preview data-url="${escapeHtml(url)}" data-type="${escapeHtml(fileType||'image/unknown')}" data-name="${escapeHtml(label)}" aria-label="放大查看${escapeHtml(label)}"><img class="mistake-detail-image mistake-detail-image-capped" id="mistakeDetail${escapeHtml(label)}" src="${escapeHtml(url)}" alt="${escapeHtml(label)}" /></button>`:'')+attachmentActionsHtml(url,fileType,label);
 }
 
 // 名称 = 用户能改的名字 + 固定的文件后缀。
@@ -314,8 +313,8 @@ function renderMistakeEditFiles() {
       box.className = 'edit-file-preview mistake-create-file';
       box.style.display = 'flex';
       box.innerHTML = `<span class="mistake-create-file-icon">${icon}</span><div>`
-        + `<strong><a class="detail-link" href="${escapeHtml(previewUrl)}" target="_blank" rel="noopener">${escapeHtml(name)}</a></strong>`
-        + `<small>${escapeHtml(typeText)} · ${file ? '保存后上传' : '已保存'}</small></div>`;
+        + `<strong>${escapeHtml(name)}</strong>`
+        + `<small>${escapeHtml(typeText)} · ${file ? '保存后上传' : '已保存'}</small>${attachmentActionsHtml(previewUrl,fileType||(ext==='pdf'?'application/pdf':''),name)}</div>`;
     } else {
       box.className = 'edit-file-preview';
       box.style.display = 'none';
@@ -432,7 +431,7 @@ async function recognizeMistakeEditFile(kind) {
       showToast('当前是 mock 样例数据，不是真实识别');
       return;
     }
-    showToast('识别完成，请校对后填入');
+    notifyTextRecognitionSuccess(result, panel);
   } catch (err) {
     showToast(err.message);
   } finally {

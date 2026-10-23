@@ -71,17 +71,44 @@ function closeConfirm(result) {
   openNextConfirm();
 }
 /* ========== Toast 工具 ========== */
-function showToast(msg, duration = 2000) {
-  const box = document.getElementById('toastBox');
+function showToast(msg, duration = 2000, kind = 'info') {
+  let box = document.getElementById('toastBox');
+  if (!box) { box = document.createElement('div'); box.id = 'toastBox'; document.body.append(box); }
+  box.setAttribute('aria-live', 'polite');
+  box.setAttribute('aria-relevant', 'additions');
   const el = document.createElement('div');
-  el.className = 'toast';
+  el.className = kind === 'success' ? 'toast toast-success' : 'toast';
   el.textContent = msg;
-  box.appendChild(el);
+  box.replaceChildren(el);
+  // A manual popover stays above native dialogs without blocking input or taking focus.
+  if (typeof box.showPopover === 'function') {
+    box.setAttribute('popover', 'manual');
+    if (box.matches(':popover-open')) box.hidePopover();
+    box.showPopover();
+  }
   requestAnimationFrame(() => el.classList.add('show'));
   setTimeout(() => {
     el.classList.remove('show');
-    setTimeout(() => el.remove(), 300);
+    setTimeout(() => {
+      el.remove();
+      if (!box.childElementCount && typeof box.hidePopover === 'function' && box.matches(':popover-open')) box.hidePopover();
+    }, 300);
   }, duration);
+}
+
+function notifyTextRecognitionSuccess(result, panel) {
+  const extracted = result?.provider === 'office-browser' || (result?.textPages > 0 && result?.scannedPages === 0);
+  const pages = Number.isInteger(result?.totalPages) && result.pages > 0 ? `，已处理 ${result.pages} 页` : '';
+  const message = `${extracted ? '提取成功' : '识别成功'}${pages}！请校对下方结果，再选择填入正文或答案。`;
+  if (panel) {
+    let notice = panel.querySelector('.recognition-success');
+    if (!notice) {
+      notice = document.createElement('div'); notice.className = 'recognition-success'; notice.setAttribute('role', 'note'); panel.prepend(notice);
+    }
+    notice.textContent = `✓ ${message}`;
+    notice.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'nearest' });
+  }
+  showToast(`✓ ${message}`, 4500, 'success');
 }
 // 取扩展名：'/uploads/12-34.pdf' → '.pdf'，没有就是空字符串
 function extname(name) {

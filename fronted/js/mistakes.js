@@ -551,7 +551,7 @@ async function recognizeMistakeAnswerFile() {
       showToast('当前是 mock 样例数据，不是真实识别');
       return;
     }
-    showToast('识别完成，请校对后填入答案');
+    notifyTextRecognitionSuccess(result, panel);
   } catch (err) {
     showToast(err.message);
   } finally {
@@ -618,11 +618,16 @@ function closeMistakeOcr() {
   if (text) text.value = '';
   if (meta) meta.textContent = '';
 }
-// 浏览器端优先；file:// 打开、PDF、老浏览器这些情况回退服务端。
+// 浏览器端优先；图片不可用时回退服务端，PDF 保留所选页码语义。
 async function recognizeUploadedFile(file, onProgress) {
+  if (typeof officeFileKind === 'function' && officeFileKind(file)) {
+    return recognizeOfficeText(file, onProgress, { interactive: true });
+  }
   try {
-    return await recognizeTextInBrowser(file, onProgress);
+    return await recognizeTextInBrowser(file, onProgress, { interactive: true });
   } catch (err) {
+    // 取消和 PDF 失败不回退：避免取消后继续上传，或忽略用户选择的页码。
+    if (err?.name === 'AbortError' || ocrWebIsPdf(file)) throw err;
     const reason = err?.message || String(err);
     const intentional = err?.code === 'OCR_WEB_PDF';
     if (intentional) {
@@ -646,6 +651,7 @@ async function recognizeUploadedFile(file, onProgress) {
 
 function ocrProviderLabel(provider) {
   if (provider === 'browser') return '浏览器端';
+  if (provider === 'office-browser') return '浏览器端文字提取';
   if (provider === 'paddle') return '服务端';
   return provider || '';
 }
@@ -678,7 +684,7 @@ async function recognizeMistakeCreateFile() {
       showToast('当前是 mock 样例数据，不是真实识别');
       return;
     }
-    showToast('识别完成，请核对后再填入');
+    notifyTextRecognitionSuccess(result, panel);
   } catch (err) {
     showToast(err.message);
   } finally {

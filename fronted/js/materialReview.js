@@ -229,7 +229,7 @@ function createReadingReview(kind, label, resumeId, options = {}) {
       if (row.file_url) {
         const url = API.replace(/\/api\/?$/,'') + row.file_url;
         const type = row.file_type || (isImageFile('',row.file_url) ? 'image/unknown' : /\.pdf$/i.test(row.file_url) ? 'application/pdf' : '');
-        renderResourcePreview(type,url,el('Preview')); el('OpenFile').href = url; el('OpenFile').style.display = 'inline-block';
+        renderResourcePreview(type,url,el('Preview')); el('OpenFile').href = url; el('OpenFile').style.display = 'none';
       }
       state.actions();
       if(globalThis.COURSES_SHOW_LEGACY_RESOURCE_AI===true&&!options.readOnly&&typeof mountResourceAi==='function')mountResourceAi(el('Item'),kind==='notes'?'note':'material',row,

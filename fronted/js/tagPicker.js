@@ -493,7 +493,7 @@ async function recognizePickerResourceFile() {
       showToast('当前是 mock 样例数据，不是真实识别');
       return;
     }
-    showToast('识别完成，请校对后填入正文');
+    notifyTextRecognitionSuccess(result, panel);
   } catch (err) {
     showToast(err.message);
   } finally {
