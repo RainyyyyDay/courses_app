@@ -2343,3 +2343,25 @@ dialog > .ai-request-progress-dialog { margin:12px 18px; }
 @media(max-width:600px) {
   .mistake-answer-ai .ai-action-row button { flex:1 1 140px; white-space:normal; }
 }
+
+/* Assessment deadlines and explicit completion. */
+.assessment-sort-hint { color:#8a93a5; font-size:12px; margin:14px 0 10px; }
+.assessment-card { gap:18px; padding:20px; align-items:center; }
+.assessment-card-head { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:7px; }
+.assessment-card-head h3 { font-size:16px; color:#29354a; overflow-wrap:anywhere; }
+.assessment-deadline { display:inline-flex; padding:4px 10px; border-radius:20px; font-size:12px; line-height:1.5; }
+.assessment-normal { background:#eef2ff; color:#4a6cf7; }
+.assessment-soon { background:#fff5df; color:#93651d; }
+.assessment-urgent,.assessment-overdue { background:#fff0ef; color:#bf4444; }
+.assessment-neutral { background:#f3f4f8; color:#7d8799; }
+.assessment-completed .assessment-deadline { background:#eaf6ef; color:#377c55; }
+.assessment-completed h3 { color:#788297; }
+.assessment-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; justify-content:flex-end; }
+.assessment-actions .detail-link { margin:0; padding:8px; }
+.assessment-actions button { margin:0; background:#f3f4f8; border:1px solid #dce1eb; padding:9px 12px; line-height:1.5; border-radius:9px; }
+.assessment-actions button.ai-primary { background:#4a6cf7; border-color:#4a6cf7; color:#fff; }
+.assessment-actions button.assessment-delete { background:transparent; color:#b75c5c; border-color:transparent; }
+#assessmentModal label { display:block; color:#667187; font-size:13px; margin-bottom:6px; }
+#assessmentModal .modal { max-height:90dvh; overflow:auto; }
+#assessmentModal .modal-actions { margin-top:14px; }
+@media(max-width:600px){.assessment-card{flex-direction:column;align-items:stretch;padding:16px;gap:12px}.assessment-actions{justify-content:flex-start}.assessment-actions button{flex:1 1 auto}.assessment-actions .detail-link{width:100%;padding-left:0}}

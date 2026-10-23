@@ -8,7 +8,7 @@
 const { db } = require('./connection');
 
 // ===== 当前程序支持的数据库版本 =====
-const CURRENT_DB_VERSION = 24;
+const CURRENT_DB_VERSION = 25;
 
 // 判断某张表是否已经存在
 function tableExists(name) {
@@ -690,6 +690,19 @@ function migrateReviewHistory() {
   }catch(err){db.exec('ROLLBACK');throw err;}
 }
 migrateReviewHistory();
+
+// v24 -> v25: assessments keep explicit completion independent of deadline/archive.
+function migrateAssessmentCompletion() {
+  if (getUserVersion() !== 24) return;
+  db.exec('BEGIN');
+  try {
+    const columns=db.prepare('PRAGMA table_info(assessments)').all();
+    if(!columns.some(c=>c.name==='completed_at'))db.exec('ALTER TABLE assessments ADD COLUMN completed_at TEXT');
+    setUserVersion(25);
+    db.exec('COMMIT');
+  } catch (err) { db.exec('ROLLBACK'); throw err; }
+}
+migrateAssessmentCompletion();
 
 // ===== 建表：Phase 0 的基础结构（version 1）=====
 // 每一张“子表”都用 course_id 指向 courses(id)，

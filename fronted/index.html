@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>课内</title>
-  <link rel="stylesheet" href="style.css?v=20261023-button-style-18" />
+  <link rel="stylesheet" href="style.css?v=20261023-assessment-20" />
 </head>
 <body>
 
@@ -418,17 +418,18 @@
   <!-- 添加考核弹窗 -->
   <div class="modal-mask" id="assessmentModal">
     <div class="modal">
-      <h3>添加考核</h3>
-      <input id="assessTitle" placeholder="考核名称，如期中考试" />
-      <input id="assessDeadline" type="date" />
-      <textarea id="assessReq" placeholder="考核要求（可选）"></textarea>
+      <h3 id="assessModalTitle">添加考核</h3>
+      <label for="assessTitle">考核名称</label><input id="assessTitle" maxlength="200" placeholder="考核名称，如期中考试" />
+      <label for="assessDeadline">截止日期（可选）</label><input id="assessDeadline" type="date" />
+      <label for="assessReq">考核要求（可选）</label><textarea id="assessReq" maxlength="4000" placeholder="考核要求（可选）"></textarea>
+      <div id="assessAttachment">
       <!-- 附件是可选的：不选就是一条纯文字考核 -->
       <input type="file" id="assessFile" style="display:none"
              onchange="showPickedFile('assessFile', 'assessFileName')" />
       <button type="button" class="file-pick-btn" onclick="document.getElementById('assessFile').click()">
         📎 选择附件（可选）
       </button>
-      <div class="file-name-tip" id="assessFileName">未选择附件</div>
+      <div class="file-name-tip" id="assessFileName">未选择附件</div></div><p id="assessError" class="mistake-inline-error" role="alert"></p>
       <div class="modal-actions">
         <button class="btn-cancel" onclick="closeAssessmentModal()">取消</button>
         <button class="btn-confirm" onclick="addAssessment()">确定</button>
@@ -1132,7 +1133,7 @@
   <script src="js/readingBrowse.js"></script>
   <script src="js/materials.js?v=20261021-cards-4"></script>
   <script src="js/notes.js?v=20261021-cards-4"></script>
-  <script src="js/assessments.js"></script>
+  <script src="js/assessments.js?v=20261023-assessment-20"></script>
   <script src="js/ocrBrowser.js"></script>
   <script src="js/outlineMap.js"></script>
   <script src="js/mistakes.js?v=20261023-review-label-16"></script>
