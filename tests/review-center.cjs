@@ -100,14 +100,16 @@ async function testReviewCenterApi({base,temp}) {
     await api('DELETE','/notes/'+shared);
     const repeated=await api('POST',url+'/repeat',{requestId:'repeat-after-delete'},201);
     assert.equal(repeated.total,2);assert.equal(repeated.excluded.length,1);assert.ok(repeated.items.every(item=>item.item_type!=='note'));
-    assert.equal((await api('GET',url)).completed_at,endedAt);assert.equal((await api('GET',url)).items[1].source_deleted,1);
+    const deletedHistory=await api('GET',url);assert.equal(deletedHistory.completed_at,endedAt);assert.equal(deletedHistory.items[1].source_deleted,1);
+    assert.equal(deletedHistory.total,2);assert.equal(deletedHistory.deleted,1,'deleted source leaves the effective session denominator');
     const plan=await api('POST',c+'/review-plans',{name:'session plan',startDate:'2026-10-17',examDate:'2026-10-18',selectedItems:[selectedItems[0]]},201);
     const linked=await api('POST',prefix,{requestId:'plan-linked',sourceType:'plan',sourceId:plan.id,scheduledDate:'2026-10-17',selectedItems:[selectedItems[0]]},201);
     await api('PATCH',c+'/materials/'+shared+'/review?sessionItemId='+linked.items[0].id,{reviewStatus:'reviewed'});
     assert.equal((await api('GET',c+'/review-plans/'+plan.id)).completed,0,'reading exposure does not complete a mastery plan task');
     const planRepeat=await api('POST',prefix+'/'+linked.id+'/repeat',{requestId:'plan-repeat'},201);assert.equal(planRepeat.items[0].plan_item_id,null,'repeat does not reopen old plan tasks');
     await api('DELETE','/materials/'+shared);await api('DELETE','/mistakes/'+shared);
-    assert.equal((await api('GET',prefix+'/'+repeated.id)).status,'completed','deleted pending sources settle safely');
+    const allDeleted=await api('GET',prefix+'/'+repeated.id);assert.equal(allDeleted.status,'completed','deleted pending sources settle safely');
+    assert.equal(allDeleted.total,0);assert.equal(allDeleted.deleted,2);assert.equal(allDeleted.passRate,0,'no remaining tasks means no invented success');
     assert.equal((await api('POST',url+'/repeat',{requestId:'repeat-after-delete'},201)).id,repeated.id,'repeat response loss retry is fixed even after deletion');
     await api('POST',url+'/repeat',{requestId:'empty-repeat'},422);
     await api('DELETE',c);assert.equal(d.prepare('SELECT count(*) n FROM review_sessions WHERE course_id=?').get(course.id).n,0);

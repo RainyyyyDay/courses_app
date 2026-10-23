@@ -398,6 +398,15 @@ button:is(.btn-danger,.edit-btn-danger) { background:#fff1f0; border-color:#f5c8
 .tag-picker-tree .empty { padding: 24px 10px; font-size: 13px; }
 
 /* 选择器里的树 */
+.tag-tree-root-toggle {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px;
+  padding: 7px 10px; border: 0; border-radius: 8px; background: #eef1f5;
+  color: #657085; font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.tag-tree-root-toggle:hover { background: #e7ebf1; }
+.tag-tree-root-toggle small { margin-left: auto; color: #8a93a3; font-size: 11px; font-weight: 400; }
+.tag-tree-root-arrow { width: 16px; flex: 0 0 16px; color: #7e8797; font-size: 12px; text-align: center; }
+.tag-tree-root-children { margin-top: 6px; }
 .tag-node { padding: 1px 0; }
 .tag-row { display: flex; align-items: center; gap: 6px; }
 
@@ -1516,14 +1525,25 @@ body.tag-picker-open { overflow: hidden; }
 .mistake-create-file small { display: block; margin-top: 3px; color: #8a93a5; font-size: 12px; }
 .mistake-ocr-panel { display: grid; gap: 10px; padding: 12px; border: 1px solid #d7e0ff; border-radius: 12px; background: #f7f9ff; }
 
-/* 大纲结构图：详情页内嵌 + 全屏 */
+/* 详情页：重点总结 / 大纲和思维导图是两个独立区域 */
+.resource-detail-topic { margin: 18px 0 22px; }
+.resource-detail-outline-text {
+  margin: 0; padding: 14px 16px; border: 1px solid #e5e9f1; border-radius: 12px;
+  background: #fff; color: #34415a; font: 14px/1.8 "Microsoft YaHei", system-ui, sans-serif;
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto;
+}
+.resource-detail-outline-text.is-empty { color: #8a93a5; background: #fafbfe; }
+
+/* 思维导图：详情页内嵌 + 全屏 */
 .outline-map { overflow: auto; padding: 10px; border: 1px solid #e5e9f1; border-radius: 12px; background: #fbfcff; }
-.outline-map svg { display: block; max-width: none; }
+.outline-map svg { display: block; max-width: 100%; }
+.outline-map img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 .outline-fullscreen { display: none; }
 .outline-fullscreen.show { display: flex; align-items: center; justify-content: center; }
 .outline-fullscreen-panel { width: min(1200px, 96vw); height: min(90vh, 900px); background: #fff; border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 24px 60px rgba(17, 25, 40, .25); }
 .outline-fullscreen-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #e5e9f1; }
 .outline-fullscreen-body { flex: 1 1 auto; overflow: auto; padding: 16px; background: #fbfcff; }
+.outline-fullscreen-body > img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 .mistake-ocr-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .mistake-ocr-head b { font-size: 13px; color: #34415a; }
 .mistake-ocr-head span { font-size: 11px; color: #8a93a5; }
@@ -1840,7 +1860,7 @@ body.mistake-edit-open { overflow: hidden; }
 #mistakeEditModal .mistake-tags { margin: 0; min-height: 24px; }
 .edit-tag-tree {
   min-height: 180px;
-  max-height: 46vh;                              /* 尽量把整个框架摊开给用户看 */
+  max-height: 46vh;
   overflow-y: auto;
   overscroll-behavior: contain;
   border: 1px solid #e6e9f2;
@@ -1848,6 +1868,15 @@ body.mistake-edit-open { overflow: hidden; }
   padding: 6px;
   background: #fbfcfe;
 }
+.edit-tag-root-toggle {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px;
+  padding: 7px 10px; border: 0; border-radius: 8px; background: #eef1f5;
+  color: #657085; font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.edit-tag-root-toggle:hover { background: #e7ebf1; }
+.edit-tag-root-toggle small { margin-left: auto; color: #8a93a3; font-size: 11px; font-weight: 400; }
+.edit-tag-root-arrow { width: 16px; flex: 0 0 16px; color: #7e8797; font-size: 12px; text-align: center; }
+.edit-tag-root-children { margin-top: 6px; }
 .edit-tag-node { padding: 0; }
 .edit-tag-row { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 2px 6px; border-radius: 8px; transition: background 0.15s ease; }
 .edit-tag-row:hover { background: #eef2ff; }
@@ -1874,7 +1903,7 @@ body.mistake-edit-open { overflow: hidden; }
 .edit-name-field input { flex: 1 1 auto; min-width: 0; }
 .edit-name-field .name-ext { flex: 0 0 auto; padding: 11px 10px; font-size: 13px; }
 
-/* 标签工具条：已选计数 + 一键全展开 / 全收起 */
+/* 标签工具条：已选计数 */
 .edit-tag-tools { display: flex; align-items: center; gap: 8px; }
 .edit-tag-count { flex: 1 1 auto; font-size: 12px; color: #8a93a8; }
 .edit-mini-btn {
@@ -1979,6 +2008,8 @@ body.mistake-edit-open { overflow: hidden; }
 #pane-reviewPlans .plan-card > p { margin: 9px 0 0; font-size: 13px; color: #69768d; line-height: 1.7; }
 #pane-reviewPlans .plan-card .material-review-badge { margin: 0; font-size: 12px; }
 #pane-reviewPlans .plan-progress { margin-top: 12px; }
+#pane-reviewPlans .plan-success-count strong,
+.plan-success-count strong { color: #34415a; font-weight: 650; }
 #pane-reviewPlans .plan-progress progress { height: 10px; accent-color: #4a6cf7; }
 #pane-reviewPlans .plan-progress .plan-progress-label { color: #6b7690; font-size: 12px; }
 #pane-reviewPlans .plan-progress .plan-progress-value { color: #2f3b52; font-size: 15px; font-weight: 700; }

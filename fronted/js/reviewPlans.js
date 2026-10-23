@@ -10,7 +10,7 @@ let reviewPlanCarousel = {courseId:null,plans:[],index:0};
 function reviewPlanApi(id = '') { return `${API}/courses/${currentCourseId}/review-plans${id ? '/' + id : ''}`; }
 function planLocalDate() { return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
 function planProgressHtml(plan) {
-  // 百分比按全部任务计算（完成 / (总任务 - 源已删除)），不是当天完成量。
+  // 只统计仍然存在的任务；来源删除后总数和成功数立即按有效任务重算。
   // 有完整排期统计时以它为准（含后续多轮），和日历里看到的内容保持一致。
   const stats = plan.scheduleStats && plan.scheduleStats.total ? plan.scheduleStats : null;
   const total = stats ? stats.total : plan.total;
@@ -18,7 +18,7 @@ function planProgressHtml(plan) {
   const pending = stats ? stats.pending : plan.pending;
   const skipped = stats ? stats.skipped : plan.skipped;
   const rate = stats ? stats.completionRate : plan.completionRate;
-  return `<div class="plan-progress"><span class="plan-progress-label">总进度</span><progress max="100" value="${rate}" aria-label="全部任务完成进度 ${rate}%"></progress><span class="plan-progress-value">${rate}%</span></div><p class="detail-meta">总任务 ${total} · 已完成 ${completed} · 待完成 ${pending} · 已跳过 ${skipped}</p>`;
+  return `<div class="plan-progress"><span class="plan-progress-label">总进度</span><progress max="100" value="${rate}" aria-label="有效任务成功复习进度 ${rate}%"></progress><span class="plan-progress-value">${rate}%</span></div><p class="detail-meta plan-success-count"><strong>成功复习 ${completed} / ${total}</strong> · 待完成 ${pending} · 已跳过 ${skipped}</p>`;
 }
 // 智能排期预览：后台按记忆状态算好的日程，渲染成月历；请求失败时整块不显示。
 let planCalendar = null;
@@ -149,7 +149,7 @@ function openPlanScheduleDay(date) {
   const statsPassed = source.filter(item => item.status === 'completed' && item.result === 'passed').length;
   const statsSkipped = source.filter(item => item.status === 'skipped').length;
   const stats = statsTotal
-    ? `<p class="plan-day-stats">已完成 ${statsPassed} / ${statsTotal} · 待完成 ${statsTotal - statsPassed} · 已跳过 ${statsSkipped}</p>` : '';
+    ? `<p class="plan-day-stats">成功复习 ${statsPassed} / ${statsTotal} · 待完成 ${statsTotal - statsPassed} · 已跳过 ${statsSkipped}</p>` : '';
   const rows = ['mistake', 'material', 'note'].map(type => {
     const items = source.filter(item => item.type === type);
     if (!items.length) return ''; // 没有内容的类型不显示
@@ -258,6 +258,20 @@ async function loadReviewPlans() {
     }
   }
 }
+let planSurfaceRefreshTimer = null;
+function refreshReviewPlanSurface() {
+  if (document.visibilityState === 'hidden') return;
+  clearTimeout(planSurfaceRefreshTimer);
+  planSurfaceRefreshTimer = setTimeout(() => {
+    if (currentView.type === 'reviewPlan') void openReviewPlan(currentView.id);
+    else if (currentView.type === 'course' && currentView.tab === 'reviewPlans') void loadReviewPlans();
+  }, 250);
+}
+addEventListener('focus', refreshReviewPlanSurface);
+addEventListener('pageshow', refreshReviewPlanSurface);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') refreshReviewPlanSurface();
+});
 function switchReviewPlanCard(delta) {
   const s=reviewPlanCarousel;if(s.courseId!==currentCourseId || !s.plans.length)return;
   s.index=(s.index+delta+s.plans.length)%s.plans.length;

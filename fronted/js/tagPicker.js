@@ -41,6 +41,7 @@ async function openTagPicker(mode, resourceType, resourceId) {
     selected: new Set(),   // 已选节点 id（folder 和 knowledge 一视同仁）
     nodeMeta: new Map(),   // id -> { name, type }
     expanded: new Set(),   // 选择器内展开的 folder id（纯前端临时状态）
+    rootExpanded: false,   // 每次打开先只显示“知识框架”总入口
     parentMap: new Map(),  // 子节点 id -> 父节点 id（顶层为 null）
     search: '',            // 搜索关键词（只影响显示，不影响已选）
     tree: []
@@ -264,13 +265,11 @@ function indexTagTree(nodes, parentId) {
   }
 }
 
-// 选择器打开时的默认展开策略（纯前端临时状态）：
-//   - 顶层 folder 默认展开，更深的层级默认收起（不把整棵树一次性摊开）
-//   - 编辑已有错题时，把已选节点的所有祖先路径都展开，让用户直接看到勾选
+// 每次打开弹窗都从全折叠开始；展开状态只保留在本次弹窗内。
 function initTagPickerExpanded() {
   const state = tagPickerState;
   state.expanded = new Set();
-  // 默认全部收起：用户点 ▸ 逐层展开，编辑时也一样（避免一进来就被摊开）
+  state.rootExpanded = false;
 }
 
 // 关闭选择器（取消时不会提交任何东西）
@@ -383,8 +382,9 @@ function renderPickerMindmapPreview() {
   const outline = mindmapToOutline(map);
   host.style.display = 'block';
   host.innerHTML = outline
-    ? renderOutlineSvg(outline, { boxWidth: 120, fit: true, fitHeight: 180 })
+    ? renderOutlineSvg(outline, { boxWidth: 150, fontSize: 11, maxLines: 6, fit: true, fitHeight: 180 })
     : '<div class="empty">这张导图没有可预览的文字节点</div>';
+  if (outline) bindOutlineNodeClick(host);
 }
 
 function importPickerMindmap(input) {

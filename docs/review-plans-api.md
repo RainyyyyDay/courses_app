@@ -12,7 +12,7 @@
 
 完成率 `round(completed / (total - skipped) * 100)`。没有有效任务（包括全部 skipped）时固定返回 0%，同时显示各项数量，不表示任务已完成。
 
-来源删除后，未完成任务变为 skipped，保留 title_snapshot 并设置 source_deleted=1。已完成任务保留完成历史，但同样显示来源已删除。删除计划级联删除任务；删除课程级联删除计划。删除计划不会删除来源内容。
+来源删除后，数据库仍设置 source_deleted=1 并保留 title_snapshot，供既有复习会话继续识别原身份；该任务立即从有效计划任务、日历、日任务和进度分母中排除，不再计入 total 或 skipped。界面左下角统一显示「成功复习 passed / 有效总数 total」，不要求先点「应用新排期」才更新数字。删除计划级联删除任务；删除课程级联删除计划。删除计划不会删除来源内容。
 
 ## API
 
@@ -47,7 +47,7 @@
 
 列表／详情在数据库字段外返回 `total`、`completed`、`pending`、`skipped`、`completionRate`、`remainingDays`、`today`、`todayStats`。详情另有 `days` 数组，每天含 date、同样的任务统计和按 mistake/material/note 分组的 types。包含零任务日期。
 
-任务返回数据库字段及 mistake_type、reviewable。source_deleted=1 表示来源已删除。标题使用创建时的 title_snapshot。没有直接修改任务状态的公开 API。
+默认任务列表只返回未删除来源；source_deleted=1 的行保留在数据库中但不再进入当前计划队列。标题使用创建时的 title_snapshot。没有直接修改任务状态的公开 API。
 
 PATCH 示例：`{"name":"期末冲刺","status":"archived"}`。修改日期和范围返回 400，需重新生成计划。归档计划保留任务，但拒绝继续写入计划复习结果。
 

@@ -69,11 +69,11 @@ function renderOutlineSvg(text, options = {}) {
   const root = parseOutlineTree(text, options.rootTitle || '');
   const boxW = options.boxWidth || 168;
   const gapX = 56;
-  const rowH = 14;
-  const padY = 12;
-  const fontSize = 13;
-  const perLine = 11;
-  const maxLines = 4;
+  const fontSize = Number.isFinite(options.fontSize) ? Math.max(9, options.fontSize) : 13;
+  const perLine = Math.max(4, Math.floor((boxW - 24) / (fontSize * 1.02)));
+  const maxLines = Number.isFinite(options.maxLines) ? Math.max(2, options.maxLines) : 4;
+  const rowH = Math.ceil(fontSize * 1.08);
+  const padY = Math.max(12, fontSize);
 
   let cursorY = 40;
   const nodes = [];
@@ -153,6 +153,7 @@ function renderOutlineMap(container, text, options = {}) {
   const value = String(text || '').trim();
   if (!value) {
     container.innerHTML = '';
+    OUTLINE_MAP.current = '';
     return false;
   }
   container.innerHTML = renderOutlineSvg(value, {
@@ -200,6 +201,14 @@ function openOutlineFullscreen() {
   const overlay = document.getElementById('outlineFullscreen');
   const body = document.getElementById('outlineFullscreenBody');
   if (!overlay || !body) return;
+  const image = document.querySelector('#resourceDetailOutlineMap img');
+  if (image) {
+    const large = image.cloneNode();
+    large.alt = '思维导图';
+    body.replaceChildren(large);
+    overlay.classList.add('show');
+    return;
+  }
   body.innerHTML = OUTLINE_MAP.current
     ? renderOutlineSvg(OUTLINE_MAP.current, { rootTitle: OUTLINE_MAP.currentTitle, fit: false })
     : '<div class="empty">还没有大纲</div>';

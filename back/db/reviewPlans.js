@@ -25,14 +25,15 @@ function scopedPlan(courseId, planId) {
   return plan;
 }
 function planCounts(items) {
-  const count = {total:items.length,completed:0,pending:0,skipped:0};
-  for (const item of items) count[item.status]++;
+  const active = items.filter(item => !item.source_deleted);
+  const count = {total:active.length,completed:0,pending:0,skipped:0,deleted:items.length-active.length};
+  for (const item of active) count[item.status]++;
   count.completionRate = count.total === count.skipped ? 0 : Math.round(count.completed/(count.total-count.skipped)*100);
   return count;
 }
 function listPlanItems(courseId,planId,filters={}) {
   scopedPlan(courseId,planId);
-  const where = ['i.plan_id = ?'], args = [planId];
+  const where = ['i.plan_id = ?','i.source_deleted = 0'], args = [planId];
   if (filters.scheduledDate !== undefined) { dateNumber(filters.scheduledDate); where.push('i.scheduled_date = ?'); args.push(filters.scheduledDate); }
   if (filters.status !== undefined) {
     if (!['pending','completed','skipped'].includes(filters.status)) planError(400,'INVALID_ARGUMENT','任务状态不合法');

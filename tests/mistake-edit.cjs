@@ -38,7 +38,7 @@ function mistakeEditBrowserScenario(data) {
     window.scrollTo(0,450); const scrollBefore = window.scrollY;
     check(scrollBefore > 0, 'fixture has nonzero list scroll');
     document.querySelector('[data-mistake-id="' + row.id + '"] .mistake-actions button:nth-child(2)').click();
-    await waitUntil(() => document.querySelector('#mistakeEditTagTree .edit-tag-name'), 'list edit loaded tree');
+    await waitUntil(() => document.querySelector('#mistakeEditTagTree .edit-tag-root-toggle'), 'list edit loaded tree');
     await new Promise(resolve => setTimeout(resolve,350));
     // 无界面浏览器的虚拟计时器可能先于合成动画推进；在量布局前完成已有打开动画。
     document.getElementById('mistakeEditModal').getAnimations({subtree:true}).forEach(animation => animation.finish());
@@ -53,6 +53,15 @@ function mistakeEditBrowserScenario(data) {
     const modal = document.getElementById('mistakeEditModal');
     const tree = document.getElementById('mistakeEditTagTree');
     const body = document.getElementById('mistakeEditBody');
+    check(!tree.querySelector('.edit-tag-name'), 'edit tag tree starts fully collapsed');
+    tree.querySelector('.edit-tag-root-toggle').click();
+    check(tree.textContent.includes(folder.name) && !document.getElementById('mistake-edit-tagchk-' + leaf.id),
+      'root expands only the first level');
+    tree.querySelector('.edit-tag-toggle[data-tag-id="' + folder.id + '"]').click();
+    check(tree.textContent.includes(nested.name) && !document.getElementById('mistake-edit-tagchk-' + leaf.id),
+      'each folder expands only its next level');
+    tree.querySelector('.edit-tag-toggle[data-tag-id="' + nested.id + '"]').click();
+    check(!!document.getElementById('mistake-edit-tagchk-' + leaf.id), 'nested leaf appears after its parent expands');
     const names = [...tree.querySelectorAll('.edit-tag-name')];
     check(names.some(el => el.textContent.includes(leaf.name)), 'Chinese English numeric escaped name exists in DOM');
     for (const name of names) {
@@ -82,12 +91,11 @@ function mistakeEditBrowserScenario(data) {
     check(body.scrollTop > 0 && Math.abs(head.getBoundingClientRect().top - headTop) < 1
       && Math.abs(foot.getBoundingClientRect().top - footTop) < 1, 'edit content scroll retains title and save');
     tree.scrollTop = tree.scrollHeight; check(tree.scrollTop > 0, 'tag tree independently scrolls');
-    toggleAllMistakeEditTags(false);
-    check(!document.getElementById('mistake-edit-tagchk-' + leaf.id), 'collapse hides descendants');
-    tree.querySelector('.edit-tag-toggle').click();
-    toggleAllMistakeEditTags(true);
-    check(document.getElementById('mistake-edit-tagchk-' + leaf.id), 'expand restores descendants');
-    toggleAllMistakeEditTags(false);
+    tree.querySelector('.edit-tag-toggle[data-tag-id="' + nested.id + '"]').click();
+    check(!document.getElementById('mistake-edit-tagchk-' + leaf.id), 'collapsing an inner folder hides its descendants');
+    tree.querySelector('.edit-tag-root-toggle').click();
+    check(!tree.querySelector('.edit-tag-name'), 'root collapse leaves only the gray disclosure bar');
+    tree.querySelector('.edit-tag-root-toggle').click();
     const search = document.getElementById('mistakeEditTagSearch');
     search.value = 'english 789'; search.dispatchEvent(new Event('input'));
     check(tree.textContent.includes(leaf.name) && tree.textContent.includes(folder.name)
@@ -106,6 +114,8 @@ function mistakeEditBrowserScenario(data) {
     check(stored.title === row.title && stored.answer_content === row.answer_content && stored.review_status === 'reviewed', 'cancel does not mutate data');
 
     await editMistakeFromList(row.id);
+    check(!tree.querySelector('.edit-tag-name')&&document.querySelector('#mistakeEditTagTree .edit-tag-root-toggle'),
+      'reopening the edit dialog resets the tag tree to fully collapsed');
     document.getElementById('mistakeEditTitle').value = '弹窗测试已更名';
     toggleMistakeEditTag(folder.id,true);
     const realFetch = window.fetch;
@@ -210,6 +220,7 @@ function mistakeEditBrowserScenario(data) {
     resolveOldTree(new Response(JSON.stringify([{id:999999,name:'过期树不可出现',type:'knowledge'}]),{headers:{'Content-Type':'application/json'}}));
     await oldOpening;
     window.fetch = realFetch;
+    tree.querySelector('.edit-tag-root-toggle').click();
     check(!tree.textContent.includes('过期树不可出现') && tree.textContent.includes(folder.name), 'stale tree response ignored');
     closeMistakeEdit();
     for (const item of ${JSON.stringify(data.cases.filter(([kind]) => kind !== 'mistake').map(([kind, row]) => ({kind,id:row.id})))}) {
@@ -217,6 +228,10 @@ function mistakeEditBrowserScenario(data) {
       if (item.kind === 'material') await loadMaterials(); else await loadNotes();
       await openTagPicker('edit',item.kind,item.id);
       await new Promise(resolve => setTimeout(resolve,350));
+      check(!document.querySelector('#tagPickerTree .tag-label')&&document.querySelector('#tagPickerTree .tag-tree-root-toggle'),
+        item.kind + ' shared tag tree starts fully collapsed');
+      document.querySelector('#tagPickerTree .tag-tree-root-toggle').click();
+      document.querySelector('#tagPickerTree .tag-toggle[data-tag-id="${folder.id}"]').click();
       const label = document.querySelector('#tagPickerTree .tag-label');
       check(label.getBoundingClientRect().width > 80 && label.textContent.trim(), item.kind + ' shared tag labels visible');
       onTagSearchInput('English 789');

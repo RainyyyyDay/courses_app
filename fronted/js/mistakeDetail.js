@@ -240,6 +240,7 @@ function openMistakeEdit(row = mistakeDetailState?.row) {
   mistakeEditTagSearch = '';
   mistakeEditTagTree = [];
   mistakeEditTagExpanded = new Set();
+  mistakeEditTagRootExpanded = false;
   mistakeEditTagMeta = new Map();
   renderMistakeEditFiles();
   renderMistakeEditTags();
@@ -506,6 +507,7 @@ function fillMistakeEditAnswerFromOcr(text) {
 // 当前课程的分类 / 知识点（弹窗里直接勾，不用跳别的弹窗）
 let mistakeEditTagTree = [];
 let mistakeEditTagExpanded = new Set();
+let mistakeEditTagRootExpanded = false;
 let mistakeEditTagMeta = new Map();
 let mistakeEditTagSearch = '';
 
@@ -518,22 +520,13 @@ async function loadMistakeEditTagTree(pending = mistakeEditPending) {
   mistakeEditTagTree = (Array.isArray(tree) ? tree : []).filter(node => !node.is_system);
   mistakeEditTagMeta = new Map();
   mistakeEditTagExpanded = new Set();
+  mistakeEditTagRootExpanded = false;
   (function walk(nodes, parentId) {
     for (const node of nodes || []) {
       mistakeEditTagMeta.set(node.id, { name: node.name, type: node.type, parentId: parentId });
-      // 每一层都默认展开：用户要先看清整个框架
-      if (node.type === 'folder' && (node.children || []).length) mistakeEditTagExpanded.add(node.id);
       walk(node.children, node.id);
     }
   })(mistakeEditTagTree, null);
-  // 已选标签的祖先路径也展开，免得藏在收起的分支里
-  for (const tag of pending.tags) {
-    let parentId = (mistakeEditTagMeta.get(tag.id) || {}).parentId;
-    while (parentId !== null && parentId !== undefined) {
-      mistakeEditTagExpanded.add(parentId);
-      parentId = (mistakeEditTagMeta.get(parentId) || {}).parentId;
-    }
-  }
   return mistakeEditTagTree;
 }
 
@@ -562,8 +555,18 @@ function renderMistakeEditTagTree() {
   }
   // 只复用共享选择器的纯搜索函数，编辑状态仍留在当前表单里。
   const nodes = mistakeEditTagSearch ? filterTagTree(mistakeEditTagTree, mistakeEditTagSearch) : mistakeEditTagTree;
-  box.innerHTML = nodes.length ? nodes.map(node => mistakeEditTagNodeHtml(node)).join('')
+  const expanded = !!mistakeEditTagSearch || mistakeEditTagRootExpanded;
+  const content = nodes.length ? nodes.map(node => mistakeEditTagNodeHtml(node)).join('')
     : '<div class="edit-tag-empty">没有匹配的分类或知识点</div>';
+  box.innerHTML = `<div class="edit-tag-root">
+    <button type="button" class="edit-tag-root-toggle" aria-expanded="${expanded}"
+      onclick="toggleMistakeEditTagRoot()">
+      <span class="edit-tag-root-arrow" aria-hidden="true">${expanded ? '▾' : '▸'}</span>
+      <span>知识框架</span>
+      <small>${expanded ? '收起' : '展开分类和知识点'}</small>
+    </button>
+    ${expanded ? `<div class="edit-tag-root-children">${content}</div>` : ''}
+  </div>`;
   box.scrollTop = scroll;
 }
 
@@ -574,7 +577,7 @@ function mistakeEditTagNodeHtml(node) {
   const checked = !!mistakeEditPending && mistakeEditPending.tags.some(t => t.id === node.id);
   const v = tagVisual(node.type);
   const toggle = (isFolder && children.length)
-    ? `<button type="button" class="edit-tag-toggle" onclick="toggleMistakeEditTagExpand(${node.id})" title="${expanded ? '收起' : '展开'}">${expanded ? '▾' : '▸'}</button>`
+    ? `<button type="button" class="edit-tag-toggle" data-tag-id="${node.id}" onclick="toggleMistakeEditTagExpand(${node.id})" title="${expanded ? '收起' : '展开'}">${expanded ? '▾' : '▸'}</button>`
     : '<span class="edit-tag-toggle edit-tag-toggle-empty"></span>';
   return `<div class="edit-tag-node">
       <div class="edit-tag-row${checked ? ' is-checked' : ''}">
@@ -586,14 +589,8 @@ function mistakeEditTagNodeHtml(node) {
     </div>`;
 }
 
-// 一键全展开 / 全收起：让用户先看清整个知识框架
-function toggleAllMistakeEditTags(expand) {
-  mistakeEditTagExpanded = new Set();
-  if (expand) {
-    for (const [id, meta] of mistakeEditTagMeta) {
-      if (meta.type === 'folder') mistakeEditTagExpanded.add(id);
-    }
-  }
+function toggleMistakeEditTagRoot() {
+  mistakeEditTagRootExpanded = !mistakeEditTagRootExpanded;
   renderMistakeEditTagTree();
 }
 

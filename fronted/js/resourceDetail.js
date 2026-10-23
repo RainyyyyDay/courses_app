@@ -112,30 +112,35 @@ function renderResourceDetail(resourceType, item) {
   contentBox.textContent = hasFile ? content : '';
   if (typeof mountResourceTextAction === 'function') mountResourceTextAction(resourceType, item);
 
-  // 大纲 + 思维导图：详情页里直接可编辑（和上传弹窗一致）
+  // 「重点总结 / 大纲」是文本输入，「思维导图」是独立产物，两者分开显示。
   const outlineSection = document.getElementById('resourceDetailOutlineSection');
+  const mindmapSection = document.getElementById('resourceDetailMindmapSection');
+  const savedOutline = String(item.outline || '').trim();
   OUTLINE_MAP.currentTitle = item.title || '';
-  // 导图数据是权威来源（用户在导图工具里改过）；没有导图才退回大纲文本
-  let outlineText = '';
+  if (outlineSection) outlineSection.style.display = '';
+  const outlineText = document.getElementById('resourceDetailOutlineText');
+  if (outlineText) {
+    outlineText.textContent = savedOutline || '还没有填写重点总结或大纲。';
+    outlineText.classList.toggle('is-empty', !savedOutline);
+  }
+
+  let mindmapText = '';
   if (item.mindmap_json) {
-    try { outlineText = mindmapToOutline(JSON.parse(item.mindmap_json)); } catch { outlineText = ''; }
+    try { mindmapText = mindmapToOutline(JSON.parse(item.mindmap_json)); } catch { mindmapText = ''; }
   }
-  if (!outlineText) outlineText = item.outline || '';
-  if (outlineSection) {
-    outlineSection.style.display = '';
-  }
-  const hasOutline = renderOutlineMap(document.getElementById('resourceDetailOutlineMap'), outlineText, { rootTitle: item.title || '' });
+  if (mindmapSection) mindmapSection.style.display = '';
+  const hasMindmap = renderOutlineMap(document.getElementById('resourceDetailOutlineMap'), mindmapText, { rootTitle: item.title || '' });
   const mapBox = document.getElementById('resourceDetailOutlineMap');
   if (mapBox && item.mindmap_image) {
     mapBox.innerHTML = `<img src="${item.mindmap_image}" alt="思维导图" style="max-width:100%;border-radius:10px;display:block;" />`;
   }
-  if (!hasOutline && !item.mindmap_image) {
-    if (mapBox) mapBox.innerHTML = '<div class="empty">还没有大纲，写一段再点“用大纲生成导图”。</div>';
+  if (!hasMindmap && !item.mindmap_image) {
+    if (mapBox) mapBox.innerHTML = '<div class="empty">还没有思维导图。可以先填写上方大纲，再使用基础生成或 AI 润色。</div>';
   }
   // 导图入口：基础规则始终可用；AI 润色只有真实 API 可用时才能点击。
   const actionHost = document.getElementById('resourceDetailMindmapActions');
   if (actionHost) {
-    const sourceOutline = String(item.outline || '').trim() || outlineText;
+    const sourceOutline = savedOutline;
     const makeButton = (className, text) => {
       const button = document.createElement('button');
       button.type = 'button';

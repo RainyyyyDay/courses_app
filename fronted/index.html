@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>课内</title>
-  <link rel="stylesheet" href="style.css?v=20261024-ai-gate-fit-preview-32" />
+  <link rel="stylesheet" href="style.css?v=20261024-live-deleted-progress-35" />
 </head>
 <body>
 
@@ -384,8 +384,12 @@
         <div class="detail-section-title" id="resourceDetailContentTitle">正文</div>
         <div class="detail-content" id="resourceDetailContent"></div>
       </section>
-      <section id="resourceDetailOutlineSection" style="display:none;">
-        <div class="detail-section-title">重点总结 / 大纲
+      <section id="resourceDetailOutlineSection" class="resource-detail-topic" style="display:none;">
+        <div class="detail-section-title">重点总结 / 大纲</div>
+        <pre id="resourceDetailOutlineText" class="resource-detail-outline-text"></pre>
+      </section>
+      <section id="resourceDetailMindmapSection" class="resource-detail-topic" style="display:none;">
+        <div class="detail-section-title">思维导图
           <button type="button" class="edit-mini-btn" onclick="openOutlineFullscreen()">全屏查看</button>
         </div>
         <div id="resourceDetailMindmapActions" class="mindmap-generation-actions"></div>
@@ -398,11 +402,11 @@
     </div>
   </div>
 
-  <!-- 大纲结构图全屏 -->
+  <!-- 思维导图全屏 -->
   <div class="modal-mask outline-fullscreen" id="outlineFullscreen">
     <div class="outline-fullscreen-panel">
       <div class="outline-fullscreen-head">
-        <b>重点总结 / 大纲</b>
+        <b>思维导图</b>
         <button type="button" class="edit-mini-btn" onclick="closeOutlineFullscreen()">关闭</button>
       </div>
       <div class="outline-fullscreen-body" id="outlineFullscreenBody"></div>
@@ -591,8 +595,6 @@
               placeholder="搜索分类 / 知识点" aria-label="搜索分类 / 知识点" oninput="searchMistakeEditTags(this.value)" />
             <div class="edit-tag-tools">
               <span class="edit-tag-count" id="mistakeEditTagCount">已选 0 项</span>
-              <button type="button" class="edit-mini-btn" onclick="toggleAllMistakeEditTags(true)">全展开</button>
-              <button type="button" class="edit-mini-btn" onclick="toggleAllMistakeEditTags(false)">全收起</button>
             </div>
             <div class="edit-tag-tree" id="mistakeEditTagTree"></div>
           </div>
@@ -1148,28 +1150,28 @@
   <script src="js/notes.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/assessments.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/ocrBrowser.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/outlineMap.js?v=20261024-ai-gate-fit-preview-32"></script>
+  <script src="js/outlineMap.js?v=20261024-split-outline-mindmap-33"></script>
   <script src="js/officeText.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/mistakes.js?v=20261024-merged-attachment-review-31"></script>
 
   <!-- 录入流程：手动输入 + 选标签 -->
   <script src="js/manualEntry.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/tagPicker.js?v=20261024-ai-gate-fit-preview-32"></script>
-  <script src="js/tagPickerView.js?v=20261024-merged-attachment-review-31"></script>
+  <script src="js/tagPicker.js?v=20261024-tree-root-collapse-34"></script>
+  <script src="js/tagPickerView.js?v=20261024-tree-root-collapse-34"></script>
 
   <!-- 详情页 -->
   <script src="js/page.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/itemReviewHistory.js?v=20261023-chinese-grades-17"></script>
   <script src="js/nodeDetail.js"></script>
-  <script src="js/resourceDetail.js?v=20261024-merged-attachment-review-31"></script>
+  <script src="js/resourceDetail.js?v=20261024-split-outline-mindmap-33"></script>
   <script src="js/resourceText.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/materialReview.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/noteReview.js"></script>
-  <script src="js/mistakeDetail.js?v=20261024-merged-attachment-review-31"></script>
+  <script src="js/mistakeDetail.js?v=20261024-tree-root-collapse-34"></script>
   <script src="js/mistakeAi.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/mistakeAnswerAi.js?v=20261023-adoption-confirm-19"></script>
   <script src="js/resourceAi.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/reviewMethodChoice.js?v=20261024-ai-gate-fit-preview-32"></script>
+  <script src="js/reviewMethodChoice.js?v=20261024-split-outline-mindmap-33"></script>
   <script src="js/clozeEditor.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/reviewWorkbench.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/reviewFeedback.js?v=20261023-select-cloze-14"></script>
@@ -1213,8 +1215,8 @@
   <script src="js/mistakeQueue.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/courseSearch.js"></script>
   <script src="js/reviewPicker.js?v=20261024-attachment-preview-24"></script>
-  <script src="js/reviewPlans.js?v=20261023-review-label-16"></script>
-  <script src="js/reviewCenter.js?v=20261024-merged-attachment-review-31"></script>
+  <script src="js/reviewPlans.js?v=20261024-live-deleted-progress-35"></script>
+  <script src="js/reviewCenter.js?v=20261024-live-deleted-progress-35"></script>
 
   <!-- 知识框架 -->
   <script src="js/knowledgeTree.js"></script>

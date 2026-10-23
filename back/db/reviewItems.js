@@ -160,7 +160,7 @@ function recordReviewItemGrade(courseId, type, id, body) {
 // 计划排期预览：只读，不落库。真正执行仍走 review-sessions。
 // 计划里选中的内容 + 各自记忆状态 + 计划参数（生成排期用）。
 function planScheduleParts(courseId, plan) {
-  const rows = db.prepare('SELECT DISTINCT item_type,item_id FROM review_plan_items WHERE plan_id=?').all(plan.id);
+  const rows = db.prepare('SELECT DISTINCT item_type,item_id FROM review_plan_items WHERE plan_id=? AND source_deleted=0').all(plan.id);
   const items = rows.map(row => {
     const mistakeType = row.item_type === 'mistake'
       ? db.prepare('SELECT mistake_type FROM mistakes WHERE id=?').get(row.item_id)?.mistake_type || null
@@ -254,12 +254,18 @@ function getReviewPlanSchedule(courseId, planId) {
     snapshot = { days: liveStructure, generatedAt: null, applied: false };
     db.prepare('UPDATE review_plans SET schedule_json=? WHERE id=?').run(JSON.stringify(snapshot), plan.id);
   }
-  const structureChanged = structureKey(snapshot.days) !== structureKey(liveStructure);
+  const deletedKeys = new Set(db.prepare('SELECT item_type,item_id FROM review_plan_items WHERE plan_id=? AND source_deleted=1')
+    .all(plan.id).map(row => row.item_type + ':' + row.item_id));
+  const visibleSnapshotDays = snapshot.days.map(day => ({
+    ...day,
+    items: (day.items || []).filter(item => !deletedKeys.has(item.type + ':' + item.id)),
+  })).filter(day => day.items.length);
+  const structureChanged = structureKey(visibleSnapshotDays) !== structureKey(liveStructure);
   // 采纳新排期后，只把「采纳之后」的会话算作这一版的完成记录：
   // 之前的提前复习不在这版排期里显示绿勾。
   // 只有用户主动「应用新排期」之后的快照才以生成时间为界；初始快照保留历史完成状态。
   const since = snapshot.applied ? snapshot.generatedAt || null : null;
-  result.days = snapshot.days;
+  result.days = visibleSnapshotDays;
   // 日历要用标题；同一天的完成状态取该计划该日期最近一次计划复习会话。
   const titleCache = new Map();
   const titleFor = (type, id) => {
@@ -288,7 +294,7 @@ function getReviewPlanSchedule(courseId, planId) {
         SUM(CASE WHEN status='completed' AND result='passed' THEN 1 ELSE 0 END) passed,
         SUM(CASE WHEN status='skipped' THEN 1 ELSE 0 END) skipped,
         SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) pending
-        FROM review_session_items WHERE session_id=?`).get(session.id);
+        FROM review_session_items WHERE session_id=? AND source_deleted=0`).get(session.id);
       sessionCounts = {
         total: counts.total,
         completed: counts.completed || 0,
@@ -297,10 +303,10 @@ function getReviewPlanSchedule(courseId, planId) {
         skipped: counts.skipped || 0,
         pending: counts.pending || 0,
       };
-      sessionTypes = db.prepare('SELECT DISTINCT item_type FROM review_session_items WHERE session_id=?')
+      sessionTypes = db.prepare('SELECT DISTINCT item_type FROM review_session_items WHERE session_id=? AND source_deleted=0')
         .all(session.id).map(row => row.item_type);
       sessionItems = db.prepare(`SELECT item_type,item_id,title_snapshot,status,CASE WHEN exposure_only=1 THEN 'exposure' ELSE result END AS result
-        FROM review_session_items WHERE session_id=? ORDER BY position`).all(session.id).map(row => ({
+        FROM review_session_items WHERE session_id=? AND source_deleted=0 ORDER BY position`).all(session.id).map(row => ({
         type: row.item_type,
         id: row.item_id,
         title: row.title_snapshot,
@@ -332,7 +338,7 @@ function getReviewPlanSchedule(courseId, planId) {
   // 物化任务（review_plan_items）才是“实际排了、实际做了什么”的权威记录：
   // 把它合并进日历，避免“17 号任务已完成但日历没勾”的矛盾。
   const planRows = db.prepare(`SELECT item_type,item_id,scheduled_date,status,title_snapshot,estimated_minutes,source_deleted,completed_at
-    FROM review_plan_items WHERE plan_id=? ORDER BY scheduled_date,sort_order`).all(planId);
+    FROM review_plan_items WHERE plan_id=? AND source_deleted=0 ORDER BY scheduled_date,sort_order`).all(planId);
   const planByDate = new Map();
   for (const row of planRows) {
     if (!planByDate.has(row.scheduled_date)) planByDate.set(row.scheduled_date, []);
@@ -424,6 +430,7 @@ function getPlanScheduleStats(courseId, planId) {
   for (const day of schedule.days) {
     const items = day.items || [];
     for (const item of items) {
+      if (item.sourceDeleted) continue;
       total += 1;
       if (item.status === 'completed') {
         if (item.result === 'failed') failed += 1; else if(item.result==='passed') passed += 1; else pending += 1;
