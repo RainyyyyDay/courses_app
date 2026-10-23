@@ -92,36 +92,32 @@ function renderResourceDetail(resourceType, item) {
       : '<div class="empty">这条' + label + '是手动输入的，但没有填内容。</div>';
   }
 
-  // 大纲结构图：有就显示，没有就整块隐藏
+  // 大纲 + 思维导图：详情页里直接可编辑（和上传弹窗一致）
   const outlineSection = document.getElementById('resourceDetailOutlineSection');
   OUTLINE_MAP.currentTitle = item.title || '';
   let outlineText = item.outline || '';
   if (!outlineText && item.mindmap_json) {
     try { outlineText = mindmapToOutline(JSON.parse(item.mindmap_json)); } catch { outlineText = ''; }
   }
+  if (outlineSection) {
+    outlineSection.style.display = '';
+    outlineSection.dataset.resourceType = resourceType;
+    outlineSection.dataset.resourceId = String(item.id || '');
+  }
+  const editor = document.getElementById('resourceDetailOutlineText');
+  if (editor) editor.value = outlineText;
+
   const hasOutline = renderOutlineMap(document.getElementById('resourceDetailOutlineMap'), outlineText, { rootTitle: item.title || '' });
   const mapBox = document.getElementById('resourceDetailOutlineMap');
   if (mapBox && item.mindmap_image) {
     mapBox.innerHTML = `<img src="${item.mindmap_image}" alt="思维导图" style="max-width:100%;border-radius:10px;display:block;" />`;
   }
-  if (outlineSection) outlineSection.style.display = hasOutline ? '' : 'none';
-  // 有关联导图时，给一个「展开导图」入口，用功能包渲染真画布
-  const head = outlineSection?.querySelector('.detail-section-title');
-  if (head && !head.querySelector('.open-mindmap-btn')) {
-    const edit = document.createElement('button');
-    edit.type = 'button';
-    edit.className = 'edit-mini-btn open-mindmap-btn';
-    edit.textContent = '在导图中编辑';
-    edit.onclick = () => openMindmapEditor(item.mindmap_json, item.title, item.outline);
-    head.appendChild(edit);
-
-    const back = document.createElement('button');
-    back.type = 'button';
-    back.className = 'edit-mini-btn';
-    back.style.marginLeft = '6px';
-    back.textContent = '回传导图';
-    back.onclick = () => reuploadMindmap(resourceType, item.id);
-    head.appendChild(back);
+  if (!hasOutline && !item.mindmap_image) {
+    if (mapBox) mapBox.innerHTML = '<div class="empty">还没有大纲，写一段再点“用大纲生成导图”。</div>';
+  }
+  if (outlineSection) {
+    outlineSection.dataset.mindmapJson = item.mindmap_json || '';
+    outlineSection.dataset.title = item.title || '';
   }
 }
 
