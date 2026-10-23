@@ -463,6 +463,7 @@ async function recognizePickerResourceFile() {
       showToast('当前是 mock 样例数据，不是真实识别');
       return;
     }
+    if (panel) panel.dataset.pendingAdoption = 'true';
     notifyTextRecognitionSuccess(result, panel);
   } catch (err) {
     showToast(err.message);
@@ -477,6 +478,8 @@ function applyPickerResourceOcr(mode) {
   const content = document.getElementById('tagPickerResourceContent');
   if (!content) return;
   content.value = mode === 'append' && content.value.trim() ? `${content.value.trim()}\n\n${text}` : text;
+  const panel = document.getElementById('tagPickerResourceOcrPanel');
+  if (panel) panel.dataset.pendingAdoption = 'false';
   updatePickerResourceClear();
   showToast(mode === 'append' ? '已追加到正文' : '已替换正文');
 }
@@ -485,7 +488,7 @@ function closePickerResourceOcr() {
   const panel = document.getElementById('tagPickerResourceOcrPanel');
   const text = document.getElementById('tagPickerResourceOcrText');
   const meta = document.getElementById('tagPickerResourceOcrMeta');
-  if (panel) panel.style.display = 'none';
+  if (panel) { panel.style.display = 'none'; panel.dataset.pendingAdoption = 'false'; }
   if (text) text.value = '';
   if (meta) meta.textContent = '';
 }
@@ -585,6 +588,14 @@ function onTagSearchInput(value) {
 async function confirmTagPicker() {
   const state = tagPickerState;
   if (!state || state.saving) return;
+  const resultPanel = document.getElementById('tagPickerResourceOcrPanel');
+  if (['material', 'note'].includes(state.resourceType) && state.mode !== 'edit'
+      && resultPanel?.dataset.pendingAdoption === 'true'
+      && document.getElementById('tagPickerResourceOcrText')?.value.trim()) {
+    showToast('识别／提取结果还没填入正文。请先点“替换正文”或“追加正文”再保存；不需要可点“放弃”。', 6000);
+    resultPanel.scrollIntoView({ block: 'nearest' });
+    return;
+  }
   if (state.resourceType === 'mistake' && state.mode !== 'edit' && !state.createdMistake) {
     try { mistakeCreationFields(); } catch (err) { showToast(err.message); return; }
   }
@@ -640,6 +651,9 @@ async function confirmTagPicker() {
       if (resourceType === 'mistake') {
         const content = (document.getElementById('mistakeCreateContent')?.value || '').trim();
         if (content) manual.content = content;
+      }
+      if (resourceType === 'material' || resourceType === 'note') {
+        manual.content = (document.getElementById('tagPickerResourceContent')?.value || '').trim();
       }
       saved = await doCreateManual(nodeIds);
     } else {

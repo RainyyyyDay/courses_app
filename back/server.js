@@ -353,6 +353,16 @@ function readingReviewApi(handler, kind = 'material') {
 }
 for (const kind of ['material','note']) {
   const plural = kind === 'note' ? 'notes' : 'materials';
+  app.put(`/api/courses/:courseId/${plural}/:${kind}Id/content`, readingReviewApi((req,res,row) => {
+    const body=req.body;
+    if(!body || Array.isArray(body) || typeof body.text!=='string' || !body.text.trim() || body.text.length>1000000
+      || !['append','replace'].includes(body.mode) || typeof body.expectedContent!=='string'
+      || Object.keys(body).some(key=>!['text','mode','expectedContent'].includes(key))) {
+      return res.status(400).json({code:'INVALID_ARGUMENT',message:'请提交待保存文字、追加或替换方式及读取时的原正文'});
+    }
+    const content=db.saveReadingContent(kind,row.id,row.course_id,body.text.trim(),body.mode,body.expectedContent);
+    res.json({id:row.id,course_id:row.course_id,content});
+  },kind));
   app.patch(`/api/courses/:courseId/${plural}/:${kind}Id`, readingReviewApi((req,res,row) => {
     const body = req.body;
     if (!body || Array.isArray(body) || typeof body.favorite !== 'boolean' || Object.keys(body).some(key=>key !== 'favorite')) {
