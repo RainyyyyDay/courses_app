@@ -28,7 +28,16 @@ function renderTagPicker() {
     treeBox.innerHTML =
       '<div class="empty">没有匹配「' + escapeHtml(keyword) + '」的分类或知识点。</div>';
   } else {
-    treeBox.innerHTML = nodes.map(node => renderTagNode(node)).join('');
+    const expanded = !!keyword || state.rootExpanded;
+    treeBox.innerHTML = `<div class="tag-tree-root">
+      <button type="button" class="tag-tree-root-toggle" aria-expanded="${expanded}"
+        onclick="toggleTagPickerRoot()">
+        <span class="tag-tree-root-arrow" aria-hidden="true">${expanded ? '▾' : '▸'}</span>
+        <span>知识框架</span>
+        <small>${expanded ? '收起' : '展开分类和知识点'}</small>
+      </button>
+      ${expanded ? `<div class="tag-tree-root-children">${nodes.map(node => renderTagNode(node)).join('')}</div>` : ''}
+    </div>`;
   }
 
   renderTagSelected();
@@ -82,7 +91,7 @@ function renderTagNode(node) {
 
   // 展开箭头：点它只展开 / 收起，绝不改变勾选状态
   const toggleHtml = (isFolder && hasChildren)
-    ? `<button type="button" class="tag-toggle" onclick="toggleTagExpand(${node.id})"
+    ? `<button type="button" class="tag-toggle" data-tag-id="${node.id}" onclick="toggleTagExpand(${node.id})"
          title="${isExpanded ? '收起' : '展开'}">${isExpanded ? '▾' : '▸'}</button>`
     : '<span class="tag-toggle tag-toggle-empty"></span>';
 
@@ -110,6 +119,13 @@ function toggleTagExpand(id) {
   if (!state) return;
   if (state.expanded.has(id)) state.expanded.delete(id);
   else state.expanded.add(id);
+  renderTagPicker();
+}
+
+function toggleTagPickerRoot() {
+  const state = tagPickerState;
+  if (!state) return;
+  state.rootExpanded = !state.rootExpanded;
   renderTagPicker();
 }
 

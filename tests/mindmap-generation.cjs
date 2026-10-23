@@ -7,7 +7,7 @@ const {runBrowser}=require('./browser-driver.cjs');
 
 test('mind-map generation separates always-available basic splitting from real-AI polishing',{timeout:90000},async()=>{
   await fixture(async({api,ids,temp,serve,base})=>{
-    const originalOutline='第一章 函数\n一、极限\n1. 定义';
+    const originalOutline='第一章 函数\n一、极限\n1. 定义\n2. 极限存在与左右极限之间的关系以及常见易错点';
     const row=await api('POST','/courses/'+ids.courseId+'/materials',{
       title:'导图生成测试',content:'正文',outline:originalOutline,
     },201);
@@ -37,6 +37,9 @@ test('mind-map generation separates always-available basic splitting from real-A
           if(url)editor.location.replace(url);
           return editor;
         };
+        check(document.getElementById('resourceDetailOutlineText').textContent===${JSON.stringify(originalOutline)},'outline text is shown in its own section');
+        check(!document.getElementById('resourceDetailOutlineSection').querySelector('[data-mindmap-generate]')
+          &&document.getElementById('resourceDetailMindmapSection').querySelector('[data-mindmap-generate="basic"]'),'outline and mind-map controls are separate');
         const basic=document.querySelector('.open-mindmap-btn'),ai=document.querySelector('[data-mindmap-generate="ai"]');
         check(basic&&basic.textContent.includes('基础生成'),'basic button');
         check(ai&&ai.disabled,'AI disabled without a real API');
@@ -44,7 +47,7 @@ test('mind-map generation separates always-available basic splitting from real-A
         basic.click();
         await wait(()=>opened.length===1,'basic handoff');
         const basicData=await readHandoff();
-        check(basicData.outline==='- 第一章 函数\\n  - 极限\\n    - 定义','deterministic hierarchy');
+        check(basicData.outline==='- 第一章 函数\\n  - 极限\\n    - 定义\\n    - 极限存在与左右极限之间的关系以及常见易错点','deterministic hierarchy');
         check(basicData.map===null,'basic generation opens a new map from a temporary outline');
 
         coursesAiSettings.configure({provider:'deepseek',preset:'deepseek',model:'deepseek-flash',
@@ -79,6 +82,13 @@ test('mind-map generation separates always-available basic splitting from real-A
         const previewSvg=previewHost.querySelector('svg');
         check(previewSvg&&previewSvg.style.width==='100%'&&previewSvg.style.height==='180px','compact preview scales the full map to the panel');
         check(previewHost.scrollWidth<=previewHost.clientWidth+1,'compact preview has no horizontal clipping');
+        for(const node of previewSvg.querySelectorAll('.outline-node')){
+          const box=node.querySelector('rect').getBoundingClientRect();
+          for(const text of node.querySelectorAll('text')){
+            const glyph=text.getBoundingClientRect();
+            check(glyph.right<=box.right+1&&glyph.bottom<=box.bottom+1,'preview text stays inside its node');
+          }
+        }
         closeTagPicker();
         out.dataset.result='passed';
       }catch(error){

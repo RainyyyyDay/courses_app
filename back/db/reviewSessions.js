@@ -29,8 +29,9 @@ function sessionItems(id) {
   });
 }
 function sessionView(row,withItems=false) {
-  const items=sessionItems(row.id),counts={total:items.length,completed:0,pending:0,skipped:0,passed:0,failed:0,exposed:0};
-  for (const item of items) {
+  const items=sessionItems(row.id),active=items.filter(item=>!item.source_deleted);
+  const counts={total:active.length,deleted:items.length-active.length,completed:0,pending:0,skipped:0,passed:0,failed:0,exposed:0};
+  for (const item of active) {
     counts[item.status]++;
     // 只有通过复习模式的项目才算「已完成」；未通过（答错/不记得）与跳过都只算看过一遍。
     if(item.status==='completed') { if(item.exposure_only) counts.exposed++; else if(item.result==='failed') counts.failed++; else counts.passed++; }
@@ -38,7 +39,7 @@ function sessionView(row,withItems=false) {
   const {request_json,create_request_id,...publicRow}=row;
   return {...publicRow,...counts,progress:counts.total ? Math.round((counts.completed+counts.skipped)/counts.total*100) : 0,
     passRate:counts.total ? Math.round(counts.passed/counts.total*100) : 0,
-    types:[...new Set(items.map(item=>item.item_type))],...(withItems ? {items} : {})};
+    types:[...new Set(active.map(item=>item.item_type))],...(withItems ? {items} : {})};
 }
 function getReviewSession(courseId,id) { return sessionView(sessionRow(courseId,id),true); }
 function renameReviewSession(courseId,id,body) {

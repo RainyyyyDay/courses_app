@@ -139,8 +139,10 @@ async function testReviewPlanApi({base,temp}) {
     await api('PATCH',c+'/notes/'+n.id+'/review?planItemId='+task('note').id,{reviewStatus:'reviewed'},409);
     await api('PATCH',url,{status:'active'});
     await api('DELETE','/notes/'+n.id);
-    const changed=await api('GET',url);assert.equal(changed.skipped,1);assert.equal(changed.completed,1);assert.equal(changed.pending,1);assert.equal(changed.completionRate,50);
-    items=await api('GET',url+'/items?status=skipped');assert.equal(items[0].title_snapshot,'note');assert.equal(items[0].source_deleted,1);
+    const changed=await api('GET',url);assert.equal(changed.total,2);assert.equal(changed.skipped,0);assert.equal(changed.completed,1);assert.equal(changed.pending,1);assert.equal(changed.completionRate,50);
+    items=await api('GET',url+'/items?status=skipped');assert.equal(items.length,0,'deleted tasks leave the effective plan queue');
+    const deletedSchedule=await api('GET',url+'/schedule');
+    assert.ok(deletedSchedule.days.every(day=>day.items.every(item=>item.type!=='note')),'deleted source disappears from the live schedule without applying a new one');
     // 提前复习：计划内容在“当天没有任务”的预估日期也能开计划会话，并挂回日历那一天。
     const spanExam=new Date(Date.parse(today+'T00:00:00Z')+86400000*5).toISOString().slice(0,10);
     const span=await api('POST',prefix,{...body,name:'span',examDate:spanExam,selectedItems:[{type:'material',id:m.id}]},201);
@@ -210,7 +212,7 @@ async function testReviewPlanApi({base,temp}) {
     assert.equal(onTimeSchedule.hasNewSchedule,false,'on-time completion does not request a new schedule');
     const empty=await api('POST',prefix,{...body,selectedItems:[{type:'material',id:m.id}]},201);
     await api('DELETE','/materials/'+m.id);
-    const skipped=await api('GET',prefix+'/'+empty.id);assert.equal(skipped.skipped,1);assert.equal(skipped.completed,0);assert.equal(skipped.completionRate,0);
+    const skipped=await api('GET',prefix+'/'+empty.id);assert.equal(skipped.total,0);assert.equal(skipped.skipped,0);assert.equal(skipped.pending,0);assert.equal(skipped.completed,0);assert.equal(skipped.completionRate,0);
     await api('DELETE',url);assert.equal(d.prepare('SELECT count(*) n FROM review_plan_items WHERE plan_id=?').get(plan.id).n,0);
     await api('GET',url,undefined,404);
     await api('DELETE',c);assert.equal(d.prepare('SELECT count(*) n FROM review_plans WHERE course_id=?').get(course.id).n,0);

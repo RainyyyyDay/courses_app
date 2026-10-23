@@ -183,7 +183,7 @@ async function testBackend() {
     }
     assert.fail(logs);
   };
-  return { base, course, child, other, cases, restart, searchFixture };
+  return { base, course, parent, child, other, cases, restart, searchFixture };
 }
 
 async function testBrowser(data) {
@@ -260,6 +260,9 @@ async function testBrowser(data) {
           else await loadMistakes();
           await openTagPicker('edit', item.kind, item.id);
           check(tagPickerState.selected.has(${data.child.id}), 'existing tag checked');
+          check(!document.querySelector('#tagPickerTree .tag-label')&&document.querySelector('#tagPickerTree .tag-tree-root-toggle'), 'tag tree starts collapsed');
+          document.querySelector('#tagPickerTree .tag-tree-root-toggle').click();
+          document.querySelector('#tagPickerTree .tag-toggle[data-tag-id="${data.parent.id}"]').click();
           document.getElementById('tagchk-${data.child.id}').click();
           document.getElementById('tagPickerName').value = 'browser ' + item.kind;
           await confirmTagPicker();

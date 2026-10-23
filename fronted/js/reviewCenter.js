@@ -66,6 +66,7 @@ async function resumeRecordedReview(id) {
 function reviewTime(value) {return value ? new Date(value).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}) : '尚未完成';}
 // 只有全部项目都顺利通过复习模式才算「已完成」；有未通过或跳过只算「过了一遍」。
 function reviewSessionBadge(row) {
+  if (!row.total) return row.deleted ? '内容已删除' : '无可复习内容';
   if (row.status==='completed') {
     if(row.exposed===row.total)return '已阅读（仅曝光）';
     if (row.skipped===row.total) return '全部跳过';
@@ -74,21 +75,24 @@ function reviewSessionBadge(row) {
   }
   return {active:'进行中',paused:'已暂停，可继续'}[row.status] || row.status;
 }
+function reviewSessionCountText(row) {
+  return `成功复习 ${row.passed || 0} / ${row.total || 0} · 未通过 ${row.failed || 0} · 仅曝光 ${row.exposed || 0} · 跳过 ${row.skipped || 0} · 待处理 ${row.pending || 0}${row.deleted ? ` · 已删除 ${row.deleted}` : ''}`;
+}
 // 进度条拆三段：蓝色=已通过，橙色=未通过，灰色=跳过，空白=待处理。
 function reviewProgressHtml(row) {
   const total = Math.max(1, Number(row.total) || 0);
   const width = value => Math.min(100, Math.round((Number(value) || 0) / total * 100));
-  return `<div class="review-progress-split" role="img" aria-label="已通过 ${row.passed || 0}，未通过 ${row.failed || 0}，仅曝光 ${row.exposed || 0}，跳过 ${row.skipped || 0}，待处理 ${row.pending || 0}"><span class="is-done" style="width:${width(row.passed)}%"></span><span class="is-failed" style="width:${width(row.failed)}%"></span><span class="is-skipped" style="width:${width(row.exposed)}%"></span><span class="is-skipped" style="width:${width(row.skipped)}%"></span></div>`;
+  return `<div class="review-progress-split" role="img" aria-label="${reviewSessionCountText(row)}"><span class="is-done" style="width:${width(row.passed)}%"></span><span class="is-failed" style="width:${width(row.failed)}%"></span><span class="is-skipped" style="width:${width(row.exposed)}%"></span><span class="is-skipped" style="width:${width(row.skipped)}%"></span></div>`;
 }
 function reviewRecordCard(row) {return addReviewRenameAction(reviewRecordCardContent(row),row);}
 function addReviewRenameAction(html,row){return html.replace(/<\/div><\/article>$/,`<button type="button" data-review-rename="${row.id}" onclick="openReviewRename(${row.id})">重命名</button></div></article>`);}
 function reviewRecordCardContent(row) {
-  return `<article class="detail-card review-record" data-review-session="${row.id}"><h3>${escapeHtml(row.name)} <span class="material-review-badge">${reviewSessionBadge(row)}</span></h3><p>${REVIEW_SOURCE_LABELS[row.source_type]} · ${row.types.map(type=>PLAN_TYPE_LABELS[type]).join(' + ')}</p><p class="detail-meta">开始：${escapeHtml(reviewTime(row.started_at))}<br>最近活动：${escapeHtml(reviewTime(row.updated_at))}</p><p>已完成 ${row.passed || 0} / ${row.total} · 未通过 ${row.failed || 0} · 仅曝光 ${row.exposed || 0} · 跳过 ${row.skipped} · 待处理 ${row.pending}</p>${reviewProgressHtml(row)}<div class="mistake-toolbar">${row.status==='completed' ? `<button onclick="repeatReviewRecord(${row.id})">再次复习</button>` : `<button onclick="resumeReviewRecord(${row.id})">继续复习</button>`}<button onclick="openReviewSessionDetail(${row.id})">查看详情</button></div></article>`;
+  return `<article class="detail-card review-record" data-review-session="${row.id}"><h3>${escapeHtml(row.name)} <span class="material-review-badge">${reviewSessionBadge(row)}</span></h3><p>${REVIEW_SOURCE_LABELS[row.source_type]} · ${row.types.length ? row.types.map(type=>PLAN_TYPE_LABELS[type]).join(' + ') : '无可复习内容'}</p><p class="detail-meta">开始：${escapeHtml(reviewTime(row.started_at))}<br>最近活动：${escapeHtml(reviewTime(row.updated_at))}</p><p>${reviewSessionCountText(row)}</p>${reviewProgressHtml(row)}<div class="mistake-toolbar">${row.status==='completed' ? `<button onclick="repeatReviewRecord(${row.id})">再次复习</button>` : `<button onclick="resumeReviewRecord(${row.id})">继续复习</button>`}<button onclick="openReviewSessionDetail(${row.id})">查看详情</button></div></article>`;
 }
 // 首页使用紧凑列表，历史页和记录详情继续保留原有卡片。
 function reviewRecentRecord(row) {return addReviewRenameAction(reviewRecentRecordContent(row),row);}
 function reviewRecentRecordContent(row) {
-  return `<article class="review-recent-record" data-review-session="${row.id}"><div class="review-recent-main"><div class="review-recent-title"><h3>${escapeHtml(row.name)}</h3><span class="review-recent-state">${reviewSessionBadge(row)}</span></div><div class="review-recent-meta"><span>${REVIEW_SOURCE_LABELS[row.source_type]} · ${row.types.map(type=>PLAN_TYPE_LABELS[type]).join(' + ')}</span><span>最近活动：${escapeHtml(reviewTime(row.updated_at || row.started_at))}</span></div><div class="review-recent-progress">${reviewProgressHtml(row)}<span>已完成 ${row.passed || 0} / ${row.total} · 未通过 ${row.failed || 0} · 仅曝光 ${row.exposed || 0} · 跳过 ${row.skipped} · 待处理 ${row.pending}</span></div></div><div class="review-recent-actions">${row.status==='completed' ? `<button type="button" onclick="repeatReviewRecord(${row.id})">再次复习</button>` : `<button type="button" onclick="resumeReviewRecord(${row.id})">继续复习</button>`}<button type="button" onclick="openReviewSessionDetail(${row.id})">查看详情</button></div></article>`;
+  return `<article class="review-recent-record" data-review-session="${row.id}"><div class="review-recent-main"><div class="review-recent-title"><h3>${escapeHtml(row.name)}</h3><span class="review-recent-state">${reviewSessionBadge(row)}</span></div><div class="review-recent-meta"><span>${REVIEW_SOURCE_LABELS[row.source_type]} · ${row.types.length ? row.types.map(type=>PLAN_TYPE_LABELS[type]).join(' + ') : '无可复习内容'}</span><span>最近活动：${escapeHtml(reviewTime(row.updated_at || row.started_at))}</span></div><div class="review-recent-progress">${reviewProgressHtml(row)}<span>${reviewSessionCountText(row)}</span></div></div><div class="review-recent-actions">${row.status==='completed' ? `<button type="button" onclick="repeatReviewRecord(${row.id})">再次复习</button>` : `<button type="button" onclick="resumeReviewRecord(${row.id})">继续复习</button>`}<button type="button" onclick="openReviewSessionDetail(${row.id})">查看详情</button></div></article>`;
 }
 async function loadRecentReviews() {
   const courseId=currentCourseId,box=document.getElementById('reviewRecentList');if(!box)return;
@@ -129,7 +133,7 @@ async function openReviewSessionDetail(id) {
     const response=await requestApi(reviewSessionApi(id)),row=await response.json();
     if(courseId!==currentCourseId || request!==reviewCenterRequest)return;
     reviewSessionDetail=row;
-    box.innerHTML=reviewRecordCard(row)+`<p class="detail-meta">完成时间：${escapeHtml(row.completed_at || '尚未完成')}。只有顺利通过复习模式才算完成；未通过（答错/不记得）和跳过都只算看过一遍，不计入完成数量。进度条蓝色=已完成、橙色=未通过、灰色=跳过。</p><section class="detail-card">${row.items.map(item=>{const state=item.exposure_only ? {icon:'◉',label:'已阅读（仅曝光，不评分）'} : item.status==='completed' ? (item.result==='failed' ? {icon:'✗',label:'未通过'} : {icon:'✓',label:'已通过'}) : item.status==='skipped' ? {icon:'—',label:'已跳过'} : {icon:'○',label:'待处理'};return `<div class="plan-task"><span>${state.icon} ${PLAN_TYPE_LABELS[item.item_type]} · ${escapeHtml(item.title_snapshot)}</span><small>${item.source_deleted ? '内容已删除' : state.label}</small></div>`;}).join('')}</section>`;
+    box.innerHTML=reviewRecordCard(row)+`<p class="detail-meta">完成时间：${escapeHtml(row.completed_at || '尚未完成')}。只有顺利通过复习模式才算成功；已删除内容保留历史身份，但不计入成功数和有效任务总数。进度条蓝色=成功、橙色=未通过、灰色=跳过。</p><section class="detail-card">${row.items.map(item=>{const state=item.source_deleted ? {icon:'⊘',label:'已删除，不计入有效任务'} : item.exposure_only ? {icon:'◉',label:'已阅读（仅曝光，不评分）'} : item.status==='completed' ? (item.result==='failed' ? {icon:'✗',label:'未通过'} : {icon:'✓',label:'已通过'}) : item.status==='skipped' ? {icon:'—',label:'已跳过'} : {icon:'○',label:'待处理'};return `<div class="plan-task"><span>${state.icon} ${PLAN_TYPE_LABELS[item.item_type]} · ${escapeHtml(item.title_snapshot)}</span><small>${state.label}</small></div>`;}).join('')}</section>`;
   } catch(err) {if(courseId===currentCourseId)box.innerHTML=`<p class="material-review-error">${escapeHtml(err.message)}</p><button onclick="openReviewHistory()">返回记录列表</button>`;}
 }
 function rememberReviewCenterLocation(location) {
@@ -321,7 +325,7 @@ async function renderCenterReviewItem() {
     currentView={type:'sessionUnavailable'};showPageOnly('materialReviewPage');
     document.getElementById('readingReviewHeading').textContent='复习';document.getElementById('materialReviewTitle').textContent=item.title_snapshot;
     document.getElementById('materialReviewItem').style.display='block';document.getElementById('materialReviewComplete').style.display='none';
-    document.getElementById('materialReviewContent').textContent=item.source_deleted ? '内容已删除，历史队列保留原身份。' : '题目或答案不完整，请先补齐内容，或跳过此项。';
+    document.getElementById('materialReviewContent').textContent=item.source_deleted ? '内容已删除，本题不计入有效任务和成功复习数量。' : '题目或答案不完整，请先补齐内容，或跳过此项。';
     for(const id of ['materialReviewPreview','materialReviewActions','materialReviewError','materialReviewStatus','materialReviewProgress'])document.getElementById(id).textContent='';
     document.getElementById('materialReviewOpenFile').style.display='none';renderCenterReviewToolbar();return;
   }
@@ -350,10 +354,22 @@ function renderCenterReviewToolbar() {
   const item=currentCenterItem(),bar=document.getElementById('centerReviewToolbar');if(!item || !bar)return;
   const host=document.querySelector((currentView.type==='mistake' ? '#mistakeDetailPage' : '#materialReviewPage')+' .tab-content');host.prepend(bar);bar.style.display='block';
   const s=centerReview,busy=s.busy || mistakeReviewBusy || activeReadingReview.busy || reviewWorkbench?.busy,blocked=busy || centerReviewHasPendingSave();
+  if(item.source_deleted){
+    let nextPosition=-1;
+    for(let i=s.position+1;i<s.session.items.length;i++){
+      if(s.session.items[i]?.status==='pending'&&!s.session.items[i].source_deleted){nextPosition=i;break;}
+    }
+    if(nextPosition<0)for(let i=0;i<s.position;i++){
+      if(s.session.items[i]?.status==='pending'&&!s.session.items[i].source_deleted){nextPosition=i;break;}
+    }
+    bar.innerHTML=`<strong>${escapeHtml(s.session.name)} · 内容已删除</strong><p>这项内容已从有效任务中移除，不计入成功复习 ${s.session.passed||0} / ${s.session.total||0}。这里没有可作答的内容。</p><div class="mistake-toolbar"><button onclick="moveCenterReviewTo(${nextPosition})" ${blocked||nextPosition<0?'disabled':''}>下一项</button></div>`;
+    return;
+  }
+  const activeItems=s.session.items.filter(row=>!row.source_deleted),activePosition=activeItems.findIndex(row=>row.id===item.id);
   const context=centerWorkbenchContext(item,s.session),selection=workbenchSelection(context),activeSelection=readReviewActive(context);
   const displayedMode=activeSelection?.mode||selection.mode;
-  const processed=Math.max(0,s.session.total-(s.session.pending||0));
-  bar.innerHTML=`<strong>${escapeHtml(s.session.name)} · 第 ${s.position+1} / ${s.session.total} 项</strong><p>已完成 ${s.session.passed || 0} · 未通过 ${s.session.failed || 0} · 仅曝光 ${s.session.exposed || 0} · 跳过 ${s.session.skipped}</p><p class="review-current-mode">第 ${s.position+1} / ${s.session.total} 条 · 已处理 ${processed} 条 · ${PLAN_TYPE_LABELS[item.item_type]} · ${AI_REVIEW_METHODS[displayedMode]}</p><div class="mistake-toolbar"><button onclick="moveCenterReview(-1)" ${blocked || s.position===0 ? 'disabled' : ''}>上一项</button><button onclick="moveCenterReview(1)" ${blocked ? 'disabled' : ''}>下一项</button><button onclick="skipCenterReviewItem()" ${blocked || item.status!=='pending' ? 'disabled' : ''}>跳过</button><button onclick="pauseCenterReview()" ${busy ? 'disabled' : ''}>暂停，稍后继续</button></div>`;
+  const processed=activeItems.filter(row=>row.status!=='pending').length,shownPosition=Math.max(0,activePosition)+1;
+  bar.innerHTML=`<strong>${escapeHtml(s.session.name)} · 第 ${shownPosition} / ${s.session.total} 项</strong><p>成功复习 ${s.session.passed || 0} / ${s.session.total} · 未通过 ${s.session.failed || 0} · 仅曝光 ${s.session.exposed || 0} · 跳过 ${s.session.skipped}${s.session.deleted?` · 已删除 ${s.session.deleted}`:''}</p><p class="review-current-mode">第 ${shownPosition} / ${s.session.total} 条 · 已处理 ${processed} 条 · ${PLAN_TYPE_LABELS[item.item_type]} · ${AI_REVIEW_METHODS[displayedMode]}</p><div class="mistake-toolbar"><button onclick="moveCenterReview(-1)" ${blocked || s.position===0 ? 'disabled' : ''}>上一项</button><button onclick="moveCenterReview(1)" ${blocked ? 'disabled' : ''}>下一项</button><button onclick="skipCenterReviewItem()" ${blocked || item.status!=='pending' ? 'disabled' : ''}>跳过</button><button onclick="pauseCenterReview()" ${busy ? 'disabled' : ''}>暂停，稍后继续</button></div>`;
   const active=activeSelection;
   const workbenchActive=item.status==='pending'&&!!active?.mode;
   const inlineVisible=!!(reviewWorkbench?.inline&&reviewWorkbench.sessionItemId===item.id&&!wb('Inline')?.hidden);
@@ -390,6 +406,14 @@ async function moveCenterReview(delta) {
   s.busy=true;
   try {s.session=await recordedReviewAction(s.session.id,'position',{position:next});s.position=next;await renderCenterReviewItem();}
   catch(err){showToast(err.message);}finally{s.busy=false;renderCenterReviewToolbar();}
+}
+async function moveCenterReviewTo(next) {
+  const s=centerReview;
+  if(!s||s.busy||mistakeReviewBusy||activeReadingReview.busy||centerReviewHasPendingSave()||!Number.isInteger(next)||next<0||next>=s.session.items.length)return;
+  s.busy=true;
+  try{s.session=await recordedReviewAction(s.session.id,'position',{position:next});s.position=next;await renderCenterReviewItem();}
+  catch(err){showToast(err.message);}
+  finally{s.busy=false;renderCenterReviewToolbar();}
 }
 async function centerReviewItemFinished() {
   const s=centerReview;if(!s)return;
