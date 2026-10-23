@@ -32,6 +32,15 @@ async function loadItemReviewHistory(s=itemReviewHistoryState){
   finally{s.busy=false;more.disabled=false;}
 }
 function historyText(title,value){return value===null||value===undefined||value===''?'':'<h4>'+escapeHtml(title)+'</h4><div class="detail-content">'+escapeHtml(typeof value==='string'?value:JSON.stringify(value,null,2))+'</div>';}
+function historyClozeReferences(data){
+  if(data.modeId!=='cloze'||data.referenceAvailable!==true||!Array.isArray(data.material?.blanks)||!data.material.blanks.length)return '';
+  const lines=data.material.blanks.flatMap((blank,index)=>{
+    if(!blank||typeof blank.answer!=='string'||!blank.answer.trim())return [];
+    const aliases=Array.isArray(blank.aliases)?blank.aliases.filter(v=>typeof v==='string'&&v.trim()&&v!==blank.answer):[];
+    return [`第 ${index+1} 空：${blank.answer}${aliases.length?'（也接受：'+[...new Set(aliases)].join('、')+'）':''}`];
+  });
+  return lines.length?historyText('各空参考答案',lines.join('\n')):'';
+}
 function historyFeedbackHtml(item){
   const f=item.feedback,labels={correct:'基本正确',partial:'部分正确 / 有遗漏',incorrect:'需要修正',uncertain:'暂不能判断'};
   return '<section class="review-ai-draft" data-history-feedback-version="'+item.version+'"><h4>AI 批改 · 版本 '+item.version+'</h4><p class="ai-help">'+escapeHtml(historyDate(item.createdAt))+' · '+escapeHtml(item.provider==='mock'?'Mock 演示，未实际批改':item.model+' · AI 参考意见，不是最终评分')+'</p>'
@@ -44,7 +53,7 @@ async function loadItemReviewHistoryDetail(s,entry,key,before){
   try{
     const data=await(await requestApi(itemHistoryBase(s)+'/'+encodeURIComponent(key)+(before?'?beforeFeedbackId='+before:''))).json();if(!itemHistoryCurrent(s))return;
     if(!before){const m=data.material;host.innerHTML=historyText('本轮题面 / 阅读正文',m?.prompt)+historyText('比较对象',m?.objects?.join(' / '))+historyText('比较维度',m?.dimensions?.join('、'))+historyText('选项',m?.options?.map(o=>o.id+'：'+o.text).join('\n'))+historyText('首次作答',data.firstAnswer)
-      +historyText('参考答案 / 要点',m?.reference)+historyText('评分量规 / 解析',m?.rubric)+historyText('正确选项',m?.correctOption)+historyText('逐空参考',m?.blanks)+historyText('耗时',data.durationMs?Math.round(data.durationMs/1000)+' 秒':'未记录')+historyText('说明',data.note)
+      +historyText('参考答案 / 要点',m?.reference)+historyText('评分量规 / 解析',m?.rubric)+historyText('正确选项',m?.correctOption)+historyClozeReferences(data)+historyText('耗时',data.durationMs?Math.round(data.durationMs/1000)+' 秒':'未记录')+historyText('说明',data.note)
       +(!data.referenceAvailable&&data.modeId!=='reading'?'<p class="ai-help">本轮尚未揭示参考答案；历史页面也不提前展示。</p>':'');entry.dataset.loaded='true';}
     host.querySelector('[data-history-older]')?.remove();
     for(const f of data.feedback.items)host.insertAdjacentHTML('beforeend',historyFeedbackHtml(f));

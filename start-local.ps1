@@ -32,6 +32,29 @@ function Wait-Ready([int]$TimeoutSeconds = 60) {
     return $false
 }
 
+function Start-LocalAi {
+    if (Test-LoopbackPort 3002) { return }
+    $pythonCommand = Get-Command python.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $pythonCommand) { throw 'AI 服务需要 Python，请先安装 Python。' }
+    $previousPythonPath = $env:PYTHONPATH
+    try {
+        $env:PYTHONPATH = Join-Path $projectRoot '.local-ai-deps'
+        & $pythonCommand.Source -B -c 'import fastapi, uvicorn, httpx' 2>$null
+        if ($LASTEXITCODE -ne 0) { throw '缺少 AI 服务依赖，请按启动说明准备 FastAPI、uvicorn 和 httpx。' }
+        if ($CheckOnly) { Write-Host 'AI 依赖检查通过。'; return }
+        $aiProcess = Start-Process -FilePath $pythonCommand.Source -ArgumentList '-B', 'local_runner.py' `
+            -WorkingDirectory (Join-Path $projectRoot 'ai-fastapi') -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput (Join-Path $projectRoot 'local-ai.stdout.log') -RedirectStandardError (Join-Path $projectRoot 'local-ai.stderr.log')
+        $deadline = (Get-Date).AddSeconds(20)
+        while ((Get-Date) -lt $deadline) {
+            if ($aiProcess.HasExited) { throw 'AI 服务启动失败，请查看 local-ai.stderr.log。' }
+            if (Test-LoopbackPort 3002) { Write-Host '本机 AI 服务已启动。'; return }
+            Start-Sleep -Milliseconds 300
+        }
+        throw 'AI 服务启动超时，请查看 local-ai.stderr.log。'
+    } finally { $env:PYTHONPATH = $previousPythonPath }
+}
+
 try {
     Write-Host "项目目录：$projectRoot"
     if (-not (Test-Path -LiteralPath $frontedEntry)) { throw '找不到 fronted/index.html，项目不完整。' }
@@ -45,6 +68,8 @@ try {
         Write-Host '  修复：cd ocr-trial; npm install; cd ..; node tools/prepare-ocr-web.cjs' -ForegroundColor Yellow
     }
 
+    Start-LocalAi
+
     if (Test-LoopbackPort 3000) {
         Write-Host '3000 端口已有服务在运行，直接打开页面。' -ForegroundColor Green
         if (-not $CheckOnly -and -not $NoOpen) { Start-Process -FilePath $url | Out-Null }
@@ -57,7 +82,7 @@ try {
     }
 
     Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', 'title 课程网站 - 后端 && npm run dev' `
-        -WorkingDirectory $backendPath -WindowStyle Normal | Out-Null
+        -WorkingDirectory $backendPath -WindowStyle Hidden | Out-Null
 
     Write-Host '正在等待后端就绪…'
     if (-not (Wait-Ready 60)) {

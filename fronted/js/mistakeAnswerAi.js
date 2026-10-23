@@ -45,11 +45,11 @@ async function fetchMistakeAnswerDraft(input,{signal,deepseek=null}={}){
   let endpoint;try{endpoint=new URL(base+'/ai/answer-draft',location.href);}catch{throw mistakeAiError('AI_TEMP_KEY_ORIGIN');}
   if(endpoint.origin!==location.origin||endpoint.username||endpoint.password||!(endpoint.protocol==='https:'||
     (endpoint.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname))))throw mistakeAiError('AI_TEMP_KEY_ORIGIN');
-  let body=JSON.stringify({provider:deepseek?'deepseek':'mock',...(deepseek?{api_key:deepseek.apiKey,model:deepseek.model,confirm_cost:deepseek.confirmCost}:{}),input});
+  let body=JSON.stringify({provider:deepseek?(deepseek.provider||'deepseek'):'mock',...(deepseek?{api_key:deepseek.apiKey,model:deepseek.model,confirm_cost:deepseek.confirmCost,...(deepseek.provider==='compatible'?{base_url:deepseek.baseUrl,...(deepseek.workspaceId?{workspace_id:deepseek.workspaceId}:{})}:{})}:{}),input});
   if(new TextEncoder().encode(body).length>16384)throw mistakeAiError('BODY_TOO_LARGE');
   const controller=new AbortController(),abort=()=>controller.abort();
   if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
-  const timer=setTimeout(abort,20000);
+  const timer=setTimeout(abort,100000);
   let release=()=>{};
   try{
     if(typeof coursesAiSettings!=='undefined')release=coursesAiSettings.track(deepseek,abort);
@@ -59,7 +59,7 @@ async function fetchMistakeAnswerDraft(input,{signal,deepseek=null}={}){
     if(controller.signal.aborted||typeof coursesAiSettings!=='undefined'&&!coursesAiSettings.valid(deepseek))throw Object.assign(new Error('已取消'),{name:'AbortError'});
     if(!response.ok)throw mistakeAiError(data?.error||data?.detail,response.status);
     const d=data?.draft;
-    if(data?.provider!==(deepseek?'deepseek':'mock')||!d||d.needs_review!==true||typeof d.answer!=='string'||d.answer.length>4000
+    if(data?.provider!==(deepseek?(deepseek.provider||'deepseek'):'mock')||!d||d.needs_review!==true||typeof d.answer!=='string'||d.answer.length>4000
       ||typeof d.explanation!=='string'||!d.explanation.trim()||d.explanation.length>4000||typeof d.needs_more_information!=='boolean'
       ||!Array.isArray(d.caveats)||d.caveats.length>3||d.caveats.some(x=>typeof x!=='string'||x.length>300)
       ||!Array.isArray(d.choice_answer)||d.choice_answer.some(x=>typeof x!=='string'||!input.options.some(o=>o.id===x)))throw mistakeAiError('INVALID_RESPONSE');
@@ -79,7 +79,7 @@ async function generateMistakeAnswerAi(prefix){
     deepseek=readMistakeAiKey('mistake'+prefix+'AnswerAi');
   }catch(err){node('Error').textContent=err.message;return;}
   state.busy=true;state.controller=new AbortController();node('Controls').disabled=true;
-  node('Status').textContent=deepseek?'正在生成 DeepSeek 参考草稿（可能计费），不会自动填入…':'正在生成 Mock 流程演示…';
+  node('Status').textContent=deepseek?'正在请求 '+coursesAiSettings.describe(deepseek)+' 生成参考草稿（可能计费），不会自动填入…':'正在生成 Mock 流程演示…';
   try{
     const pending=fetchMistakeAnswerDraft(input,{signal:state.controller.signal,deepseek});
     clearMistakeAiKey('mistake'+prefix+'AnswerAi');if(deepseek)deepseek.apiKey='';

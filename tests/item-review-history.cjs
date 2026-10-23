@@ -16,7 +16,7 @@ test('item history API keeps snapshots, immutable feedback versions, pagination 
   await api('POST',detail+'/feedback',{requestId:'too-early',provider:'mock',model:'',feedback},409);
   a=await api('POST',base+'/attempts/'+a.id+'/events',{action:'submit',answer:'不会',requestId:'submit',expectedVersion:0});
   const protectedBefore=snapshot();
-  const body={requestId:'feedback-1',provider:'deepseek',model:'deepseek-flash',feedback};
+  const body={requestId:'feedback-1',provider:type==='note'?'compatible':'deepseek',model:type==='note'?'vendor/model-v2':'deepseek-flash',feedback};
   const saved=await api('POST',detail+'/feedback',body);
   assert.deepEqual(await api('POST',detail+'/feedback',body),saved,'retry is idempotent');
   await api('POST',detail+'/feedback',{...body,feedback:{...feedback,summary:'changed'}},409);

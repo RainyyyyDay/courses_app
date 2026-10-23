@@ -11,6 +11,7 @@ const db = require('./db/index.js');
 const aiService = require('./ai/service');
 const ocrService = require('./ocr/service');
 const { createAiProxy } = require('./aiProxy.js');
+const { createLocalAiGateway } = require('./localAiGateway');
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.use(express.json({ limit: '8mb' }));
 
 // AI 入口先按正式路径占位，但在真实用户认证接入前保持关闭。
 // 不传 authenticate / upstreamBaseUrl 时，模块会在任何上游请求发生前返回 503。
+app.use('/api/ai', createLocalAiGateway());
 app.use('/api/ai', createAiProxy());
 
 // ===== 文件上传配置 =====

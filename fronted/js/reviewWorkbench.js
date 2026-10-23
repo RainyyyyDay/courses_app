@@ -1,7 +1,7 @@
 /* One manual editor and attempt UI for cloze/open-answer/reading; existing choice and standard stay intact. */
 let reviewWorkbench=null;
 const wb=name=>document.getElementById('reviewWb'+name);
-const WORKBENCH_REQUIREMENTS={cloze:'挖空题面、空位编号、每个空位的答案及可选别名',self_explain:'讲解任务、参考要点及可选评分量规',contrast:'至少两个比较对象、比较维度、关键异同与核对要点',reading:'阅读正文或片段',standard:'任务与参考答案或核对要点'};
+const WORKBENCH_REQUIREMENTS={cloze:'填写完整原文，选中文字创建空位，答案自动记录',self_explain:'讲解任务、参考要点及可选评分量规',contrast:'至少两个比较对象、比较维度、关键异同与核对要点',reading:'阅读正文或片段',standard:'任务与参考答案或核对要点'};
 function reviewModeSelectionKey(s){return `review-mode-selection:${s.courseId}:${s.sessionItemId}:${s.type}:${s.id}`;}
 const reviewModeSelections=new Map();
 function rememberReviewModeSelection(s,mode){
@@ -55,6 +55,7 @@ function renderWorkbenchReadiness(kind,message,missing=[]){
 }
 function updateWorkbenchPreparation(){
   const s=reviewWorkbench;if(!s||!wb('Prompt'))return;
+  if(s.mode==='cloze'&&typeof refreshClozeEditor==='function')refreshClozeEditor();
   const missing=workbenchMaterialMissing(s.mode,readWorkbenchMaterial());
   renderWorkbenchReadiness('draft',missing.length?'还缺以下材料（当前输入只是草稿）':'草稿已填写；确认保存后才可以开始',missing);
 }
@@ -231,13 +232,13 @@ async function openReviewWorkbench(type,id,context={}){
   if(s.inline&&typeof centerReview!=='undefined'&&centerReview)renderCenterReviewToolbar();
 }
 function wbInput(label,id,value='',rows=3){return `<label>${escapeHtml(label)}<textarea id="reviewWb${id}" rows="${rows}">${escapeHtml(value)}</textarea></label>`;}
-function wbBlank(blank){return `<div class="edit-card review-blank"><label>编号<input data-blank="id" value="${escapeHtml(blank.id)}"></label><label>答案<input data-blank="answer" value="${escapeHtml(blank.answer||'')}"></label><label>别名（每行一个）<textarea data-blank="aliases" rows="2">${escapeHtml((blank.aliases||[]).join('\n'))}</textarea></label><label>提示<input data-blank="hint" value="${escapeHtml(blank.hint||'')}"></label><button type="button" onclick="removeReviewBlank(this)">删除此空位</button></div>`;}
+function wbBlank(blank){return `<details class="edit-card review-blank"><summary>空位答案：${escapeHtml(blank.answer||'待填写')}</summary><input type="hidden" data-blank="id" value="${escapeHtml(blank.id)}"><label>答案<textarea data-blank="answer" rows="2">${escapeHtml(blank.answer||'')}</textarea></label><label>其他可接受答案（每行一个，可选）<textarea data-blank="aliases" rows="2">${escapeHtml((blank.aliases||[]).join('\n'))}</textarea></label><label>提示（可选）<input data-blank="hint" value="${escapeHtml(blank.hint||'')}"></label><button type="button" onclick="removeReviewBlank(this)">取消挖空，恢复文字</button></details>`;}
 function addReviewBlank(){
   const ids=[...wb('Blanks').querySelectorAll('[data-blank="id"]')].map(n=>n.value);let n=1;while(ids.includes('b'+n))n++;
   wb('Blanks').insertAdjacentHTML('beforeend',wbBlank({id:'b'+n}));
   updateWorkbenchPreparation();
 }
-function removeReviewBlank(button){const row=button.closest('.review-blank'),id=row.querySelector('[data-blank="id"]').value,answer=row.querySelector('[data-blank="answer"]').value;wb('Prompt').value=wb('Prompt').value.split('【'+id+'】').join(answer);row.remove();updateWorkbenchPreparation();}
+function removeReviewBlank(button){if(typeof rememberClozeEdit==='function')rememberClozeEdit();const row=button.closest('.review-blank'),id=row.querySelector('[data-blank="id"]').value,answer=row.querySelector('[data-blank="answer"]').value;wb('Prompt').value=wb('Prompt').value.split('【'+id+'】').join(answer);row.remove();updateWorkbenchPreparation();}
 function readWorkbenchMaterial(){
   const s=reviewWorkbench;
   return {prompt:wb('Prompt').value,reference:wb('Reference')?.value||'',rubric:wb('Rubric')?.value||'',
@@ -286,11 +287,12 @@ async function loadReviewWorkbenchMode(mode,explicit=true){
     }else{
       const draft=mistakeStorageGet(reviewWorkbenchKey(s)+':draft');
       const saved=data.material||{prompt:s.sourceText||'',reference:s.referenceText||'',rubric:'',blanks:[]};const m=draft||saved;
-      wb('Editor').innerHTML=(draft?'<p class="mistake-ai-note">已恢复本浏览器未确认草稿，尚未覆盖正式材料。</p>':'')+wbInput(mode==='cloze'?'题面（空位写为【b1】、【b2】）':'任务 / 阅读正文','Prompt',m.prompt,5)
-        +(mode==='cloze'?`<div id="reviewWbBlanks">${(m.blanks||[]).map(wbBlank).join('')}</div><button type="button" onclick="addReviewBlank()">添加空位</button>`:mode==='reading'?'':wbInput('参考要点 / 关键异同','Reference',m.reference)+wbInput('核对标准 / 评分量规','Rubric',m.rubric))
+      wb('Editor').innerHTML=(draft?'<p class="mistake-ai-note">已恢复本浏览器未确认草稿，尚未覆盖正式材料。</p>':'')+(mode==='cloze'?clozeEditorHtml(m):wbInput('任务 / 阅读正文','Prompt',m.prompt,5))
+        +(mode==='cloze'?'':mode==='reading'?'':wbInput('参考要点 / 关键异同','Reference',m.reference)+wbInput('核对标准 / 评分量规','Rubric',m.rubric))
         +(mode==='contrast'?wbInput('对比对象（每行一个，至少两个）','Objects',(m.objects||[]).join('\n'))+wbInput('对比维度（每行一个）','Dimensions',(m.dimensions||[]).join('\n')):'')
-        +'<details class="review-ai-generator"><summary>AI 一键生成材料<span class="ai-optional-tag">可选</span></summary><p class="ai-help">使用共用 AI 设置生成可编辑草稿。DeepSeek 会发送当前题面及参考文字，可能计费；不会自动覆盖、保存或评分。</p><div class="ai-action-row"><button type="button" class="ai-primary" data-material-ai-generate onclick="requestWorkbenchDraft(true)">生成材料草稿</button><button type="button" onclick="coursesAiSettings.open()">AI 设置</button><button type="button" onclick="requestWorkbenchDraft()">Mock 演示（非真实 AI）</button><button type="button" class="ai-text-button" onclick="reviewWorkbench?.draftController?.abort()">取消生成</button></div><p id="reviewWbDraftStatus" role="status"></p><div id="reviewWbDraft" class="review-ai-draft"></div></details>';
+        +'<details class="review-ai-generator"><summary>AI 一键生成材料<span class="ai-optional-tag">可选</span></summary><p class="ai-help">使用共用 AI 设置生成可编辑草稿。当前所选 AI 服务会接收当前题面及参考文字，可能计费；不会自动覆盖、保存或评分。</p><div class="ai-action-row"><button type="button" class="ai-primary" data-material-ai-generate onclick="requestWorkbenchDraft(true)">生成材料草稿</button><button type="button" onclick="coursesAiSettings.open()">AI 设置</button><button type="button" onclick="requestWorkbenchDraft()">Mock 演示（非真实 AI）</button><button type="button" class="ai-text-button" onclick="reviewWorkbench?.draftController?.abort()">取消生成</button></div><p id="reviewWbDraftStatus" role="status"></p><div id="reviewWbDraft" class="review-ai-draft"></div></details>';
       wb('Actions').innerHTML='<button onclick="saveWorkbenchMaterial()">确认并保存正式材料</button>'+(s.sessionItemId?'<button data-save-start onclick="saveWorkbenchMaterial(true)">确认保存并开始本轮复习</button><button onclick="switchWorkbenchToAvailableMode()">'+(s.type==='mistake'?'切换标准复习（保留草稿）':'返回原阅读（保留草稿）')+'</button>':'');
+      if(mode==='cloze')initClozeEditor();
       updateWorkbenchPreparation();
     }
   }catch(err){if(reviewWorkbench===s){renderWorkbenchReadiness('error','暂时无法确认材料；请重试，或使用原复习流程');wb('Error').textContent=err.message;wb('Actions').innerHTML='<button onclick="loadReviewWorkbenchMode(reviewWorkbench.mode,false)">重新加载</button><button onclick="switchWorkbenchToAvailableMode()">返回原复习流程</button>';}}
@@ -460,7 +462,7 @@ async function requestWorkbenchDraft(useShared=false){
     const realInput={kind:s.type,mode_id:s.mode,content:source,reference:input.reference};
     if(useShared&&new TextEncoder().encode(JSON.stringify(realInput)).length>15000)throw new Error('本次文字过多，请缩小材料片段后生成。');
     if(useShared)credentials=coursesAiSettings.read();
-    wb('DraftStatus').textContent=credentials?'正在请求 DeepSeek 官方（可能计费）；不会自动采用，请稍候…':'正在生成 Mock 演示草稿，不调用真实模型…';
+    wb('DraftStatus').textContent=credentials?'正在请求 '+coursesAiSettings.describe(credentials)+'（可能计费）；不会自动采用，请稍候…':'正在生成 Mock 演示草稿，不调用真实模型…';
     s.draftController=new AbortController();
     let draft;
     if(credentials){
@@ -469,7 +471,7 @@ async function requestWorkbenchDraft(useShared=false){
     if(reviewWorkbench!==s)return;
     if(s.draftController.signal.aborted)throw new Error('生成已取消，未采用任何内容');
     // Independent editable preview. Nothing in the user's form is replaced automatically.
-    s.aiDraft=draft.material;s.aiDraftReal=!!credentials;s.beforeAi=null;
+    s.aiDraft=draft.material;s.aiDraftReal=!!credentials;s.aiDraftSource=coursesAiSettings.describe(credentials);s.beforeAi=null;
     renderEditableReviewDraft(s,draft);
     wb('DraftStatus').textContent=draft.material?'草稿已生成，原材料未改动；请编辑、核实后明确采用。':'信息不足，未生成可采用材料；请补充文字或手动准备。';
     if(!draft.material)wb('Error').textContent='信息不足，未生成可采用材料；请按提示补充，或继续手动准备。';

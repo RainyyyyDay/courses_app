@@ -89,7 +89,7 @@ function saveItemReviewFeedback(courseId,type,id,key,body){
   const round=roundDetail(courseId,type,id,key);
   if(!body||Object.keys(body).some(k=>!['requestId','provider','model','feedback'].includes(k))||typeof body.requestId!=='string'||!body.requestId.trim()||body.requestId.length>100)fail(400,'保存批改参数无效');
   if(round.modeId==='reading'||round.firstAnswer===null||!round.referenceAvailable)fail(409,'请先提交本轮首次作答，阅读不使用批改');
-  if(!['mock','deepseek'].includes(body.provider)||(body.provider==='mock'?body.model!=='':!['deepseek-flash','deepseek-v4-pro'].includes(body.model)))fail(400,'批改来源或模型无效');
+  if(!['mock','deepseek','compatible'].includes(body.provider)||(body.provider==='mock'?body.model!=='':body.provider==='compatible'?(typeof body.model!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(body.model)):!['deepseek-flash','deepseek-v4-pro'].includes(body.model)))fail(400,'批改来源或模型无效');
   const answer=typeof round.firstAnswer==='string'?round.firstAnswer:JSON.stringify(round.firstAnswer),feedback=validateFeedback(body.feedback,answer),payload=JSON.stringify(feedback);
   db.exec('BEGIN');try{
     const old=db.prepare('SELECT * FROM review_ai_feedback WHERE course_id=? AND item_type=? AND item_id=? AND history_key=? AND request_id=?').get(courseId,type,id,key,body.requestId);

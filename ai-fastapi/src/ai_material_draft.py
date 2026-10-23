@@ -1,4 +1,5 @@
 """Optional JSON material drafts; reuse the existing official provider and request guards."""
+from .ai_provider import request_config
 import re
 from uuid import uuid4
 from .ai_mistake import AIError, Classifier, Config, DeepSeekProvider, _length, _read_body, _with_disconnect
@@ -72,6 +73,9 @@ class MaterialProvider(DeepSeekProvider):
             '输出{material:{prompt:字符串,reference:字符串,rubric:字符串,blanks:[{id:字符串,answer:字符串,aliases:字符串数组,hint:字符串}],objects:字符串数组,dimensions:字符串数组},'
             'needs_more_information:布尔值,caveats:最多3条待核实点}。所有字段必备，不适用的数组为空；非挖空blanks为空。'
             '每个空位编号唯一且在题面恰好出现一次，所有空位有答案；对比至少两个对象和一个维度；除阅读/挖空外reference必填。'
+            '必须使用合法JSON语法，不用Markdown围栏，不能将JSON字段名写成中文。示例：'
+            '{"material":{"prompt":"请回忆本段要点","reference":"待核实的原文要点","rubric":"覆盖关键概念",'
+            '"blanks":[],"objects":[],"dimensions":[]},"needs_more_information":false,"caveats":[]}。'
             '总量简洁，prompt最多800字，reference/rubric各最多500字，对象最多6个、维度最多8个，待核实点每条最多300字。全部为待用户核实的草稿。')
 
 
@@ -96,19 +100,14 @@ def register(app, *, dependencies=None):
         headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Request-ID':str(uuid4())}
         try:
             gate.check_rate();body=await _read_body(request)
-            if not isinstance(body,dict) or set(body)-{'provider','api_key','model','confirm_cost','input'} or body.get('provider')!='deepseek':
+            if not isinstance(body,dict) or set(body)-{'provider','api_key','model','confirm_cost','base_url','workspace_id','input'} or body.get('provider') not in ('deepseek','compatible'):
                 raise AIError(400,'INVALID_INPUT')
             data=parse_input(body.get('input'))
-            key=body.get('api_key')
-            if not isinstance(key,str) or not 1<=len(key)<=512 or not all(33<=ord(c)<=126 for c in key):
-                raise AIError(400,'INVALID_API_KEY')
-            if body.get('confirm_cost') is not True:raise AIError(400,'COST_CONFIRMATION_REQUIRED')
-            if body.get('model') not in ('deepseek-flash','deepseek-v4-pro'):raise AIError(400,'INVALID_INPUT')
-            config=Config(provider='deepseek',api_key=key,model=body['model'])
+            config=request_config(body)
             runner=MaterialRunner(config,provider=MaterialProvider(config));runner.tasks=gate.tasks
             result,source=await _with_disconnect(request,runner,data)
             if source!='provider':raise AIError(502,'INVALID_RESPONSE')
-            return JSONResponse({'provider':'deepseek','mode_id':data['mode_id'],'draft':result},headers=headers)
+            return JSONResponse({'provider':body['provider'],'mode_id':data['mode_id'],'draft':result},headers=headers)
         except Exception as exc:
             failure=exc if isinstance(exc,AIError) else AIError(500,'INTERNAL_ERROR')
             if failure.retry_after is not None:headers['Retry-After']=str(failure.retry_after)

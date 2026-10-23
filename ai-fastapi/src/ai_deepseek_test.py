@@ -3,6 +3,7 @@
 Host must supply authentication/permission dependencies; the local harness supplies
 loopback protection instead. Never register the local harness in production.
 """
+from .ai_provider import request_config
 import time
 from uuid import uuid4
 
@@ -15,7 +16,7 @@ SAMPLE = {'question': '1+1=?', 'student_answer': '3', 'error_type': 'careless'}
 
 
 def validate(body):
-    if not isinstance(body, dict) or set(body) - {'api_key', 'model', 'action', 'confirm_cost', 'input'}:
+    if not isinstance(body, dict) or set(body) - {'provider', 'base_url','workspace_id', 'api_key', 'model', 'action', 'confirm_cost', 'input'}:
         raise AIError(400, 'INVALID_INPUT')
     if body.get('confirm_cost') is not True:
         raise AIError(400, 'COST_CONFIRMATION_REQUIRED')
@@ -23,12 +24,29 @@ def validate(body):
     if not isinstance(key, str) or not 1 <= len(key) <= 512 or not all(33 <= ord(c) <= 126 for c in key):
         raise AIError(400, 'INVALID_API_KEY')
     model, action = body.get('model'), body.get('action')
-    if model not in MODELS or action not in ('connection', 'classify'):
+    request_config(body)
+    if action not in ('connection', 'classify'):
         raise AIError(400, 'INVALID_INPUT')
     data = SAMPLE.copy() if action == 'connection' else parse_input(body.get('input'))
     if data is None or not all(data.get(k) for k in ('question', 'student_answer')):
         raise AIError(400, 'INVALID_INPUT')
     return key, model, action, data
+
+
+
+class ConnectionProvider:
+    def __init__(self, delegate):
+        self.delegate=delegate
+
+    async def classify(self, data, rules):
+        return await self.delegate.complete_json({'message':'connection test'},
+            'This is a connection test. Reply with exactly one JSON object: {"connected":true}. Do not analyze questions or add explanations.')
+
+
+class ConnectionRunner(Classifier):
+    async def classify(self, data):
+        return await self.run(data, lambda value: {'connected':True}
+                              if isinstance(value,dict) and value.get('connected') is True else None)
 
 
 def register(app, *, dependencies=None):
@@ -59,8 +77,10 @@ def register(app, *, dependencies=None):
             gate.check_rate()
             body = await _read_body(request)
             key, model, action, data = validate(body)
-            config = Config(provider='deepseek', api_key=key, model=model)
-            classifier = Classifier(config, provider=DeepSeekProvider(config))
+            config = request_config(body, config_factory=Config)
+            headers['X-AI-Provider'] = config.provider
+            delegate=DeepSeekProvider(config)
+            classifier = ConnectionRunner(config, provider=ConnectionProvider(delegate)) if config.provider=='compatible' and action=='connection' else Classifier(config, provider=delegate)
             # Reuse the existing cancellation-safe task pool, across all credentials.
             classifier.tasks = gate.tasks
             started = time.monotonic()
@@ -69,14 +89,14 @@ def register(app, *, dependencies=None):
             # A structurally invalid model answer is not a successful test.
             if source != 'provider':
                 raise AIError(502, 'INVALID_RESPONSE')
-            return JSONResponse({'ok': True, 'provider': 'deepseek', 'model': model,
+            return JSONResponse({'ok': True, 'provider': config.provider, 'model': model,
                                  'action': action, 'elapsed_ms': round((time.monotonic()-started)*1000),
                                  **({'result': result} if action == 'classify' else {})}, headers=headers)
         except Exception as exc:
             failure = exc if isinstance(exc, AIError) else AIError(500, 'INTERNAL_ERROR')
             if failure.retry_after is not None:
                 headers['Retry-After'] = str(failure.retry_after)
-            return JSONResponse({'error': failure.code}, status_code=failure.status, headers=headers)
+            return JSONResponse({'error': failure.code, **failure.details}, status_code=failure.status, headers=headers)
         finally:
             if isinstance(body, dict):
                 body.pop('api_key', None)

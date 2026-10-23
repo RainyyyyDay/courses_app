@@ -42,17 +42,34 @@ function mistakeAiError(code, status = 0) {
     AI_API_NOT_CONFIGURED: '当前打开方式未配置 AI 接口。请启动本地 Node 和 FastAPI 服务，然后打开 http://127.0.0.1:3002/，不要直接双击 HTML 文件。',
     LOCAL_MOCK_UNAVAILABLE: '无法连接本地 AI mock。请确认 FastAPI 在 3002 端口运行，启动后点击“重新获取 / 重试”；输入和已保存选择仍保留。',
     AI_BUSY: 'AI 服务繁忙，请稍后重试。',
-    AI_TIMEOUT: 'AI 分类超时，请重试。',
+    AI_DNS_FAKE_IP: '代理 DNS 返回了虚拟 IP，尚未连接模型。请关闭 TUN/Fake-IP，或将该服务商域名加入 Fake-IP 排除列表后重试。',
+    AI_CONNECT_TIMEOUT: '连接 AI 服务超时，尚未收到模型响应。请检查代理、DNS 和服务商地址。',
+    AI_MODEL_NOT_FOUND: '服务商明确返回：模型不存在。请核对该平台支持的模型 ID。',
+    AI_MODEL_PERMISSION: '服务商拒绝访问此模型，请检查账户和套餐权限。',
+    AI_KEY_PRODUCT_MISMATCH: '此 Key 的产品类型与接口不匹配，请核对普通 API 或 Coding Plan 的专用接口。',
+    AI_ENDPOINT_NOT_FOUND: '服务商接口不存在或已下线，请核对 API 基础地址。',
+    AI_REQUEST_REJECTED: '服务商拒绝了请求参数，请根据上游业务错误码排查。',
+    AI_CONTENT_REJECTED: '服务商内容检查拒绝了本次请求。',
+    AI_UPSTREAM_ERROR: '服务商返回错误，具体状态见上游 HTTP 状态。',
+    AI_OUTPUT_LIMIT: '模型输出达到 token 上限后被截断，尚未取得完整结果；不会自动重试。',
+    AI_EMPTY_RESPONSE: '模型请求已返回，但没有最终回答内容。',
+    AI_RESPONSE_FORMAT: '服务商响应不符合 Chat Completions 格式。',
+    AI_INVALID_JSON: '模型已回答，但没有按要求返回 JSON。',
+    AI_CONNECTION_FAILED: '未能建立到服务商的连接，请检查网络、TLS 或代理配置。',
+    AI_TIMEOUT: 'AI 请求超时，本次未取得结果；请检查网络或模型响应速度后手动重试。',
     INVALID_INPUT: '请检查输入：每项最多 4000 字，总请求不能超过 16KB。',
     BODY_TOO_LARGE: '文字总量超过 16KB，请精简后重试。',
     INVALID_RESPONSE: 'AI 返回格式不正确，本次建议未采用，请重试。',
     NETWORK_ERROR: '无法连接 AI 服务，请检查网络后重试。',
-    INVALID_API_KEY: '请填写有效的本次 DeepSeek Key，不要包含空格或换行。',
-    COST_CONFIRMATION_REQUIRED: '请先勾选本次 DeepSeek 请求和费用确认。',
-    AI_AUTH_FAILED: 'DeepSeek Key 无效或已失效，请检查官方控制台；不会回退 Mock。',
-    AI_BALANCE_UNAVAILABLE: 'DeepSeek 账户余额不足或不可用，请检查官方账户。',
-    AI_UPSTREAM_RATE_LIMITED: 'DeepSeek 暂时限流，请稍后手动重试。',
-    AI_TEMP_KEY_ORIGIN: '临时 Key 仅可通过同源 HTTPS 接口或本机 HTTP 使用。请打开本地 3002 网站入口。'
+    INVALID_API_URL: 'API 地址不可用：仅支持公网 HTTPS，禁止内网、特殊地址和重定向。',
+    INVALID_API_KEY: '请填写有效的本次 AI Key，不要包含空格或换行。',
+    COST_CONFIRMATION_REQUIRED: '请先勾选本次 AI 请求和费用确认。',
+    AI_AUTH_FAILED: 'API Key 无效或已失效，请检查服务商控制台；不会回退 Mock。',
+    AI_BALANCE_UNAVAILABLE: 'AI 服务账户余额不足或不可用，请检查服务商账户。',
+    AI_UPSTREAM_RATE_LIMITED: 'AI 服务暂时限流，请稍后手动重试。',
+    LOCAL_AI_UNAVAILABLE: '本机 AI 服务尚未启动。请重新运行启动课程网站，或启动 127.0.0.1:3002 的 FastAPI 服务后重试。',
+    AI_LOCAL_ONLY: '本机 AI 接口仅允许本机页面访问，请使用 http://127.0.0.1:3000/。',
+    AI_TEMP_KEY_ORIGIN: '页面与 AI 接口地址不一致。localhost 与 127.0.0.1、不同端口均属于不同来源；请从同一网站入口使用。'
   };
   const message = messages[code] || (status === 401 ? '请先登录后再使用 AI 分类。'
     : status === 403 ? '当前账号无权使用 AI 分类。'
@@ -63,7 +80,7 @@ function mistakeAiError(code, status = 0) {
   return Object.assign(new Error(message), { code, status });
 }
 
-async function classifyMistakeWithAi(input, { signal, timeoutMs = 20000, deepseek = null } = {}) {
+async function classifyMistakeWithAi(input, { signal, timeoutMs = 100000, deepseek = null } = {}) {
   const configured = globalThis.COURSES_AI_API_BASE;
   if ((configured === undefined && globalThis.location?.protocol === 'file:')
     || (configured !== undefined && (typeof configured !== 'string' || !configured.trim()))) {
@@ -85,8 +102,8 @@ async function classifyMistakeWithAi(input, { signal, timeoutMs = 20000, deepsee
     if(url.origin!==globalThis.location?.origin||(!localHttp&&url.protocol!=='https:')||url.username||url.password)throw mistakeAiError('AI_TEMP_KEY_ORIGIN');
     if(typeof deepseek.apiKey!=='string'||! /^[\x21-\x7e]{1,512}$/.test(deepseek.apiKey))throw mistakeAiError('INVALID_API_KEY');
     if(deepseek.confirmCost!==true)throw mistakeAiError('COST_CONFIRMATION_REQUIRED');
-    if(!['deepseek-flash','deepseek-v4-pro'].includes(deepseek.model))throw mistakeAiError('INVALID_INPUT');
-    endpoint=url.href;payload={api_key:deepseek.apiKey,model:deepseek.model,action:'classify',confirm_cost:true,input};
+    if(deepseek.provider==='compatible'?!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(deepseek.model):!['deepseek-flash','deepseek-v4-pro'].includes(deepseek.model))throw mistakeAiError('INVALID_INPUT');
+    endpoint=url.href;payload={api_key:deepseek.apiKey,model:deepseek.model,action:'classify',confirm_cost:true,input,...(deepseek.provider==='compatible'?{provider:'compatible',base_url:deepseek.baseUrl,...(deepseek.workspaceId?{workspace_id:deepseek.workspaceId}:{})}:{})};
   }
   let body = JSON.stringify(payload);payload=null;
   if (new TextEncoder().encode(body).length > 16384) throw mistakeAiError('BODY_TOO_LARGE');
@@ -124,7 +141,7 @@ async function classifyMistakeWithAi(input, { signal, timeoutMs = 20000, deepsee
       throw mistakeAiError(typeof data?.error === 'string' ? data.error : data?.detail==='AI_AUTH_NOT_CONFIGURED'?'AI_AUTH_NOT_CONFIGURED':'HTTP_ERROR', res.status);
     }
     if(deepseek){
-      if(data?.ok!==true||data.provider!=='deepseek'||data.action!=='classify'||data.model!==deepseek.model)throw mistakeAiError('INVALID_RESPONSE');
+      if(data?.ok!==true||data.provider!==(deepseek.provider||'deepseek')||data.action!=='classify'||data.model!==deepseek.model)throw mistakeAiError('INVALID_RESPONSE');
       data=data.result;
     }
     if (!data || typeof data.review_method !== 'string'
