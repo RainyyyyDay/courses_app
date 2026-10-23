@@ -75,6 +75,10 @@ test('mind-map generation separates always-available basic splitting from real-A
         document.getElementById('tagPickerMindmapBasic').click();
         await wait(()=>document.getElementById('tagPickerMindmapSummary').textContent.includes('基础规则切分'),'edit dialog basic draft');
         check(document.getElementById('tagPickerOutline').value.startsWith('- 第一章 函数'),'edit dialog keeps generated outline editable');
+        const previewHost=document.getElementById('tagPickerMindmapPreview');
+        const previewSvg=previewHost.querySelector('svg');
+        check(previewSvg&&previewSvg.style.width==='100%'&&previewSvg.style.height==='180px','compact preview scales the full map to the panel');
+        check(previewHost.scrollWidth<=previewHost.clientWidth+1,'compact preview has no horizontal clipping');
         closeTagPicker();
         out.dataset.result='passed';
       }catch(error){

@@ -9,10 +9,13 @@ const REVIEW_METHOD_GUIDE = Object.freeze({
 });
 const AI_DEPENDENT_REVIEW_METHODS = new Set(['self_explain','contrast']);
 function reviewMethodRequiresRealAi(method){return AI_DEPENDENT_REVIEW_METHODS.has(method);}
+function reviewAdviceAiReady(){
+  return typeof coursesAiSettings!=='undefined'&&typeof coursesAiSettings.realReady==='function'
+    &&coursesAiSettings.realReady();
+}
 function reviewMethodIsAvailable(method){
   if(!Object.hasOwn(AI_SELECTABLE_METHODS,method))return false;
-  return !reviewMethodRequiresRealAi(method)||
-    (typeof coursesAiSettings!=='undefined'&&typeof coursesAiSettings.realReady==='function'&&coursesAiSettings.realReady());
+  return !reviewMethodRequiresRealAi(method)||reviewAdviceAiReady();
 }
 let creationReviewAdviceState = null;
 let pendingCreationCloze = null;
@@ -47,7 +50,7 @@ function mountReviewMethodEditor(prefix, type, id = null) {
   }
   if (!host || !Object.hasOwn({material:1,note:1,mistake:1},type)) return;
   const saved = id ? readStoredReviewMethod(type,id) : null;
-  const aiReady=typeof coursesAiSettings!=='undefined'&&typeof coursesAiSettings.realReady==='function'&&coursesAiSettings.realReady();
+  const aiReady=reviewAdviceAiReady();
   host.style.display = 'block';
   host.dataset.reviewType = type;
   host.innerHTML = `<div class="edit-card-head"><span class="edit-card-icon">🧠</span><div class="edit-card-titles"><b>复习方式</b><small>可以手动选择，也可以让 AI 读取当前正文和附件后建议；两种方式都不会立即开始复习。</small></div></div>
@@ -59,8 +62,8 @@ function mountReviewMethodEditor(prefix, type, id = null) {
           </select>
         </label><button type="button" class="review-mode-setup" id="${prefix}ClozeSetup" onclick="openClozeModeSetup('${prefix}')" hidden>设置挖空</button>
       </div>
-      <div class="ai-action-row"><button type="button" class="ai-primary" id="${prefix}ReviewModeAdvice" onclick="openCreationReviewSuggestion('${prefix}')">AI 建议复习方式</button></div>
-      <p class="review-api-note" id="${prefix}ReviewApiNote" ${aiReady?'hidden':''}>自述讲解、对比辨析需要接入可用的真实 AI API；当前未接入，因此这两个选项暂不可选。</p>
+      <div class="ai-action-row"><button type="button" class="ai-primary" id="${prefix}ReviewModeAdvice" onclick="openCreationReviewSuggestion('${prefix}')" ${aiReady?'':'disabled aria-disabled="true"'} title="${aiReady?'读取正文和附件后建议复习方式':'请先在 AI 设置中接入真实 API'}">AI 建议复习方式</button></div>
+      <p class="review-api-note" id="${prefix}ReviewApiNote" ${aiReady?'hidden':''}>AI 建议、自述讲解和对比辨析都需要接入可用的真实 AI API；当前未接入，因此 AI 建议按钮和这两个复习方式暂不可选。</p>
       <p class="review-method-status" id="${prefix}ReviewMethodStatus" role="status" aria-live="polite"></p>
       <p class="mistake-ai-note">未手动选择且未采用 AI 建议时，将按标准复习保存。标准复习是固定兜底，不交给 AI 选择。</p>
     </div>`;
@@ -95,12 +98,18 @@ function updateReviewMethodChoiceStatus(prefix,message='') {
 function changeReviewMethodChoice(prefix) { updateReviewMethodChoiceStatus(reviewModePrefix(prefix)); }
 
 function refreshReviewMethodApiAvailability() {
-  const ready=typeof coursesAiSettings!=='undefined'&&typeof coursesAiSettings.realReady==='function'&&coursesAiSettings.realReady();
+  const ready=reviewAdviceAiReady();
   for(const prefix of ['tagPicker','mistakeEdit']){
     const select=reviewModeField(prefix,'ReviewMethod');
     if(select)for(const option of select.options)if(AI_DEPENDENT_REVIEW_METHODS.has(option.value))option.disabled=!ready;
     const note=reviewModeField(prefix,'ReviewApiNote');
     if(note)note.hidden=ready;
+    const advice=reviewModeField(prefix,'ReviewModeAdvice');
+    if(advice){
+      advice.disabled=!ready;
+      advice.setAttribute('aria-disabled',String(!ready));
+      advice.title=ready?'读取正文和附件后建议复习方式':'请先在 AI 设置中接入真实 API';
+    }
   }
   for(const id of ['mistakeAiMethod','mistakeCreateAiMethod']){
     const select=document.getElementById(id);
@@ -431,6 +440,10 @@ async function analyzeCreationReviewAdvice() {
 }
 
 function openCreationReviewSuggestion(prefix) {
+  if(!reviewAdviceAiReady()){
+    showToast('AI 建议需要先接入真实 API；仍可手动选择复习方式');
+    return;
+  }
   closeCreationReviewSuggestion();
   const state = {prefix:reviewModePrefix(prefix),busy:true,result:null,controller:null,cancelled:false,trigger:document.activeElement};
   creationReviewAdviceState = state;

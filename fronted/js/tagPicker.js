@@ -383,7 +383,7 @@ function renderPickerMindmapPreview() {
   const outline = mindmapToOutline(map);
   host.style.display = 'block';
   host.innerHTML = outline
-    ? renderOutlineSvg(outline, { boxWidth: 120 })
+    ? renderOutlineSvg(outline, { boxWidth: 120, fit: true, fitHeight: 180 })
     : '<div class="empty">这张导图没有可预览的文字节点</div>';
 }
 

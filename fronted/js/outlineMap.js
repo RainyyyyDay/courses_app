@@ -107,10 +107,14 @@ function renderOutlineSvg(text, options = {}) {
   const width = 80 + (maxDepth + 1) * boxW + maxDepth * gapX;
   const height = Math.max(120, cursorY + 20);
   const palette = ['#3b6cf6', '#4f8df5', '#22a06b', '#c98a2b', '#8a6cf0'];
+  const fitHeight = Number.isFinite(options.fitHeight) ? Math.max(120, Math.round(options.fitHeight)) : 0;
+  const fitStyle = options.fit === true
+    ? ` style="display:block;width:100%;${fitHeight ? `height:${fitHeight}px;` : 'height:auto;'}"`
+    : '';
 
   const esc = (value) => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="'Microsoft YaHei', system-ui, sans-serif">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" font-family="'Microsoft YaHei', system-ui, sans-serif"${fitStyle}>`,
     `<rect width="${width}" height="${height}" fill="#fbfcff"/>`,
   ];
 
@@ -151,7 +155,11 @@ function renderOutlineMap(container, text, options = {}) {
     container.innerHTML = '';
     return false;
   }
-  container.innerHTML = renderOutlineSvg(value, options);
+  container.innerHTML = renderOutlineSvg(value, {
+    ...options,
+    fit: options.fit !== false,
+    fitHeight: options.fitHeight ?? 300,
+  });
   bindOutlineNodeClick(container);
   OUTLINE_MAP.current = value;
   return true;
@@ -193,7 +201,7 @@ function openOutlineFullscreen() {
   const body = document.getElementById('outlineFullscreenBody');
   if (!overlay || !body) return;
   body.innerHTML = OUTLINE_MAP.current
-    ? renderOutlineSvg(OUTLINE_MAP.current, { rootTitle: OUTLINE_MAP.currentTitle })
+    ? renderOutlineSvg(OUTLINE_MAP.current, { rootTitle: OUTLINE_MAP.currentTitle, fit: false })
     : '<div class="empty">还没有大纲</div>';
   bindOutlineNodeClick(body);
   overlay.classList.add('show');
