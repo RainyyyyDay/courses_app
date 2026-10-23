@@ -73,7 +73,7 @@ function renderOutlineSvg(text, options = {}) {
   const padY = 12;
   const fontSize = 13;
   const perLine = 11;
-  const maxLines = 3;
+  const maxLines = 4;
 
   let cursorY = 40;
   const nodes = [];
@@ -127,7 +127,9 @@ function renderOutlineSvg(text, options = {}) {
     const color = palette[node.depth % palette.length];
     const isRoot = node.depth === 0;
     parts.push(
-      `<g><rect x="${node.x}" y="${node.y}" width="${boxW}" height="${node.h}" rx="10" fill="${isRoot ? color : '#ffffff'}" stroke="${color}" stroke-width="${isRoot ? 0 : 1.4}"/>`,
+      `<g class="outline-node" data-text="${esc(node.text)}" style="cursor:pointer">`
+      + `<title>${esc(node.text)}</title>`
+      + `<rect x="${node.x}" y="${node.y}" width="${boxW}" height="${node.h}" rx="10" fill="${isRoot ? color : '#ffffff'}" stroke="${color}" stroke-width="${isRoot ? 0 : 1.4}"/>`,
     );
     node.lines.forEach((line, index) => {
       const y = node.y + 13 + index * rowH;
@@ -150,8 +152,40 @@ function renderOutlineMap(container, text, options = {}) {
     return false;
   }
   container.innerHTML = renderOutlineSvg(value, options);
+  bindOutlineNodeClick(container);
   OUTLINE_MAP.current = value;
   return true;
+}
+
+// 点击任意节点看完整文字（预览里会截断）
+function bindOutlineNodeClick(container) {
+  if (!container || container.dataset.bound === '1') return;
+  container.dataset.bound = '1';
+  container.addEventListener('click', (event) => {
+    const group = event.target.closest('.outline-node');
+    if (!group) return;
+    showOutlineNodePopup(group.getAttribute('data-text') || '');
+  });
+}
+
+function showOutlineNodePopup(text) {
+  let popup = document.getElementById('outlineNodePopup');
+  if (!popup) {
+    popup = document.createElement('div');
+    popup.id = 'outlineNodePopup';
+    popup.style.cssText = 'display:none;position:fixed;inset:0;z-index:10001;background:rgba(17,25,40,.45);align-items:center;justify-content:center;padding:24px;';
+    popup.innerHTML = `<div style="max-width:720px;max-height:80vh;overflow:auto;background:#fff;border-radius:14px;padding:20px 22px;box-shadow:0 24px 60px rgba(17,25,40,.3);">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:10px;">
+        <b style="font-size:15px;">节点内容</b>
+        <button type="button" class="edit-mini-btn" onclick="document.getElementById('outlineNodePopup').style.display='none'">关闭</button>
+      </div>
+      <div id="outlineNodePopupText" style="white-space:pre-wrap;line-height:1.75;font-size:14px;color:#1b2230;"></div>
+    </div>`;
+    popup.addEventListener('click', (e) => { if (e.target === popup) popup.style.display = 'none'; });
+    document.body.appendChild(popup);
+  }
+  document.getElementById('outlineNodePopupText').textContent = text;
+  popup.style.display = 'flex';
 }
 
 function openOutlineFullscreen() {
@@ -161,6 +195,7 @@ function openOutlineFullscreen() {
   body.innerHTML = OUTLINE_MAP.current
     ? renderOutlineSvg(OUTLINE_MAP.current, { rootTitle: OUTLINE_MAP.currentTitle })
     : '<div class="empty">还没有大纲</div>';
+  bindOutlineNodeClick(body);
   overlay.classList.add('show');
 }
 
@@ -197,6 +232,27 @@ function outlineToMindmap(text, title) {
 
 // 把导图数据摊回缩进文本，好复用上面的 SVG 渲染
 function mindmapToOutline(map) {
+  // 平铺导图（flat + edges）：节点都在顶层，关系靠连线。
+  // 预览时取连接最多的那个当中心，其余作为它的子节点，保证所有节点都能显示。
+  if (map && map.flat === true && Array.isArray(map.nodes) && Array.isArray(map.edges)) {
+    const degree = new Map();
+    const bump = (id) => degree.set(id, (degree.get(id) || 0) + 1);
+    for (const edge of map.edges) {
+      if (edge?.from?.node) bump(edge.from.node);
+      if (edge?.to?.node) bump(edge.to.node);
+    }
+    const ranked = [...map.nodes].sort((a, b) => (degree.get(b.id) || 0) - (degree.get(a.id) || 0));
+    const center = ranked[0];
+    if (center) {
+      const lines = [`- ${String(center.text || '').replace(/\s*\n+\s*/g, ' ').trim() || '思维导图'}`];
+      for (const node of map.nodes) {
+        if (node === center) continue;
+        const text = String(node.text || '').replace(/\s*\n+\s*/g, ' ').trim();
+        if (text) lines.push(`  - ${text}`);
+      }
+      if (lines.length > 1) return lines.join('\n');
+    }
+  }
   const root = Array.isArray(map?.nodes) ? map.nodes[0] : null;
   if (!root) return '';
   const lines = [];
@@ -239,22 +295,30 @@ function downloadMindmapJson(mapJson, title) {
 const MINDMAP_APP_URL = globalThis.MINDMAP_APP_URL || 'http://127.0.0.1:8794/';
 
 // 跳到导图工具，带上标题与大纲，让对方那边直接新建
-function openMindmapEditor(mapJson, title, outline) {
-  const params = new URLSearchParams({ from: 'courses_app', title: title || '' });
-  if (outline) params.set('outline', outline);
-  // 带上回传目标：她那边即使拿不到 window.opener，也能直接调接口回传
+async function openMindmapEditor(mapJson, title, outline) {
   const target = window.__mindmapTarget;
-  if (target) {
-    params.set('api', String(globalThis.COURSES_API_BASE || API));
-    params.set('course', String(currentCourseId));
-    params.set('type', target.resourceType);
-    params.set('id', String(target.id));
-    if (target.label) params.set('label', target.label);
+  if (!target) { showToast('请从资料详情页进入'); return; }
+  const collection = target.resourceType === 'note' ? 'notes' : 'materials';
+  try {
+    // 走她定义的交接协议：先向后端申请一次性 token
+    const response = await requestApi(`${API}/courses/${currentCourseId}/${collection}/${target.id}/handoff`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const data = await response.json();
+    // The page may be served by the AI harness on 3002 while business APIs stay on 3000.
+    // Resolve the bridge against the API origin, never the page origin.
+    const apiBase = new URL(API, location.href);
+    const bridge = new URL(data.bridge || '/api/mindmap-handoffs', apiBase).href.replace(/\/+$/, '');
+    const url = MINDMAP_APP_URL.replace(/\/?$/, '/')
+      + '?from=courses_app&bridge=' + encodeURIComponent(bridge)
+      + '#handoff=' + data.token;
+    window.__mindmapEditorWindow = window.open(url, '_blank');
+    showToast('已打开导图工具；改完点「保存并回传课程」即可');
+  } catch (err) {
+    showToast('打开导图失败：' + err.message);
   }
-  const url = MINDMAP_APP_URL.replace(/\/?$/, '/') + '?' + params.toString();
-  // 不能加 noopener：她那边要靠 window.opener 把导图传回来
-  window.__mindmapEditorWindow = window.open(url, '_blank');
-  showToast('已打开导图工具；改完点那边的「回传到课程网站」即可');
 }
 
 // 导图工具点「回传到课程网站」→ 直接写入当前资料，不需要下载文件
@@ -267,11 +331,57 @@ window.addEventListener('message', (event) => {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     // 清掉旧截图，否则详情页会继续优先显示那张旧图
+    // 只更新导图，绝不动大纲：大纲是用户/AI 的输入，导图是产物
     body: JSON.stringify({ mindmapJson: JSON.stringify(event.data.map), mindmapImage: '' }),
   }).then(() => {
     showToast('导图已回传并保存');
     openResourceDetail(target.resourceType, target.id);
   }).catch((err) => showToast('回传失败：' + err.message));
+});
+
+let mindmapReturnRefresh = null;
+async function refreshActiveMindmapResource() {
+  const target = window.__mindmapTarget;
+  if (!target?.baseline || document.visibilityState === 'hidden'
+    || currentCourseId !== target.courseId || currentView.type !== 'resource'
+    || currentView.id !== target.id || currentView.resourceType !== target.resourceType) return false;
+  if (mindmapReturnRefresh) return mindmapReturnRefresh;
+  mindmapReturnRefresh = (async () => {
+    try {
+      const path = target.resourceType === 'note' ? 'notes' : 'materials';
+      const response = await requestApi(`${API}/${path}/${target.id}`);
+      const row = await response.json();
+      if (!row || row.course_id !== currentCourseId || currentView.type !== 'resource' || currentView.id !== target.id) return false;
+      const before = target.baseline;
+      const changed = ['mindmap_json', 'mindmap_image', 'outline'].some(key => String(row[key] || '') !== String(before[key] || ''));
+      if (!changed) return false;
+      const list = target.resourceType === 'note' ? currentNotes : currentMaterials;
+      const index = list.findIndex(item => item.id === target.id);
+      if (index >= 0) list[index] = {...list[index], ...row};
+      target.baseline = {mindmap_json:row.mindmap_json || '',mindmap_image:row.mindmap_image || '',outline:row.outline || ''};
+      renderResourceDetail(target.resourceType, row);
+      if (typeof mountReviewPreparation === 'function') {
+        mountReviewPreparation(document.getElementById('resourceDetailTags'), target.resourceType, row);
+      }
+      showToast('导图已自动更新');
+      return true;
+    } catch {
+      return false;
+    } finally {
+      mindmapReturnRefresh = null;
+    }
+  })();
+  return mindmapReturnRefresh;
+}
+function scheduleMindmapReturnRefresh() {
+  if (document.visibilityState === 'hidden') return;
+  void refreshActiveMindmapResource();
+  setTimeout(() => { void refreshActiveMindmapResource(); }, 700);
+}
+window.addEventListener('focus', scheduleMindmapReturnRefresh);
+window.addEventListener('pageshow', scheduleMindmapReturnRefresh);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') scheduleMindmapReturnRefresh();
 });
 
 // 把她那边编辑/导出的文件传回来，更新当前资料/笔记的导图

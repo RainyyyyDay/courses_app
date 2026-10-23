@@ -46,6 +46,17 @@ function readResourceAiMethod(s){
   const saved=mistakeStorageGet(resourceAiKey(s));
   return saved?.version===1&&Object.hasOwn(AI_SELECTABLE_METHODS,saved.method)?saved.method:null;
 }
+function saveResourceAiMethod(s,method){
+  if(!s||!Number.isSafeInteger(s.courseId)||s.courseId<1||!['material','note'].includes(s.type)
+    ||!Number.isSafeInteger(s.id)||s.id<1)return false;
+  if(method===null||method===''){
+    mistakeStorageSet(resourceAiKey(s),null);
+    return readResourceAiMethod(s)===null;
+  }
+  if(!Object.hasOwn(AI_SELECTABLE_METHODS,method))return false;
+  mistakeStorageSet(resourceAiKey(s),{version:1,method});
+  return readResourceAiMethod(s)===method;
+}
 function readReviewAiMethod(s){return s.type==='mistake'?readMistakeAiMethod(s):readResourceAiMethod(s);}
 function resetResourceAi(){resourceAiState?.controller?.abort();resourceAiState=null;document.getElementById('resourceAiPanel')?.remove();}
 function mountResourceAi(host,type,row,context={}){
@@ -110,6 +121,10 @@ async function updateResourceAiActions(){
   el('Prepare').hidden=true;el('EditMaterial').hidden=true;el('MaterialStatus').textContent='';
   const check=(s.materialCheck||0)+1;s.materialCheck=check;
   if(!valid)return;
+  if(method==='standard'){
+    el('MaterialStatus').textContent='标准复习无需专属材料：进入总复习后先回忆，再选择清楚/模糊/不记得。';
+    return;
+  }
   if(method==='reading'&&(s.row.content||s.row.ocr_text||s.row.file_url)){
     el('MaterialStatus').textContent='可直接使用原文或附件阅读，无需另行准备材料。';return;
   }
@@ -127,11 +142,11 @@ async function updateResourceAiActions(){
 }
 function updateResourceAiSource(){const node=document.getElementById('resourceAiSource');if(node)node.textContent=coursesAiSettings.label();}
 function resourceAiCurrent(s){return resourceAiState===s&&currentCourseId===s.courseId&&currentView===s.view&&s.host.isConnected;}
-async function fetchResourceAi(input,{signal,deepseek}={}){
-  const endpoint=new URL((globalThis.COURSES_AI_API_BASE??API).replace(/\/$/,'')+'/ai/review-suggestion',location.href);
+async function fetchResourceAi(input,{signal,deepseek,endpointPath='review-suggestion',allowedMethods=AI_SELECTABLE_METHODS,maxBytes=16384}={}){
+  const endpoint=new URL((globalThis.COURSES_AI_API_BASE??API).replace(/\/$/,'')+'/ai/'+endpointPath.replace(/^\.?\/?/,''),location.href);
   if(endpoint.origin!==location.origin||endpoint.username||endpoint.password||!(endpoint.protocol==='https:'||endpoint.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(endpoint.hostname)))throw mistakeAiError('AI_TEMP_KEY_ORIGIN');
   let body=JSON.stringify({provider:deepseek?(deepseek.provider||'deepseek'):'mock',input,...(deepseek?{api_key:deepseek.apiKey,model:deepseek.model,confirm_cost:deepseek.confirmCost,...(deepseek.provider==='compatible'?{base_url:deepseek.baseUrl,...(deepseek.workspaceId?{workspace_id:deepseek.workspaceId}:{})}:{})}:{})});
-  if(new TextEncoder().encode(body).length>16384)throw mistakeAiError('BODY_TOO_LARGE');
+  if(new TextEncoder().encode(body).length>maxBytes)throw mistakeAiError('BODY_TOO_LARGE');
   const controller=new AbortController(),abort=()=>controller.abort();
   signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
   const release=coursesAiSettings.track(deepseek,abort),timer=setTimeout(abort,100000);
@@ -142,7 +157,7 @@ async function fetchResourceAi(input,{signal,deepseek}={}){
     if(controller.signal.aborted||!coursesAiSettings.valid(deepseek))throw Object.assign(new Error('已取消'),{name:'AbortError'});
     if(!response.ok)throw mistakeAiError(data?.error||data?.detail,response.status);
     const result=data?.result;
-    if(data?.provider!==(deepseek?(deepseek.provider||'deepseek'):'mock')||!Object.hasOwn(AI_SELECTABLE_METHODS,result?.review_method)||typeof result.reason!=='string'||!result.reason.trim()||result.reason.length>500||result.needs_review!==true)throw mistakeAiError('INVALID_RESPONSE');
+    if(data?.provider!==(deepseek?(deepseek.provider||'deepseek'):'mock')||!Object.hasOwn(allowedMethods,result?.review_method)||typeof result.reason!=='string'||!result.reason.trim()||result.reason.length>500||result.needs_review!==true)throw mistakeAiError('INVALID_RESPONSE');
     return {review_method:result.review_method,reason:result.reason,needs_review:true};
   }catch(err){if(controller.signal.aborted)throw Object.assign(new Error('请求已取消或超时；可手动重试。'),{name:'AbortError'});throw err.code?err:mistakeAiError('NETWORK_ERROR');}
   finally{body=null;release();clearTimeout(timer);signal?.removeEventListener('abort',abort);}

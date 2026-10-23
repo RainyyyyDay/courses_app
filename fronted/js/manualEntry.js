@@ -83,7 +83,8 @@ async function doCreateManual(nodeIds) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.message || '保存失败');
     }
-    const created = pending.type === 'mistake' ? await res.json().catch(() => ({})) : true;
+    const created = await res.json().catch(() => ({}));
+    if (!Number.isSafeInteger(created?.id) || created.id<1) throw new Error('保存成功但未返回有效记录，请在列表中核对后再操作');
     showToast('已添加' + cfg.label);
     await cfg.reload();
     return created;

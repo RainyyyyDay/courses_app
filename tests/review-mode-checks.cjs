@@ -12,7 +12,7 @@ async function reviewModeChecks(courseId){
   for(const type of ['knowledge','thinking','execution','unclassified']){
     const row=await create(type),session=await enter(row);
     await open(row,session);
-    check(reviewWorkbench.mode===(type==='execution'?'retry':'standard'),'no-AI default for '+type);
+    check(reviewWorkbench.mode==='standard','unselected item defaults to standard for '+type);
     check(!wb('Editor').textContent.includes('尚缺少')&&!wb('Prompt'),'native question never requires duplicate materials');
     const before=await state(row.id);await runExistingReviewMode();
     check(!wb('Dialog').open&&mistakeDetailState.progress.stage==='question','native mode opens actual first-answer step');

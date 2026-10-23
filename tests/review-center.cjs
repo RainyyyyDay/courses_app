@@ -79,9 +79,12 @@ async function testReviewCenterApi({base,temp}) {
     await api('POST',url+'/items/'+byType('note').id+'/skip',{});await api('POST',url+'/items/'+byType('note').id+'/skip',{});
     assert.equal((await api('GET',c+'/notes/'+shared+'/review')).review_status,'unreviewed','skip does not mark content reviewed');
     const result=await api('POST',w+'/events'+ctx,operation);assert.equal(result.reviewStatus,'unreviewed');
+    assert.equal(result.stage,'answer','forgotten answer remains pending final judgment');
     assert.deepEqual(await api('POST',w+'/events'+ctx,operation),result,'existing requestId idempotency retained');
     await api('POST',w+'/events'+ctx,{...operation,requestId:'stale-new'},409);
-    after=await api('GET',url);assert.equal(after.status,'completed');assert.equal(after.completed,2);assert.equal(after.passed,0,'reading exposure is not retrieval success');assert.equal(after.exposed,1);assert.equal(after.failed,1,'forgotten mistake is processed but not completed');assert.equal(after.skipped,1);assert.equal(after.progress,100);assert.equal(after.passRate,0);
+    const judged=await api('POST',w+'/events'+ctx,{action:'judge',correct:false,requestId:'negative-session-final',expectedVersion:result.version});
+    assert.equal(judged.stage,'completed');assert.equal(judged.reviewStatus,'unreviewed');
+    after=await api('GET',url);assert.equal(after.status,'completed');assert.equal(after.completed,2);assert.equal(after.passed,0,'reading exposure is not retrieval success');assert.equal(after.exposed,1);assert.equal(after.failed,1,'forgotten plus final judgment is processed but not passed');assert.equal(after.skipped,1);assert.equal(after.progress,100);assert.equal(after.passRate,0);
     const endedAt=after.completed_at;await api('POST',url+'/resume',{},409);await api('POST',url+'/position',{position:0},409);
     await api('POST',url+'/repeat',{requestId:'repeat-original'},201).then(row=>assert.notEqual(row.id,session.id));
     const two=await api('POST',prefix,{...body,requestId:'another-pending'},201);

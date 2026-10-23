@@ -15,16 +15,12 @@ test('confirmation top layer supports material replacement and other modal calle
   check(!wb('Editor').querySelector('.review-ai-generator').textContent.includes('Mock'),'normal generator has no mock entry');
   await requestWorkbenchDraft(true);check(!reviewWorkbench.aiDraft&&wb('Error').textContent.includes('配置真实 AI'),'unconfigured real generation cannot fall back to mock');
   await requestWorkbenchDraft();const beforeMaterial=JSON.stringify(readWorkbenchMaterial()),parent=wb('Dialog');
-  const trigger=[...wb('Draft').querySelectorAll('button')].find(b=>b.textContent.includes('替换'));trigger.focus();
-  let pending=adoptWorkbenchDraft(true);
-  check(el('confirmModal').open&&parent.open&&el('confirmModal').contains(document.activeElement),'confirmation joins top layer above open material dialog');
-  cancel();await pending;check(parent.open&&JSON.stringify(readWorkbenchMaterial())===beforeMaterial&&document.activeElement===trigger,'cancel preserves materials, parent window and focus');
-  pending=adoptWorkbenchDraft(true);accept();await pending;
-  check(parent.open&&wb('Blanks').querySelectorAll('.review-blank').length>0,'accept adopts only into existing form');
-  const saved=await(await requestApi(reviewWorkbenchBase()+'/materials/cloze')).json();check(saved.version===0,'confirmation alone never saves formal material');
-  undoWorkbenchDraft();check(JSON.stringify(readWorkbenchMaterial())===beforeMaterial,'undo still restores original form');
-  pending=adoptWorkbenchDraft(true);el('confirmModal').dispatchEvent(new Event('cancel',{cancelable:true}));await pending;
-  check(parent.open&&!el('confirmModal').open&&JSON.stringify(readWorkbenchMaterial())===beforeMaterial,'Escape cancel event closes only child confirmation');
+  check(!el('confirmModal').open&&wb('Draft').querySelectorAll('button').length===2,'AI draft uses inline adopt/reject, not replacement confirmation');
+  [...wb('Draft').querySelectorAll('button')].find(button=>button.textContent==='不采纳').click();
+  check(parent.open&&JSON.stringify(readWorkbenchMaterial())===beforeMaterial,'reject restores original form');
+  await requestWorkbenchDraft();adoptWorkbenchGeneratedMaterial();
+  check(parent.open&&wb('Draft').textContent.includes('已采纳'),'adopt keeps editable AI result without saving');
+  const saved=await(await requestApi(reviewWorkbenchBase()+'/materials/cloze')).json();check(saved.version===0,'adoption alone never saves formal material');
   coursesAiSettings.open();pending=showConfirm('测试嵌套设置窗口的确认');visibleButton('.btn-confirm');cancel();check(await pending===false&&el('coursesAiDialog').open&&parent.open,'confirmation is accessible above nested AI settings too');el('coursesAiClose').click();
   closeReviewWorkbench();
   // Other native dialogs and ordinary overlay editors use the same public helper.
@@ -34,7 +30,7 @@ test('confirmation top layer supports material replacement and other modal calle
   await new Promise(r=>setTimeout(r,30));check(el('confirmModal').open,'previous close event cannot dismiss queued confirmation');accept();check(await second===true,'queued confirmation completes');
   check(document.documentElement.scrollWidth<=innerWidth+1,'layout fits mobile');
   // Leave the reported state open for a screenshot, without saving or accepting it.
-  await openReviewWorkbench('note',row.id,{row,sourceText:row.content,mode:'cloze'});wb('Editor').querySelector('.review-ai-generator').open=true;await requestWorkbenchDraft();void adoptWorkbenchDraft(true);visibleButton('.btn-confirm');
+  await openReviewWorkbench('note',row.id,{row,sourceText:row.content,mode:'cloze'});wb('Editor').querySelector('.review-ai-generator').open=true;
   out.dataset.result='passed';out.textContent='passed';
  }catch(e){out.dataset.result='failed';out.textContent=e.stack;}document.body.append(out);
 });`;

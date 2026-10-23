@@ -28,16 +28,52 @@ function validReviewMaterialDraft(mode,m){
   if(!Array.isArray(m.blanks)||m.blanks.length>20||m.blanks.some(b=>!b||typeof b.id!=='string'||typeof b.answer!=='string'||typeof b.hint!=='string'||b.answer.length>2000||b.hint.length>2000||!Array.isArray(b.aliases)||b.aliases.length>20||b.aliases.some(v=>typeof v!=='string'||!v.trim()||v.length>2000)))return false;
   return !workbenchMaterialMissing(mode,m).length&&(mode==='cloze'||!m.blanks.length);
 }
+function reviewMaterialAiGeneratorHtml(mode){
+  const label=mode==='cloze'?'生成挖空材料':mode==='contrast'?'生成对比内容':'生成讲解要点';
+  return `<details class="review-ai-generator"><summary>AI 生成材料<span class="ai-optional-tag">可选</span></summary><p class="ai-help">可使用已接入的真实 AI 生成可编辑材料；结果会放入当前编辑器，采纳前不会保存为正式材料。</p>
+    <p class="review-api-note" id="reviewWbAiUnavailable">需要接入真实 AI API。请先打开“AI 设置”完成配置。</p>
+    <div class="ai-action-row"><button type="button" class="ai-primary" data-material-ai-generate onclick="requestWorkbenchDraft(true)">${label}</button><button type="button" onclick="coursesAiSettings.open()">AI 设置</button><button type="button" class="ai-text-button" id="reviewWbCancelDraft" onclick="reviewWorkbench?.draftController?.abort()" hidden>取消生成</button></div>
+    <p id="reviewWbDraftStatus" role="status"></p><div id="reviewWbDraft" class="review-ai-draft"></div></details>`;
+}
+function refreshWorkbenchAiAvailability(){
+  const s=reviewWorkbench,generate=wb('GenerateDraft')||document.querySelector('[data-material-ai-generate]');
+  if(!s||!generate)return;
+  const ready=typeof coursesAiSettings.realReady==='function'&&coursesAiSettings.realReady();
+  generate.disabled=!ready||!!s.busy;
+  const note=document.getElementById('reviewWbAiUnavailable');if(note)note.hidden=ready;
+  const cancel=document.getElementById('reviewWbCancelDraft');if(cancel)cancel.hidden=!s.draftController;
+}
+function applyReviewMaterialDraftToEditor(s,m){
+  wb('Prompt').value=m.prompt;
+  if(s.mode==='cloze'){
+    wb('Blanks').innerHTML=(m.blanks||[]).map(wbBlank).join('');
+    refreshClozeEditor();
+  }else{
+    if(wb('Reference'))wb('Reference').value=m.reference||'';
+    if(wb('Rubric'))wb('Rubric').value=m.rubric||'';
+    if(s.mode==='contrast'){
+      if(wb('Objects'))wb('Objects').value=(m.objects||[]).join('\n');
+      if(wb('Dimensions'))wb('Dimensions').value=(m.dimensions||[]).join('\n');
+    }
+  }
+  updateWorkbenchPreparation();
+}
 function renderEditableReviewDraft(s,draft){
   const m=draft.material;
-  wb('Draft').innerHTML='<p>'+escapeHtml(s.aiDraftReal?(s.aiDraftSource||'AI')+' 草稿，尚未验证正确；原材料未改变。':'Mock 演示草稿，不代表真实分析；参考要点请人工核对。')+'</p><p>'+escapeHtml((draft.caveats||[]).join('；'))+'</p>';
-  if(!m)return;
-  const input=(label,id,value,rows=3)=>wbInput(label,'Draft'+id,value,rows);
-  wb('Draft').insertAdjacentHTML('beforeend',input('草稿题面 / 正文','Prompt',m.prompt,5)
-    +(s.mode==='cloze'?'<div id="reviewWbDraftBlanks">'+m.blanks.map(b=>`<div class="review-blank"><label>空位 ${escapeHtml(b.id)} 的答案<input data-draft-id="${escapeHtml(b.id)}" value="${escapeHtml(b.answer)}"></label><label>别名（每行一个）<textarea data-draft-aliases="${escapeHtml(b.id)}">${escapeHtml(b.aliases.join('\n'))}</textarea></label><label>提示<input data-draft-hint="${escapeHtml(b.id)}" value="${escapeHtml(b.hint)}"></label></div>`).join('')+'</div>':s.mode==='reading'?'':input('草稿参考要点','Reference',m.reference)+input('草稿核对量规','Rubric',m.rubric))
-    +(s.mode==='contrast'?input('草稿比较对象（每行一个）','Objects',m.objects.join('\n'))+input('草稿比较维度（每行一个）','Dimensions',m.dimensions.join('\n')):'')
-    +(s.aiDraftReal?'<label class="ai-check-row"><input type="checkbox" id="reviewWbDraftAccept"><span>我已核实或修改草稿，确认填入表单<small>仅按下方所选方式填入，仍需确认保存。</small></span></label>':'')
-    +'<div class="ai-action-row"><button type="button" class="ai-primary" onclick="adoptWorkbenchDraft(false)">仅补充空白字段</button><button type="button" onclick="adoptWorkbenchDraft(true)">替换表单（可撤回）</button><button type="button" class="ai-text-button" onclick="discardReviewMaterialDraft()">放弃草稿</button></div>');
+  if(!m){wb('Draft').innerHTML='<p>信息不足，未生成材料。</p><p>'+escapeHtml((draft.caveats||[]).join('；'))+'</p>';return;}
+  s.beforeAi ||= readWorkbenchMaterial();
+  applyReviewMaterialDraftToEditor(s,m);
+  wb('Draft').innerHTML=`<p>${escapeHtml(s.aiDraftReal?(s.aiDraftSource||'AI'):'AI')} 生成结果已放入编辑器，可以直接修改。</p><p>${escapeHtml((draft.caveats||[]).join('；'))}</p><div class="ai-action-row"><button type="button" class="ai-primary" onclick="adoptWorkbenchGeneratedMaterial()">采纳</button><button type="button" class="btn-cancel" onclick="discardReviewMaterialDraft()">不采纳</button></div>`;
+}
+function adoptWorkbenchGeneratedMaterial(){
+  const s=reviewWorkbench;if(!s||s.busy)return;
+  const material=readWorkbenchMaterial(),missing=workbenchMaterialMissing(s.mode,material);
+  if(missing.length){wb('Error').textContent='采纳前请先补全：'+missing.join('；');return;}
+  s.aiDraft=null;s.beforeAi=null;s.aiDraftReal=false;s.aiDraftSource='';
+  wb('Error').textContent='';
+  wb('Draft').innerHTML='<p>已采纳 AI 生成结果。可以继续手动修改，之后使用底部按钮保存正式材料。</p>';
+  wb('DraftStatus').textContent='AI 生成结果已采纳，尚未保存正式材料。';
+  updateWorkbenchPreparation();
 }
 function readEditedReviewDraft(s){
   const m=s.aiDraft;if(!m||!wb('DraftPrompt'))return m;
@@ -47,5 +83,14 @@ function readEditedReviewDraft(s){
     blanks:m.blanks.map(b=>({...b,answer:wb('DraftBlanks').querySelector('[data-draft-id="'+b.id+'"]').value,
       aliases:wb('DraftBlanks').querySelector('[data-draft-aliases="'+b.id+'"]').value.split('\n').map(v=>v.trim()).filter(Boolean),hint:wb('DraftBlanks').querySelector('[data-draft-hint="'+b.id+'"]').value}))};
 }
-function discardReviewMaterialDraft(){const s=reviewWorkbench;if(!s||s.busy)return;s.aiDraft=null;s.aiDraftReal=false;wb('Draft').replaceChildren();}
+function discardReviewMaterialDraft(){
+  const s=reviewWorkbench;if(!s||s.busy)return;
+  const before=s.beforeAi;
+  s.aiDraft=null;s.aiDraftReal=false;s.aiDraftSource='';s.beforeAi=null;
+  wb('Error').textContent='';
+  if(before)applyReviewMaterialDraftToEditor(s,before);
+  wb('Draft').innerHTML='<p>已不采纳本次 AI 生成结果，已恢复生成前的材料。</p>';
+  if(wb('DraftStatus'))wb('DraftStatus').textContent='';
+  refreshWorkbenchAiAvailability();
+}
 addEventListener('pagehide',()=>reviewWorkbench?.draftController?.abort());

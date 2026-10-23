@@ -85,9 +85,11 @@ async function doUploadNote(file, nodeIds, title, content = '') {
       throw new Error(data.message || '上传失败');
     }
 
+    const created = await res.json().catch(() => null);
+    if (!created?.id) throw new Error('保存成功但未返回笔记记录，请在列表中核对后再操作');
     showToast('上传成功');
     await loadNotes();
-    return true;
+    return created;
   } catch (err) {
     console.error('上传笔记失败:', err);
     showToast(err.message || '上传失败，请重试');

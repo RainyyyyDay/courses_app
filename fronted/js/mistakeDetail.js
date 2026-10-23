@@ -208,6 +208,7 @@ function syncMistakeEditNameExt(file) {
 function openMistakeEdit(row = mistakeDetailState?.row) {
   if (!row) return;
   if (mistakeEditPending?.saving) return;
+  if (typeof closeCreationReviewSuggestion === 'function') closeCreationReviewSuggestion();
   if(typeof resetMistakeAnswerAi==='function')resetMistakeAnswerAi('Edit');
   ++mistakeEditRequest;
   mistakeEditPending = {
@@ -242,6 +243,7 @@ function openMistakeEdit(row = mistakeDetailState?.row) {
   mistakeEditTagMeta = new Map();
   renderMistakeEditFiles();
   renderMistakeEditTags();
+  if (typeof mountReviewMethodEditor === 'function') mountReviewMethodEditor('mistakeEdit','mistake',row.id);
   refreshMistakeEditDirty();
   document.getElementById('mistakeEditModal').classList.add('show');
   const tagBox = document.getElementById('mistakeEditTagTree');
@@ -261,11 +263,14 @@ function closeMistakeEdit() {
   const pending = mistakeEditPending;
   if (pending?.saving) return;
   if(typeof resetMistakeAnswerAi==='function')resetMistakeAnswerAi('Edit');
+  if(typeof closeCreationReviewSuggestion==='function')closeCreationReviewSuggestion();
   ++mistakeEditRequest;
   const modal = document.getElementById('mistakeEditModal');
   if (modal) modal.classList.remove('show');
   document.body.classList.remove('mistake-edit-open');
   mistakeEditPending = null;
+  const reviewModeHost=document.getElementById('mistakeEditReviewModeHost');
+  if(reviewModeHost)reviewModeHost.replaceChildren();
   if (pending && pending.view === currentView) window.scrollTo(pending.scrollX, pending.scrollY);
 }
 
@@ -674,6 +679,7 @@ async function saveMistakeDetail() {
   const button = document.getElementById('mistakeEditSave');
   if (!state?.row || state.saving || button.disabled || !mistakeEditIsCurrent(state)) return;
   const pending = state;
+  const reviewMethodWasDefault = !document.getElementById('mistakeEditReviewMethod')?.value;
   let choice;
   try { choice = mistakeChoiceFields('Edit'); }
   catch (err) { document.getElementById('mistakeEditError').textContent = err.message; showToast(err.message); return; }
@@ -745,7 +751,13 @@ async function saveMistakeDetail() {
     if (savedRow.review_revision !== body.expectedRevision || attachmentsChanged) {
       mistakeStorageSet('mistake-pending:' + state.courseId + ':' + state.id, null);
     }
-    showToast('已保存');
+    if (typeof persistReviewMethodEditor === 'function' && !persistReviewMethodEditor('mistakeEdit','mistake',state.id)) {
+      showToast('内容已保存，但复习方式未能保存到本浏览器，请重新打开编辑页重试。');
+    } else if (reviewMethodWasDefault) {
+      showToast('已保存；未手动选择复习方式，已按标准复习保存。');
+    } else {
+      showToast('已保存');
+    }
     refreshMistakeFormat(savedRow);
     state.saving = false;
     closeMistakeEdit();
@@ -888,7 +900,7 @@ function renderMistakeReview(state) {
     ? `${answerText || answerFile ? `<h2>参考答案</h2>${answerText ? `<div id="mistakeReviewAnswer" class="detail-content">${escapeHtml(answerText)}</div>` : ''}${answerFile}` : ''}
       <h2>解析 / 错误原因</h2><div class="detail-content">${escapeHtml(p.answer.explanation || '暂无解析或错误原因')}</div>`
     : '';
-  const modeSwitch = p.mode?.availableModes?.length > 1
+  const modeSwitch = !mistakeQueue?.centerContext && p.mode?.availableModes?.length > 1
     ? `<label class="mistake-mode-switch"><span>复习模式</span><select onchange="changeMistakeReviewMode(this.value)" ${mistakeReviewBusy ? 'disabled' : ''}>${p.mode.availableModes.map(mode =>
       `<option value="${escapeHtml(mode.id)}" ${mode.id === p.mode.id ? 'selected' : ''}>${escapeHtml(mode.name)}</option>`).join('')}</select></label>`
     : '';

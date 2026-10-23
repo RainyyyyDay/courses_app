@@ -382,7 +382,7 @@ class Classifier:
             raise AIError(502, "AI_UNAVAILABLE", source="error") from None
 
 
-async def _read_body(request):
+async def _read_body(request, max_bytes=16384):
     if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
         raise AIError(415, "JSON_REQUIRED")
     if request.headers.get("content-encoding", "identity").lower() != "identity":
@@ -390,7 +390,7 @@ async def _read_body(request):
     chunks, size = [], 0
     async for chunk in request.stream():
         size += len(chunk)
-        if size > 16384:
+        if size > max_bytes:
             raise AIError(413, "BODY_TOO_LARGE")
         chunks.append(chunk)
     try:

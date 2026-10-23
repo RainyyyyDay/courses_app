@@ -125,6 +125,23 @@
         nodeCount += 1;
         (n.children || []).forEach(walk);
       });
+
+      // 同步生成一份大纲文本，保证下次打开即使退回"用大纲新建"也是新内容
+      function toOutline(m) {
+        var lines = [];
+        function walk(node, depth) {
+          var text = String(node.text || '').replace(/\s*\n+\s*/g, ' ').trim();
+          if (text) lines.push(new Array(depth + 1).join('  ') + '- ' + text);
+          (node.children || []).forEach(function (child) { walk(child, depth + 1); });
+        }
+        if (m.flat === true) {
+          (m.nodes || []).forEach(function (node) { walk(node, 0); });
+        } else {
+          (m.nodes || []).forEach(function (root) { walk(root, 0); });
+        }
+        return lines.join('\n');
+      }
+      var outlineText = toOutline(map);
       var params = new URLSearchParams(location.search);
       var api = params.get('api');
       var course = params.get('course');
@@ -145,9 +162,11 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mindmapJson: JSON.stringify(map), mindmapImage: '' })
         }).then(function (res) {
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          done(true);
-        }).catch(function (err) { done(false, err.message); });
+          if (res.ok) { done(true); return; }
+          return res.json().catch(function () { return {}; }).then(function (body) {
+            done(false, (body && body.message) ? (body.message + '（id=' + id + '）') : ('HTTP ' + res.status + '，id=' + id));
+          });
+        }).catch(function (err) { done(false, err.message + '（id=' + id + '）'); });
         return;
       }
 

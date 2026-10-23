@@ -1,6 +1,7 @@
 // Local website bridge. Fixed upstream; never forwards credentials from remote callers.
 const express = require('express');
-const PATHS = new Set(['/test', '/classify', '/answer-draft', '/review-suggestion', '/material-draft', '/review-feedback']);
+const PATHS = new Set(['/test', '/classify', '/answer-draft', '/review-suggestion', '/review-mode-advice',
+  '/material-draft', '/review-feedback']);
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 function createLocalAiGateway({ fetchImpl = fetch, timeoutMs = 95000 } = {}) {
   const router = express.Router();
@@ -15,7 +16,8 @@ function createLocalAiGateway({ fetchImpl = fetch, timeoutMs = 95000 } = {}) {
       || req.headers['sec-fetch-site'] === 'cross-site') return fail(403, 'AI_LOCAL_ONLY');
     let body = JSON.stringify(req.body);
     if (!body || !req.is('application/json')) return fail(400, 'INVALID_INPUT');
-    if (Buffer.byteLength(body) > 16384) return fail(413, 'BODY_TOO_LARGE');
+    const maxBytes=req.path==='/review-mode-advice'?32768:16384;
+    if (Buffer.byteLength(body) > maxBytes) return fail(413, 'BODY_TOO_LARGE');
     const controller = new AbortController();
     const cancel = () => { if (!res.writableEnded) controller.abort(); };
     res.on('close', cancel);

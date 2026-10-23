@@ -43,6 +43,7 @@ const coursesAiSettings = (() => {
   }
   const node=id=>document.getElementById('coursesAi'+id);
   const status=()=>({provider,preset:selectedPreset,model,baseUrl,retain,auto,configured,hasKey:!!key,connectionState,epoch,calls,drafts:drafts.size});
+  const realReady=()=>provider!=='mock'&&!!key;
   function serviceName(kind,url){
     if(kind==='mock')return 'Mock 演示';
     if(kind!=='compatible')return presets.deepseek.name;
@@ -98,7 +99,10 @@ const coursesAiSettings = (() => {
     for(const prefix of ['mistakeAi','mistakeCreateAi','mistakeCreateAnswerAi','mistakeEditAnswerAi']){
       const select=document.getElementById(prefix+'Provider');if(select){select.value='shared';changeMistakeAiProvider(prefix);}
     }
-    message=provider==='mock'?'尚未启用 AI。':`设置已应用${retain?'。':'；Key 仅供下一次请求，测试连接也会消耗这次使用机会。'}`;refresh();
+    message=provider==='mock'?'已应用 Mock 演示；未启用真实 AI。':`已应用 ${providerLabel()} / ${model}。现在可测试连接${retain?'。':'；Key 仅供下一次请求，测试也会使用这次 Key。'}`;
+    refresh();
+    if(typeof refreshReviewMethodApiAvailability==='function')refreshReviewMethodApiAvailability();
+    if(typeof refreshWorkbenchAiAvailability==='function')refreshWorkbenchAiAvailability();
   }
   function read(){
     if(provider==='mock')return null;
@@ -126,6 +130,8 @@ const coursesAiSettings = (() => {
       if(typeof clearMistakeAiKey==='function')clearMistakeAiKey(prefix);
     }
     refresh();
+    if(typeof refreshReviewMethodApiAvailability==='function')refreshReviewMethodApiAvailability();
+    if(typeof refreshWorkbenchAiAvailability==='function')refreshWorkbenchAiAvailability();
   }
   function clearDrafts(){drafts.clear();message='AI 草稿已清空；Key 和当前设置保留。';refresh();}
   function clear(){clearKey();drafts.clear();seen.clear();message='Key、授权和内存草稿已清除。';refresh();}
@@ -277,5 +283,5 @@ const coursesAiSettings = (() => {
   // Host calls this on verified login/logout/account switch. It supplies no browser-trusted identity.
   addEventListener('courses-ai-identity-changed',clear);
   if(document.readyState==='loading')addEventListener('DOMContentLoaded',mount,{once:true});else mount();
-  return Object.freeze({status,label,describe,configure,read,track,valid,clear,open,openDrafts,captureCreation,afterCreated,identityChanged:clear});
+  return Object.freeze({status,label,describe,configure,read,track,valid,clear,open,openDrafts,captureCreation,afterCreated,identityChanged:clear,realReady});
 })();

@@ -24,12 +24,19 @@ function currentResourceNodes(resourceType, resourceId) {
 
 //   resourceId   = edit 时的资源 id，upload 传 null
 async function openTagPicker(mode, resourceType, resourceId) {
-  cancelMistakeCreateAi();
+  // 脚本加载顺序可能让这个函数晚到，缺失时跳过即可
+  if (typeof cancelMistakeCreateAi === 'function') cancelMistakeCreateAi();
+  if(typeof resetPendingCreationCloze==='function')resetPendingCreationCloze('tagPicker');
+  if (mode !== 'edit') {
+    pickerExistingFile = null;
+    pendingResourceRemoveFile = false;
+  }
   // 每次打开都新建一份独立状态，避免残留上一门课 / 上一条资源的选择与展开状态
   tagPickerState = {
     mode: mode,
     resourceType: resourceType,
     resourceId: resourceId,
+    formId: typeof reviewRequestId==='function'?reviewRequestId():String(Date.now())+'-'+Math.random().toString(36).slice(2),
     courseId: currentCourseId, // 记下打开时的课程，请求回来后再校验一次
     selected: new Set(),   // 已选节点 id（folder 和 knowledge 一视同仁）
     nodeMeta: new Map(),   // id -> { name, type }
@@ -89,10 +96,27 @@ async function openTagPicker(mode, resourceType, resourceId) {
     updateMistakeCreateOcrActions();
     prepareMistakeCreateAi(tagPickerState);
   }
+  if (typeof mountReviewMethodEditor === 'function') {
+    mountReviewMethodEditor('tagPicker',resourceType,mode==='edit'?resourceId:null);
+  }
 
   // 名称那一行：上传和编辑时都显示，可以改名字。
   // 后缀单独做成一块固定文字（不进输入框），所以用户改不到它。
   const nameRow = document.getElementById('tagPickerNameRow');
+  // 资料 / 笔记：把标签选择挪到「名称」下一行；错题保持原顺序
+  const tagBlockEl = document.getElementById('tagPickerTagBlock');
+  const selectedEl = document.getElementById('tagPickerSelected');
+  const mistakeFieldsEl = document.getElementById('tagPickerMistakeFields');
+  const isResourceMode = resourceType === 'material' || resourceType === 'note';
+  if (nameRow && tagBlockEl) {
+    if (isResourceMode) {
+      nameRow.parentNode.insertBefore(tagBlockEl, nameRow.nextSibling);
+      if (selectedEl) tagBlockEl.parentNode.insertBefore(selectedEl, tagBlockEl.nextSibling);
+    } else if (mistakeFieldsEl) {
+      mistakeFieldsEl.parentNode.insertBefore(tagBlockEl, mistakeFieldsEl.nextSibling);
+      if (selectedEl) tagBlockEl.parentNode.insertBefore(selectedEl, tagBlockEl.nextSibling);
+    }
+  }
   // 资料 / 笔记：显示「重点总结 / 大纲」；手动输入模式下可以自动提炼
   const outlineBlock = document.getElementById('tagPickerOutlineBlock');
   const isResource = resourceType === 'material' || resourceType === 'note';
@@ -112,13 +136,22 @@ async function openTagPicker(mode, resourceType, resourceId) {
   const resourceFields = document.getElementById('tagPickerResourceFields');
   if (resourceFields) {
     const isResourceForm = resourceType === 'material' || resourceType === 'note';
-    // 编辑标签时不再显示附件/正文，避免误导；大纲与导图在下面单独给
-    resourceFields.style.display = isResourceForm && mode !== 'edit' ? 'block' : 'none';
-    if (isResourceForm && mode !== 'edit') {
+    // 编辑时也显示：可以换附件、改正文
+    resourceFields.style.display = isResourceForm ? 'block' : 'none';
+    if (isResourceForm) {
       const titleEl = document.getElementById('tagPickerResourceTitle');
       if (titleEl) titleEl.textContent = resourceType === 'note' ? '笔记' : '资料';
       const contentEl = document.getElementById('tagPickerResourceContent');
       if (contentEl && mode === 'manual' && pendingManual) contentEl.value = pendingManual.content || '';
+      if (mode === 'edit') {
+        const row = currentResourceRow(resourceType, resourceId) || {};
+        if (contentEl) contentEl.value = row.content || '';
+        pendingUploadFile = null;
+        pendingResourceRemoveFile = false;
+        pickerExistingFile = row.file_url
+          ? { name: row.title || '附件', type: row.file_type || '', url: row.file_url }
+          : null;
+      }
       renderPickerResourceSummary();
     }
   }
@@ -241,25 +274,14 @@ function indexTagTree(nodes, parentId) {
 function initTagPickerExpanded() {
   const state = tagPickerState;
   state.expanded = new Set();
-
-  for (const node of state.tree) {
-    if (node.type === 'folder' && (node.children || []).length) {
-      state.expanded.add(node.id);
-    }
-  }
-
-  for (const id of state.selected) {
-    let parentId = state.parentMap.get(id);
-    while (parentId !== null && parentId !== undefined) {
-      state.expanded.add(parentId);
-      parentId = state.parentMap.get(parentId);
-    }
-  }
+  // 默认全部收起：用户点 ▸ 逐层展开，编辑时也一样（避免一进来就被摊开）
 }
 
 // 关闭选择器（取消时不会提交任何东西）
 function closeTagPicker() {
   cancelMistakeCreateAi();
+  if(typeof resetPendingCreationCloze==='function')resetPendingCreationCloze('tagPicker');
+  if (typeof closeCreationReviewSuggestion === 'function') closeCreationReviewSuggestion();
   const modal = document.getElementById('tagPickerModal');
   if (modal) modal.classList.remove('show');
 
@@ -269,8 +291,12 @@ function closeTagPicker() {
   if (searchInput) searchInput.value = '';
 
   tagPickerState = null;
+  const reviewModeHost = document.getElementById('tagPickerReviewModeHost');
+  if (reviewModeHost) { reviewModeHost.style.display = 'none'; reviewModeHost.replaceChildren(); }
   pendingUploadFile = null;
   pendingAnswerFile = null;
+  pickerExistingFile = null;
+  pendingResourceRemoveFile = false;
   pendingManual = null;
   const outlineInput = document.getElementById('tagPickerOutline');
   if (outlineInput) outlineInput.value = '';
@@ -294,6 +320,8 @@ function openResourceCreate(type) {
 // ===== 上传弹窗里的思维导图 =====
 let pendingMindmapJson = '';
 let pendingMindmapImage = '';
+let pickerExistingFile = null;
+let pendingResourceRemoveFile = false;
 
 function importPickerMindmapImage(input) {
   const file = input.files?.[0];
@@ -422,7 +450,8 @@ function renderPickerResourceSummary() {
   const remove = document.getElementById('tagPickerResourceRemove');
   const ocr = document.getElementById('tagPickerResourceOcrBtn');
   if (!box) return;
-  if (!pendingUploadFile) {
+  const existing = pendingResourceRemoveFile ? null : pickerExistingFile;
+  if (!pendingUploadFile && !existing) {
     box.style.display = 'none';
     box.innerHTML = '';
     if (remove) remove.style.display = 'none';
@@ -430,10 +459,11 @@ function renderPickerResourceSummary() {
     closePickerResourceOcr();
     return;
   }
+  const file = pendingUploadFile || existing;
   box.style.display = 'flex';
-  box.innerHTML = `<span class="mistake-create-file-icon">📎</span><div><strong>${escapeHtml(pendingUploadFile.name)}</strong><small>${escapeHtml(pendingUploadFile.type || '附件')} · 保存后上传</small></div>`;
+  box.innerHTML = `<span class="mistake-create-file-icon">📎</span><div><strong>${escapeHtml(file.name || '附件')}</strong><small>${escapeHtml(file.type || '附件')} · ${pendingUploadFile ? '保存后上传' : '已保存'}</small></div>`;
   if (remove) remove.style.display = 'inline-flex';
-  if (ocr) ocr.style.display = 'inline-flex';
+  if (ocr) ocr.style.display = pendingUploadFile ? 'inline-flex' : 'none';
 }
 
 async function recognizePickerResourceFile() {
@@ -506,6 +536,10 @@ function choosePickerResourceFile(input) {
 }
 
 function clearPickerResourceFile() {
+  if (!pendingUploadFile && pickerExistingFile) {
+    // 编辑既有资料：标记为"保存后删除原附件"
+    pendingResourceRemoveFile = true;
+  }
   pendingUploadFile = null;
   const input = document.getElementById('tagPickerResourceUpload');
   if (input) input.value = '';
@@ -621,6 +655,7 @@ async function confirmTagPicker() {
   }
 
   const button = document.getElementById('tagPickerConfirm');
+  const reviewMethodWasDefault = !document.getElementById('tagPickerReviewMethod')?.value;
   const autoInput = typeof coursesAiSettings!=='undefined' && resourceType==='mistake' && mode!=='edit' && !state.createdMistake
     ? coursesAiSettings.captureCreation() : null;
   state.saving = true;
@@ -660,6 +695,20 @@ async function confirmTagPicker() {
       saved = await saveResourceTags(resourceType, resourceId, nodeIds, title);
       // 资料/笔记：顺便保存大纲与导图
       if (saved && (resourceType === 'material' || resourceType === 'note')) {
+        const pathName = resourceType === 'note' ? 'notes' : 'materials';
+        // 附件：先换新的，或删除原有
+        if (pendingUploadFile) {
+          const form = new FormData();
+          form.append('file', pendingUploadFile);
+          await requestApi(`${API}/courses/${currentCourseId}/${pathName}/${resourceId}/file`, { method: 'PUT', body: form });
+          pendingUploadFile = null;
+          pickerExistingFile = null;
+          pendingResourceRemoveFile = false;
+        } else if (pendingResourceRemoveFile) {
+          await requestApi(`${API}/courses/${currentCourseId}/${pathName}/${resourceId}/file`, { method: 'DELETE' });
+          pickerExistingFile = null;
+          pendingResourceRemoveFile = false;
+        }
         const outlineValue = (document.getElementById('tagPickerOutline')?.value || '').trim();
         const row = currentResourceRow(resourceType, resourceId) || {};
         const payload = {};
@@ -684,6 +733,17 @@ async function confirmTagPicker() {
           button.textContent = '重试保存建议';
           return;
         }
+      }
+      const savedId = Number.isSafeInteger(saved?.id) ? saved.id : resourceId;
+      const methodPersisted = typeof persistReviewMethodEditor==='function'
+        ? persistReviewMethodEditor('tagPicker',resourceType,savedId) : true;
+      if (!methodPersisted) showToast('内容已保存，但复习方式未能保存到本浏览器，请在编辑页重试。');
+      else if (reviewMethodWasDefault) showToast('未手动选择复习方式，已按标准复习保存。');
+      if(methodPersisted&&readReviewMethodEditor('tagPicker')==='cloze'
+        &&typeof persistPendingCreationCloze==='function'){
+        const clozeResult=await persistPendingCreationCloze('tagPicker',resourceType,savedId);
+        if(!clozeResult.ok)showToast(`内容已保存，但挖空设置未保存：${clozeResult.error}。可从编辑页重新设置。`);
+        else if(!clozeResult.skipped)showToast('挖空设置已保存。');
       }
       closeTagPicker();
     }

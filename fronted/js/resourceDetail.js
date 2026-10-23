@@ -16,6 +16,7 @@ async function openResourceDetail(resourceType, resourceId) {
 }
 
 async function renderResourceDetailPage(resourceType, resourceId) {
+  if(typeof resetResourceAi==='function')resetResourceAi();
   const request = ++resourceDetailRequest;
   const courseId = currentCourseId;
   const isCurrent = () => request === resourceDetailRequest && currentCourseId === courseId
@@ -45,7 +46,7 @@ async function renderResourceDetailPage(resourceType, resourceId) {
     if (row.course_id !== courseId) throw new Error('这条内容不属于当前课程');
     renderResourceDetail(resourceType, row);
     if(typeof mountReviewPreparation==='function')mountReviewPreparation(document.getElementById('resourceDetailTags'),resourceType,row);
-    if(typeof mountResourceAi==='function')mountResourceAi(document.getElementById('resourceDetailPreview').parentElement,resourceType,row);
+    if(globalThis.COURSES_SHOW_LEGACY_RESOURCE_AI===true&&typeof mountResourceAi==='function')mountResourceAi(document.getElementById('resourceDetailPreview').parentElement,resourceType,row);
     if(typeof mountItemReviewHistory==='function')mountItemReviewHistory(document.getElementById('resourceDetailPreview').parentElement,resourceType,row.id);
   } catch (err) {
     if (!isCurrent()) return;
@@ -62,6 +63,15 @@ function renderResourceDetail(resourceType, item) {
 
   document.getElementById('resourceDetailTitle').textContent = label + '详情';
   document.getElementById('resourceDetailName').textContent = item.title || '（无标题）';
+  if (window.__mindmapTarget?.courseId === currentCourseId
+    && window.__mindmapTarget.resourceType === (resourceType === 'note' ? 'note' : 'material')
+    && window.__mindmapTarget.id === item.id) {
+    window.__mindmapTarget.baseline = {
+      mindmap_json: item.mindmap_json || '',
+      mindmap_image: item.mindmap_image || '',
+      outline: item.outline || ''
+    };
+  }
 
   const typeEl = document.getElementById('resourceDetailType');
   typeEl.textContent = label;
@@ -134,7 +144,13 @@ function renderResourceDetail(resourceType, item) {
       head.appendChild(edit);
     }
     edit.onclick = () => {
-      window.__mindmapTarget = { resourceType, id: item.id, label: item.title || '' };
+      window.__mindmapTarget = {
+        courseId: currentCourseId,
+        resourceType,
+        id: item.id,
+        label: item.title || '',
+        baseline: {mindmap_json:item.mindmap_json||'',mindmap_image:item.mindmap_image||'',outline:item.outline||''}
+      };
       openMindmapEditor(item.mindmap_json, item.title, item.outline);
     };
 
@@ -144,7 +160,7 @@ function renderResourceDetail(resourceType, item) {
       back.type = 'button';
       back.className = 'edit-mini-btn reupload-mindmap-btn';
       back.style.marginLeft = '6px';
-      back.textContent = '回传导图';
+      back.textContent = '上传导图';
       head.appendChild(back);
     }
     back.onclick = () => reuploadMindmap(resourceType, item.id);

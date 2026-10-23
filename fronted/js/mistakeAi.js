@@ -161,6 +161,7 @@ function toggleMistakeAi() {
 
 function startMistakeAi(detail, options = {}) {
   clearMistakeAiKey('mistakeAi',true);
+  if(typeof refreshReviewMethodApiAvailability==='function')refreshReviewMethodApiAvailability();
   mistakeAiState = { detail, busy: false, result: null, controller: null, ...options };
   const row = detail.row;
   mistakeAiElement('Status').textContent = '请配置 AI 后获取建议，也可以继续手动选择。';
@@ -264,6 +265,10 @@ function confirmMistakeAiSuggestion() {
   if (!state || (!state.result && !state.savedMethod && !state.needsReselection) || state.busy || !mistakeAiIsCurrent(state)) return;
   const method = mistakeAiElement('Method').value;
   if (!Object.hasOwn(AI_REVIEW_METHODS, method)) return;
+  if(typeof reviewMethodIsAvailable==='function'&&!reviewMethodIsAvailable(method)){
+    mistakeAiElement('Error').textContent='自述讲解和对比辨析需要先接入真实 AI API。';
+    return;
+  }
   state.confirmedMethod = method;
   const persisted = saveMistakeAiMethod(state.detail, method);
   mistakeAiElement('Confirmation').classList.toggle('mistake-inline-error', !persisted);
@@ -300,8 +305,10 @@ function prepareMistakeCreateAi(state) {
     const node = mistakeCreateAiElement(name);
     if ('value' in node) node.value = ''; else node.textContent = '';
   }
-  mistakeCreateAiElement('Method').replaceChildren(new Option('不选择',''),
-    ...Object.entries(AI_SELECTABLE_METHODS).map(([id,label])=>new Option(label,id)));
+  const options=Object.entries(AI_SELECTABLE_METHODS).map(([id,label])=>{
+    const option=new Option(label,id);if(typeof reviewMethodIsAvailable==='function')option.disabled=!reviewMethodIsAvailable(id);return option;
+  });
+  mistakeCreateAiElement('Method').replaceChildren(new Option('不选择',''),...options);
   mistakeCreateAiElement('Fields').disabled = false;
   mistakeCreateAiElement('Get').disabled = false;
   mistakeCreateAiElement('Adopt').disabled = true;
@@ -318,6 +325,7 @@ function changeMistakeCreateAiMethod() {
     ? '已选择：' + AI_REVIEW_METHODS[method] + (state.createdMistake
       ? '。错题已创建，点击“重试保存建议”仅保存此选择。' : '。将在错题创建成功后保存到本浏览器。')
     : '不选择：只添加错题，不保存复习建议。';
+  if(typeof syncTagPickerReviewMethod==='function')syncTagPickerReviewMethod(state.aiCreate.selectedMethod);
 }
 
 function adoptMistakeCreateAi() {
@@ -386,6 +394,10 @@ async function requestMistakeCreateAi() {
 function saveCreatedMistakeAi(state, row) {
   const method = state.aiCreate?.selectedMethod;
   if (!method) return true;
+  if(typeof reviewMethodIsAvailable==='function'&&!reviewMethodIsAvailable(method)){
+    mistakeCreateAiElement('Error').textContent='自述讲解和对比辨析需要先接入真实 AI API。';
+    return false;
+  }
   const valid = row?.course_id===state.courseId && Number.isSafeInteger(row.id) && row.id>0;
   if (valid && saveMistakeAiMethod({courseId:row.course_id,id:row.id},method)) {
     refreshMistakeAiSaved();return true;

@@ -9,6 +9,8 @@ const AI_REVIEW_METHODS = Object.freeze({
 });
 // Keep the old engine ID for historical rounds, not as a separate AI choice.
 const AI_SELECTABLE_METHODS = Object.freeze(Object.fromEntries(Object.entries(AI_REVIEW_METHODS).filter(([id])=>id!=='choice_reproduction')));
+// Upload/edit advice never chooses the deterministic standard fallback.
+const AI_SUGGESTABLE_METHODS = Object.freeze(Object.fromEntries(Object.entries(AI_SELECTABLE_METHODS).filter(([id])=>id!=='standard')));
 const publicAiReviewMode = mode => mode==='choice_reproduction'?'retry':mode;
 
 function normalizeMistakeAiAnalysis(value) {
@@ -58,7 +60,7 @@ function mistakeAiError(code, status = 0) {
     AI_CONNECTION_FAILED: '未能建立到服务商的连接，请检查网络、TLS 或代理配置。',
     AI_TIMEOUT: 'AI 请求超时，本次未取得结果；请检查网络或模型响应速度后手动重试。',
     INVALID_INPUT: '请检查输入：每项最多 4000 字，总请求不能超过 16KB。',
-    BODY_TOO_LARGE: '文字总量超过 16KB，请精简后重试。',
+    BODY_TOO_LARGE: '输入内容过多，请精简正文或补充说明后重试。',
     INVALID_RESPONSE: 'AI 返回格式不正确，本次建议未采用，请重试。',
     NETWORK_ERROR: '无法连接 AI 服务，请检查网络后重试。',
     INVALID_API_URL: 'API 地址不可用：仅支持公网 HTTPS，禁止内网、特殊地址和重定向。',

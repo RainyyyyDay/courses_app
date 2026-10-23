@@ -1,18 +1,17 @@
 /* Visual authoring only. Persist the existing prompt + blanks contract unchanged. */
 function clozeEditorHtml(m){return `<section class="cloze-editor">
-  <p class="ai-help">填写完整原文，点击“开始选取”，选中文字后点击“确认挖空”；未选中文字时再次点击可取消。答案自动记录；点击彩色空位可调整。</p>
-  <div class="cloze-toolbar"><button type="button" id="clozeMakeBlank" aria-pressed="false">开始选取</button><button type="button" id="clozeUndo">撤销</button><button type="button" id="clozePreviewToggle" aria-pressed="false">试做预览</button></div>
+  <p class="ai-help">填写完整原文，点击“选中文字并挖空”，再选中要记忆的文字并在按钮变为蓝色“确定”时点击。每确认一次可继续选择下一处；点击彩色空位可调整。</p>
+  <div class="cloze-toolbar"><button type="button" class="ai-primary" id="clozeMakeBlank">选中文字并挖空</button><button type="button" id="clozeUndo">撤销</button><button type="button" id="clozeExitMode" disabled>退出挖空模式</button></div>
   <label id="clozeSourceLabel">原文与空位</label><div id="clozeSource" class="cloze-source" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="clozeSourceLabel" spellcheck="false"></div>
-  <div id="clozePreview" class="cloze-source" hidden></div><p id="clozeStatus" role="status" aria-live="polite"></p>
+  <p id="clozeStatus" role="status" aria-live="polite"></p>
   <details id="clozeFind"><summary>手机选词不方便？输入要挖的文字</summary><label>要挖的文字<input id="clozeFindText" autocomplete="off"></label><button type="button" id="clozeFindButton">查找可挖位置</button><div id="clozeMatches" class="cloze-matches"></div></details>
   <details id="clozeSettings"><summary>答案与提示（<span id="clozeCount">0</span> 处）</summary><div id="reviewWbBlanks">${(m.blanks||[]).map(wbBlank).join('')}</div></details>
   <textarea id="reviewWbPrompt" hidden>${escapeHtml(m.prompt||'')}</textarea></section>`;}
-function updateClozeSelectionButton(){
-  const source=document.getElementById('clozeSource'),button=document.getElementById('clozeMakeBlank');if(!source||!button)return;
-  const ready=source.selecting&&source.savedRange&&!source.savedRange.collapsed&&source.contains(source.savedRange.commonAncestorContainer);
-  button.textContent=!source.selecting?'开始选取':ready?'确认挖空':'请选中文字（再点取消）';button.classList.toggle('ai-primary',!!source.selecting);button.setAttribute('aria-pressed',String(!!source.selecting));
+function resetClozeSelection(){
+  const source=document.getElementById('clozeSource');
+  if(source)source.savedRange=null;
+  updateClozePickingButton();
 }
-function resetClozeSelection(){const source=document.getElementById('clozeSource');if(source){source.selecting=false;source.savedRange=null;}updateClozeSelectionButton();}
 function clozeNodeText(node){
   if(node.nodeType===3)return node.data;
   if(node.nodeType!==1&&node.nodeType!==11)return '';
@@ -22,6 +21,34 @@ function clozeNodeText(node){
 }
 function rememberClozeEdit(){const source=document.getElementById('clozeSource');if(!source)return;source.history||=[];source.history.push(readWorkbenchMaterial());if(source.history.length>30)source.history.shift();}
 function clozeMessage(text){document.getElementById('clozeStatus').textContent=text;}
+function clozeRangeIsValid(range){
+  const source=document.getElementById('clozeSource');
+  if(!source||!range||range.collapsed||!source.contains(range.commonAncestorContainer))return false;
+  if([...source.querySelectorAll('[data-cloze-id]')].some(chip=>range.intersectsNode(chip)))return false;
+  const answer=clozeNodeText(range.cloneContents());
+  return !!answer.trim()&&!!answer.replace(/[\s\u3000，。；：、,.!?！？"'（）()\[\]【】]/g,'');
+}
+function updateClozePickingButton(){
+  const source=document.getElementById('clozeSource'),button=document.getElementById('clozeMakeBlank'),exit=document.getElementById('clozeExitMode');
+  if(!source||!button)return;
+  const picking=!!source.picking,ready=picking&&clozeRangeIsValid(source.savedRange);
+  button.textContent=picking?'确定':'选中文字并挖空';
+  button.disabled=picking&&!ready;
+  button.classList.toggle('is-picking',picking);
+  button.classList.toggle('is-ready',ready);
+  button.setAttribute('aria-disabled',String(button.disabled));
+  if(exit)exit.disabled=!picking;
+}
+function captureClozeSelection(){
+  const source=document.getElementById('clozeSource');if(!source||source.hidden)return;
+  if(!source.picking){source.savedRange=null;return;}
+  const selection=getSelection();
+  if(!selection.rangeCount)return;
+  const range=selection.getRangeAt(0);
+  if(!source.contains(range.commonAncestorContainer))return;
+  source.savedRange=!range.collapsed&&clozeRangeIsValid(range)?range.cloneRange():null;
+  updateClozePickingButton();
+}
 function clozeChip(blank){
   const chip=document.createElement('span');chip.className='cloze-chip';chip.dataset.clozeId=blank.id;chip.contentEditable='false';
   const edit=document.createElement('button');edit.type='button';edit.textContent=blank.answer||'待填写答案';edit.setAttribute('aria-label','调整空位：'+edit.textContent);edit.onclick=()=>{
@@ -30,7 +57,10 @@ function clozeChip(blank){
     if(row){row.open=true;row.querySelector('[data-blank="answer"]').focus();}
   };
   const cancel=document.createElement('button');cancel.type='button';cancel.textContent='×';cancel.setAttribute('aria-label','取消挖空：'+(blank.answer||''));cancel.onclick=()=>{
-    const row=[...wb('Blanks').children].find(row=>row.querySelector('[data-blank="id"]').value===blank.id);if(row)removeReviewBlank(row.querySelector('button'));
+    const row=[...wb('Blanks').children].find(row=>row.querySelector('[data-blank="id"]').value===blank.id);
+    const source=document.getElementById('clozeSource');if(source)source.savedRange=null;
+    if(row)removeReviewBlank(row.querySelector('button'));
+    updateClozePickingButton();
   };chip.append(edit,cancel);return chip;
 }
 function refreshClozeEditor(){
@@ -46,26 +76,21 @@ function refreshClozeEditor(){
   }
   document.getElementById('clozeCount').textContent=m.blanks.length;
   document.getElementById('clozeUndo').disabled=!source.history?.length;
-  const preview=document.getElementById('clozePreview');preview.replaceChildren();
-  let number=0;
-  for(const part of m.prompt.split(/(【[A-Za-z][A-Za-z0-9_]*】)/g)){
-    if(m.blanks.some(b=>part==='【'+b.id+'】')){const label=document.createElement('label');label.className='cloze-preview-blank';label.append(document.createTextNode('第 '+(++number)+' 空 '));const input=document.createElement('input');input.placeholder='填写答案';input.autocomplete='off';label.append(input);preview.append(label);}
-    else preview.append(document.createTextNode(part));
-  }
+  updateClozePickingButton();
 }
 function saveClozeSource(){
   const source=document.getElementById('clozeSource');wb('Prompt').value=clozeNodeText(source);
   source.signature=JSON.stringify(readWorkbenchMaterial());updateWorkbenchPreparation();
   document.getElementById('clozeMatches').replaceChildren();
 }
-function undoClozeEdit(){const source=document.getElementById('clozeSource'),m=source.history.pop();if(!m)return;wb('Prompt').value=m.prompt;wb('Blanks').innerHTML=m.blanks.map(wbBlank).join('');source.signature=null;updateWorkbenchPreparation();clozeMessage('已撤销上一步。');}
+function undoClozeEdit(){const source=document.getElementById('clozeSource'),m=source.history.pop();if(!m)return;wb('Prompt').value=m.prompt;wb('Blanks').innerHTML=m.blanks.map(wbBlank).join('');source.savedRange=null;source.signature=null;updateWorkbenchPreparation();updateClozePickingButton();clozeMessage('已撤销上一步。');}
 function cancelClozeAtCaret(range,direction){
   const source=document.getElementById('clozeSource'),side=range.cloneRange();side.selectNodeContents(source);
   if(direction==='backward')side.setEnd(range.startContainer,range.startOffset);else side.setStart(range.startContainer,range.startOffset);
   const text=clozeNodeText(side.cloneContents()),match=direction==='backward'?text.match(/【([A-Za-z][A-Za-z0-9_]*)】$/):text.match(/^【([A-Za-z][A-Za-z0-9_]*)】/);
   if(!match)return false;
   const row=[...wb('Blanks').children].find(row=>row.querySelector('[data-blank="id"]').value===match[1]);if(!row)return false;
-  removeReviewBlank(row.querySelector('button'));clozeMessage('已取消挖空并恢复文字。');return true;
+  source.savedRange=null;removeReviewBlank(row.querySelector('button'));updateClozePickingButton();clozeMessage('已取消挖空并恢复文字。');return true;
 }
 function makeClozeBlank(range=document.getElementById('clozeSource')?.savedRange){
   const source=document.getElementById('clozeSource');if(!source||source.hidden||reviewWorkbench?.busy)return;
@@ -78,11 +103,13 @@ function makeClozeBlank(range=document.getElementById('clozeSource')?.savedRange
   rememberClozeEdit();let n=1;while(blanks.some(b=>b.id==='b'+n)||wb('Prompt').value.includes('【b'+n+'】'))n++;
   const blank={id:'b'+n,answer};wb('Blanks').insertAdjacentHTML('beforeend',wbBlank(blank));
   const chip=clozeChip(blank);range.deleteContents();range.insertNode(chip);source.savedRange=null;
-  saveClozeSource();resetClozeSelection();getSelection()?.removeAllRanges();document.getElementById('clozeCount').textContent=blanks.length+1;
+  saveClozeSource();getSelection()?.removeAllRanges();document.getElementById('clozeCount').textContent=blanks.length+1;
+  resetClozeSelection();
   clozeMessage('已挖空，答案自动记录。点击彩色文字可调整，点击 × 恢复原文。');
 }
 function findClozeText(){
   const source=document.getElementById('clozeSource'),query=document.getElementById('clozeFindText').value,host=document.getElementById('clozeMatches');host.replaceChildren();
+  if(!source?.picking){clozeMessage('请先点击“选中文字并挖空”进入挖空模式。');return;}
   if(!query.trim()){clozeMessage('请先输入要挖的文字。');return;}
   const walker=document.createTreeWalker(source,NodeFilter.SHOW_TEXT);let node,count=0;
   while((node=walker.nextNode())){if(node.parentElement.closest('[data-cloze-id]'))continue;
@@ -96,14 +123,27 @@ function findClozeText(){
 let clozeSelectionEvents;
 function initClozeEditor(){
   clozeSelectionEvents?.abort();clozeSelectionEvents=new AbortController();
-  const source=document.getElementById('clozeSource');if(!source)return;source.history=[];refreshClozeEditor();
-  const capture=()=>{if(!source.selecting)return;const selection=getSelection();if(selection.rangeCount&&source.contains(selection.getRangeAt(0).commonAncestorContainer)){source.savedRange=selection.getRangeAt(0).cloneRange();updateClozeSelectionButton();}};
-  source.addEventListener('mouseup',capture);source.addEventListener('keyup',capture);source.addEventListener('touchend',capture);
-  document.getElementById('clozeMakeBlank').onpointerdown=e=>{capture();if(e.pointerType==='mouse')e.preventDefault();};
-  document.getElementById('clozeMakeBlank').onclick=()=>{if(reviewWorkbench?.busy)return;if(!source.selecting){source.selecting=true;source.savedRange=null;getSelection()?.removeAllRanges();source.focus();updateClozeSelectionButton();clozeMessage('请在原文中选中要挖空的文字，再点击“确认挖空”；未选中文字时再次点击可取消。');return;}capture();if(!source.savedRange||source.savedRange.collapsed||!source.contains(source.savedRange.commonAncestorContainer)||!source.savedRange.toString().trim()){resetClozeSelection();clozeMessage('已取消选取。');return;}makeClozeBlank();};
-  source.addEventListener('selectstart',()=>{if(source.selecting)source.savedRange=null;});
-  document.addEventListener('selectionchange',()=>{if(source.isConnected)capture();},{signal:clozeSelectionEvents.signal});
-  source.addEventListener('keydown',e=>{if(e.key==='Escape'){resetClozeSelection();clozeMessage('已取消选取。');}});
+  const source=document.getElementById('clozeSource');if(!source)return;
+  source.history=[];source.picking=false;source.savedRange=null;refreshClozeEditor();
+  source.addEventListener('mouseup',captureClozeSelection);source.addEventListener('keyup',captureClozeSelection);source.addEventListener('touchend',captureClozeSelection);
+  document.getElementById('clozeMakeBlank').onpointerdown=e=>{captureClozeSelection();if(e.pointerType==='mouse')e.preventDefault();};
+  document.getElementById('clozeMakeBlank').onclick=()=>{
+    if(reviewWorkbench?.busy)return;
+    if(!source.picking){
+      source.picking=true;source.savedRange=null;getSelection()?.removeAllRanges();source.focus();
+      updateClozePickingButton();clozeMessage('请在原文中选择要记忆的文字；选中后点击蓝色“确定”。');
+      return;
+    }
+    captureClozeSelection();
+    if(!clozeRangeIsValid(source.savedRange)){
+      updateClozePickingButton();clozeMessage('请先在原文中选择一段可挖空的文字。');
+      return;
+    }
+    makeClozeBlank(source.savedRange);
+  };
+  source.addEventListener('selectstart',()=>{if(source.picking){source.savedRange=null;updateClozePickingButton();}});
+  document.addEventListener('selectionchange',captureClozeSelection,{signal:clozeSelectionEvents.signal});
+  source.addEventListener('keydown',e=>{if(e.key==='Escape'&&source.picking){resetClozeSelection();clozeMessage('已取消本次选词，仍处于挖空模式。');}});
   source.onbeforeinput=e=>{
     if(reviewWorkbench?.busy){e.preventDefault();return;}
     const selection=getSelection(),range=selection.rangeCount?selection.getRangeAt(0):null;
@@ -116,11 +156,15 @@ function initClozeEditor(){
     resetClozeSelection();
     // Keep hidden metadata consistent with native browser editing.
     for(const row of [...wb('Blanks').children]){const id=row.querySelector('[data-blank="id"]').value;if(![...source.querySelectorAll('[data-cloze-id]')].some(c=>c.dataset.clozeId===id))row.remove();}
-    saveClozeSource();document.getElementById('clozeCount').textContent=wb('Blanks').children.length;
+    saveClozeSource();document.getElementById('clozeCount').textContent=wb('Blanks').children.length;updateClozePickingButton();
   };
   source.onpaste=e=>{e.preventDefault();if(reviewWorkbench?.busy)return;const selection=getSelection();if(!selection.rangeCount)return;const range=selection.getRangeAt(0);if(!source.contains(range.commonAncestorContainer))return;if([...source.querySelectorAll('[data-cloze-id]')].some(c=>range.intersectsNode(c)))return;rememberClozeEdit();range.deleteContents();const text=document.createTextNode(e.clipboardData.getData('text/plain'));range.insertNode(text);range.setStartAfter(text);range.collapse(true);selection.removeAllRanges();selection.addRange(range);saveClozeSource();};
   source.ondrop=e=>e.preventDefault();
   document.getElementById('clozeUndo').onclick=undoClozeEdit;
   document.getElementById('clozeFindButton').onclick=findClozeText;
-  document.getElementById('clozePreviewToggle').onclick=()=>{const preview=document.getElementById('clozePreview'),show=preview.hidden;resetClozeSelection();refreshClozeEditor();preview.hidden=!show;source.hidden=show;document.getElementById('clozeFind').hidden=show;document.getElementById('clozeMakeBlank').disabled=show;const button=document.getElementById('clozePreviewToggle');button.textContent=show?'返回编辑':'试做预览';button.setAttribute('aria-pressed',String(show));clozeMessage(show?'试做不会保存答案或产生复习记录。':'已返回编辑。');};
+  document.getElementById('clozeExitMode').onclick=()=>{
+    source.picking=false;source.savedRange=null;getSelection()?.removeAllRanges();updateClozePickingButton();
+    clozeMessage('已退出挖空模式。再次点击“选中文字并挖空”可继续设置。');
+  };
+  updateClozePickingButton();
 }

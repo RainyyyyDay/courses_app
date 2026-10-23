@@ -48,6 +48,13 @@ function setMaterialMindmap(id, courseId, fields) {
   return findMaterial(id);
 }
 
+// 更换/清除附件：只改 file_url 与 file_type
+function setMaterialFile(id, courseId, fileUrl, fileType) {
+  db.prepare('UPDATE materials SET file_url = ?, file_type = ? WHERE id = ? AND course_id = ?')
+    .run(fileUrl || '', fileType || '', id, courseId);
+  return findMaterial(id);
+}
+
 // 新建资料；nodeIds 可选，不传就是原来那条“没有标签”的资料
 // content 是“手动输入”的正文；上传文件录入时传空字符串
 function createMaterial(courseId, title, fileUrl, fileType, nodeIds, content, outline, mindmapJson, mindmapImage) {
@@ -169,6 +176,7 @@ module.exports = {
   setMaterialReviewStatus,
   setMaterialFavorite,
   setMaterialMindmap,
+  setMaterialFile,
   renameMaterial,
   deleteMaterial,
   listMaterialNodes,

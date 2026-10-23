@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {fixture}=require('./mistake-format.cjs'),{runBrowser}=require('./browser-driver.cjs');
 test('compact AI settings hide low-frequency tools and clear credentials independently from drafts',{timeout:90000},async()=>fixture(async({base,ids,temp,serve})=>{
- const url=await serve(),chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find(fs.existsSync);assert.ok(chrome);
+ const url=await serve(),chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].find(fs.existsSync);assert.ok(chrome);
  for(const [i,viewport]of [[1280,960],[390,844]].entries()){
  const script=`window.COURSES_API_BASE=${JSON.stringify(base)};addEventListener('load',async()=>{const out=document.createElement('pre');out.id='regressionResult';const el=id=>document.getElementById('coursesAi'+id),check=(v,m)=>{if(!v)throw Error(m);};try{
   await openCourse(${ids.courseId},'精简设置','mistakes');coursesAiSettings.open();const dialog=el('Dialog');
@@ -18,6 +18,6 @@ test('compact AI settings hide low-frequency tools and clear credentials indepen
   await seed(124);el('Close').click();el('DraftOpen').click();check(el('DraftDialog').open&&el('Drafts').textContent.includes('测试草稿'),'separate draft dialog is usable');el('DraftClose').click();
   coursesAiSettings.open();check(!el('Advanced').open,'normal reopening is compact');check(el('Apply').getBoundingClientRect().bottom<=innerHeight,'apply visible');check(el('Consent').getBoundingClientRect().width===16,'compact checkbox');check(document.documentElement.scrollWidth<=innerWidth+1,'no horizontal overflow');await new Promise(r=>setTimeout(r,250));out.textContent='PASS';
  }catch(e){out.textContent='FAIL '+e.stack;}document.body.append(out);});`;
- const html=await runBrowser({chrome,profile:path.join(temp,'compact-'+i),url,viewport,initScript:script,screenshot:path.join(os.tmpdir(),'courses-ai-compact-'+viewport.join('x')+'.png')});const result=html.match(/<pre id="regressionResult">[\s\S]*?<\/pre>/)?.[0];assert.match(result||'',/>PASS</,result||'no result');
+ const html=await runBrowser({chrome,profile:path.join(temp,'compact-'+i),url,viewport,noSandbox:true,initScript:script,screenshot:path.join(os.tmpdir(),'courses-ai-compact-'+viewport.join('x')+'.png')});const result=html.match(/<pre id="regressionResult">[\s\S]*?<\/pre>/)?.[0];assert.match(result||'',/>PASS</,result||'no result');
  }
 },{legacy:false}));
