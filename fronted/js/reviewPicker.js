@@ -37,7 +37,7 @@ async function openReviewPickerPreview(state,candidate,trigger,ids,isCurrentStat
       const heading=document.createElement('h4');heading.textContent=label;body.appendChild(heading);
       if(content){const text=document.createElement('div');text.className='detail-content';text.textContent=content;body.appendChild(text);}
       if(fileUrl){const url=API.replace(/\/api\/?$/,'')+fileUrl,box=document.createElement('div');body.appendChild(box);renderResourcePreview(fileType || (isImageFile(fileType,fileUrl) ? 'image/*' : /\.pdf$/i.test(fileUrl) ? 'application/pdf' : ''),url,box);
-        const link=document.createElement('a');link.className='detail-link';link.textContent='打开'+label+'附件';link.href=url;link.target='_blank';link.rel='noopener';body.appendChild(link);}
+}
       if(!content && !fileUrl){const empty=document.createElement('p');empty.className='detail-meta';empty.textContent='暂无内容';body.appendChild(empty);}
     };
     section(candidate.type==='mistake' ? '题目' : '正文',row.content || row.ocr_text,row.file_url || row.image_url,row.file_type);

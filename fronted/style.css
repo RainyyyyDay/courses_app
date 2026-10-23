@@ -2384,3 +2384,56 @@ dialog > .ai-request-progress-dialog { margin:12px 18px; }
 #coursesAiMessage:empty { display:none; }
 .courses-ai-draft-open { bottom:68px; }
 @media(max-width:640px){#coursesAiDialog .ai-settings-fields{grid-template-columns:1fr 1fr;gap:10px}#coursesAiDialog .ai-settings-head,#coursesAiDialog .ai-settings-body{padding:14px 16px}#coursesAiDialog .ai-settings-footer{padding:12px 16px}#coursesAiDialog .ai-settings-footer .modal-actions button{flex:1 1 0}}
+
+/* Shared read-only image and PDF viewer. */
+.attachment-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0}
+.attachment-actions a{font-size:13px;margin:0;padding:8px 10px}
+.attachment-image-button{display:block;max-width:100%;padding:0;border:0;background:transparent;cursor:zoom-in;text-align:left}
+.attachment-image-button img{display:block;max-width:100%;margin:0;object-fit:contain}
+.attachment-pdf-card{padding:24px;border:1px dashed #ccd7ee;border-radius:12px;background:#f7f9ff;color:#526785;font-size:14px}
+#mistakeDetailImage[role=button]{cursor:zoom-in}
+.attachment-viewer{width:min(1100px,calc(100vw - 32px));height:min(820px,90dvh);max-width:100vw;max-height:100dvh;margin:auto;padding:0;border:1px solid #dce1eb;border-radius:16px;background:#fff;color:#29354a;box-shadow:0 20px 70px #17213c33;overflow:hidden}
+.attachment-viewer[open]{display:flex;flex-direction:column}
+.attachment-viewer::backdrop{background:#17213c99}
+.attachment-viewer header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid #e8ecf3;flex-shrink:0}
+.attachment-viewer h2{font-size:17px;line-height:1.5;min-width:0;overflow-wrap:anywhere}
+.attachment-viewer header>div{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.attachment-viewer a{color:#4a6cf7;text-decoration:none;font-size:13px;padding:8px}
+.attachment-viewer button{font-size:13px;min-height:36px;white-space:nowrap}
+.attachment-viewer [data-viewer-close]{border:0;border-radius:50%;width:36px;min-width:36px;padding:0;font-size:24px;line-height:1}
+.attachment-viewer-toolbar{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px;padding:10px 14px;border-bottom:1px solid #e8ecf3;flex-shrink:0;font-size:13px}
+#attachmentPdfPages{display:flex;align-items:center;gap:10px}
+#attachmentPdfPages[hidden]{display:none}
+#attachmentPreviewStatus{padding:8px 16px;margin:0;color:#71809a;font-size:12px;flex-shrink:0}
+#attachmentPreviewStatus.attachment-error{color:#ba3d3d}
+#attachmentPreviewStage{overflow:auto;flex:1;min-height:0;min-width:0;padding:16px;background:#edf0f5;overscroll-behavior:contain}
+#attachmentPreviewStage canvas{display:block;margin:0 auto;background:white;box-shadow:0 2px 12px #17213c18;max-width:none}
+.attachment-image-wrap{position:relative;margin:auto}
+.attachment-image-wrap img{position:absolute;top:50%;left:50%;max-width:none;max-height:none;object-fit:contain}
+.attachment-viewer.attachment-expanded{width:100vw;height:100dvh;border-radius:0;border:0}
+@media(max-width:600px){.attachment-viewer{width:100vw;height:94dvh;border-radius:12px 12px 0 0;margin:auto 0 0}.attachment-viewer header{padding:10px 12px;gap:8px;flex-wrap:wrap}.attachment-viewer header>div{margin-left:auto}.attachment-viewer h2{font-size:15px}.attachment-viewer-toolbar{gap:6px;padding:8px}.attachment-viewer-toolbar button{padding:7px 10px}#attachmentPreviewStage{padding:10px}}
+
+/* PDF extraction: shared range selector and sequential progress. */
+.pdf-ocr-dialog{box-sizing:border-box;width:min(520px,calc(100vw - 24px));max-height:90dvh;overflow:auto;margin:auto;padding:24px;border:1px solid #dce1eb;border-radius:18px;color:#29354a;background:#fff;box-shadow:0 20px 70px #17213c33}
+.pdf-ocr-dialog::backdrop{background:#17213c99}
+.pdf-ocr-dialog h2{margin:0 0 12px;font-size:20px}
+.pdf-ocr-dialog p{margin:12px 0;line-height:1.6;overflow-wrap:anywhere}
+.pdf-ocr-dialog fieldset{border:1px solid #dce1eb;border-radius:12px;padding:14px;display:grid;gap:12px;min-width:0}
+.pdf-ocr-dialog label{display:flex;align-items:center;gap:8px}
+.pdf-ocr-dialog input[type=radio]{width:18px;height:18px;margin:0}
+.pdf-ocr-dialog [data-pdf-range]{width:100%;box-sizing:border-box;padding:10px;border:1px solid #dce1eb;border-radius:8px;font:inherit;min-width:0}
+.pdf-ocr-hint{color:#78849b;font-size:13px}
+.pdf-ocr-dialog [data-pdf-error]{color:#c83232}
+.pdf-ocr-dialog progress{width:100%;height:12px;accent-color:#4a6cf7}
+.pdf-ocr-actions{display:flex;gap:10px;margin-top:18px}
+.pdf-ocr-actions button{border:0;border-radius:12px;padding:10px 18px;font:inherit;background:#f1f3f8;color:#536079;cursor:pointer}
+.pdf-ocr-actions [data-pdf-start]{background:#4a6cf7;color:#fff}
+.pdf-ocr-actions button:disabled{opacity:.55;cursor:default}
+.pdf-ocr-dialog fieldset[hidden]{display:none}
+
+/* Visible, nonblocking notifications, including above native dialogs. */
+#toastBox{inset:20px auto auto 50%;margin:0;padding:0;border:0;background:transparent;overflow:visible;width:max-content;max-width:calc(100vw - 24px);pointer-events:none}
+.toast{box-sizing:border-box;max-width:100%;margin-bottom:8px;padding:12px 18px;border:1px solid #dce1eb;border-radius:12px;background:#fff;color:#29354a;box-shadow:0 6px 24px #17213c26;font-size:14px;line-height:1.6;overflow-wrap:anywhere}
+.toast-success,.recognition-success{color:#21633d;border:1px solid #b6dfc4;background:#effaf3}
+.recognition-success{padding:12px 14px;border-radius:10px;line-height:1.6;font-size:14px;scroll-margin:16px}
+@media(prefers-reduced-motion:reduce){.toast{transition:none}}

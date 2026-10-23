@@ -64,8 +64,25 @@ try {
     }
 
     if (-not (Test-Path -LiteralPath $ocrEntry)) {
-        Write-Host '提示：浏览器端 OCR 资源缺失，识别会自动回退服务端。' -ForegroundColor Yellow
+        Write-Host '提示：浏览器端 OCR 资源缺失，图片识别会回退服务端，扫描 PDF 暂不可识别。' -ForegroundColor Yellow
         Write-Host '  修复：cd ocr-trial; npm install; cd ..; node tools/prepare-ocr-web.cjs' -ForegroundColor Yellow
+    }
+
+    $pdfReader = Join-Path $projectRoot 'fronted\vendor\ocr\pdfjs\pdf.min.js'
+    $pdfWorker = Join-Path $projectRoot 'fronted\vendor\ocr\pdfjs\pdf.worker.min.js'
+    if (-not (Test-Path -LiteralPath $pdfReader) -or -not (Test-Path -LiteralPath $pdfWorker)) {
+        if (-not $CheckOnly) { & node.exe (Join-Path $projectRoot 'tools\prepare-pdf-preview.cjs') }
+        if (-not (Test-Path -LiteralPath $pdfReader) -or -not (Test-Path -LiteralPath $pdfWorker)) {
+            Write-Host '提示：PDF 阅读组件缺失。准备好 ocr-trial 依赖后运行 node tools/prepare-pdf-preview.cjs；网站和附件下载仍可使用。' -ForegroundColor Yellow
+        }
+    }
+
+    $officeReader = Join-Path $projectRoot 'fronted\vendor\office\fflate.min.js'
+    if (-not (Test-Path -LiteralPath $officeReader)) {
+        if (-not $CheckOnly) { & node.exe (Join-Path $projectRoot 'tools\prepare-office-text.cjs') }
+        if (-not (Test-Path -LiteralPath $officeReader)) {
+            Write-Host '提示：Word/PPT 文字读取组件缺失。请在 ocr-trial 目录运行 npm install，再运行 node tools/prepare-office-text.cjs；网站其他功能仍可使用。' -ForegroundColor Yellow
+        }
     }
 
     # AI 服务是可选的：起不来不影响网站本身

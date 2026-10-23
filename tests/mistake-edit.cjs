@@ -168,8 +168,8 @@ function mistakeEditBrowserScenario(data) {
     check(stored.image_url && stored.answer_image_url && stored.title.endsWith('.pdf')
       && stored.review_revision === beforeFilesRevision + 2, 'question and answer attachments save through original APIs');
     await openMistakeEdit();
-    check(document.getElementById('mistakeEditQuestionFile').textContent.includes('打开题目附件')
-      && document.getElementById('mistakeEditAnswerFile').textContent.includes('打开答案附件'), 'existing attachments populated');
+    check(document.getElementById('mistakeEditQuestionFile').querySelector('[data-attachment-preview]')
+      && document.getElementById('mistakeEditAnswerFile').querySelector('[data-attachment-preview]'), 'existing attachments populated');
     removeMistakeEditQuestionFile(); selectFile('mistakeEditQuestionUpload','新题.pdf');
     toggleMistakeEditTag(folder.id,false);
     let failTags = true;
