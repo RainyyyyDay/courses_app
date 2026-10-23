@@ -1,5 +1,5 @@
-// 课程复习中心：历史、总复习选择与薄调度层。内容呈现和判断复用原控制器。
-const REVIEW_SOURCE_LABELS={plan:'考前计划复习',total:'总复习',material:'资料复习',note:'笔记复习',mistake:'错题复习'};
+// 课程复习中心：历史、复习选择与薄调度层。内容呈现和判断复用原控制器。
+const REVIEW_SOURCE_LABELS={plan:'考前计划复习',total:'复习',material:'资料复习',note:'笔记复习',mistake:'错题复习'};
 let reviewHistoryState=null;
 let reviewSessionDetail=null;
 let totalReviewState=null;
@@ -319,7 +319,7 @@ async function renderCenterReviewItem() {
   if(mistakeQueue?.centerContext)mistakeQueue=null;
   if(item.source_deleted || !item.reviewable) {
     currentView={type:'sessionUnavailable'};showPageOnly('materialReviewPage');
-    document.getElementById('readingReviewHeading').textContent='总复习';document.getElementById('materialReviewTitle').textContent=item.title_snapshot;
+    document.getElementById('readingReviewHeading').textContent='复习';document.getElementById('materialReviewTitle').textContent=item.title_snapshot;
     document.getElementById('materialReviewItem').style.display='block';document.getElementById('materialReviewComplete').style.display='none';
     document.getElementById('materialReviewContent').textContent=item.source_deleted ? '内容已删除，历史队列保留原身份。' : '题目或答案不完整，请先补齐内容，或跳过此项。';
     for(const id of ['materialReviewPreview','materialReviewActions','materialReviewError','materialReviewStatus','materialReviewProgress'])document.getElementById(id).textContent='';

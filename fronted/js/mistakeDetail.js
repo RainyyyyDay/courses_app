@@ -101,7 +101,7 @@ function renderMistakeDetail(mistake, review = false) {
   const tags = Array.isArray(mistake.knowledge) ? mistake.knowledge : [];
   document.getElementById('mistakeDetailTags').innerHTML = tags.length
     ? tags.map(k => tagChipHtml(k, false, true)).join('') : '<span class="tag-none">暂无标签</span>';
-  // 单独复习入口已移除；总复习/考前计划仍可进入 review 模式。
+  // 单独复习入口已移除；复习/考前计划仍可进入 review 模式。
   const reviewToolbar = document.getElementById('mistakeReviewToolbar');
   if (reviewToolbar) reviewToolbar.style.display = 'none';
   document.getElementById('mistakeReadPanel').style.display = review ? 'none' : 'block';
@@ -895,7 +895,7 @@ function renderMistakeReview(state) {
     : '';
   const firstAnswerInput=!isChoice && p.stage==='question'
     ? `<label>首次作答（不会被看答案后的修改覆盖）<textarea id="mistakeFirstAnswer" rows="4" oninput="mistakeDetailState.firstAnswerDraft=this.value">${escapeHtml(typedAnswer)}</textarea></label>`
-    : p.firstAnswer ? `<p>首次作答：${escapeHtml(p.firstAnswer)}${p.answerRevealed && !isChoice ? ' · 已看答案，本轮最高 Hard' : ''}</p>` : '';
+    : p.firstAnswer ? `<p>首次作答：${escapeHtml(p.firstAnswer)}${p.answerRevealed && !isChoice ? ' · 已看答案，本轮最高评为“基本掌握”' : ''}</p>` : '';
   panel.innerHTML = `${modeSwitch}<p>${escapeHtml(message)}</p>${firstAnswerInput}${isChoice && p.choice ? mistakeChoiceHtml(p) : ''}${answerBlock}
     <div class="mistake-review-actions">${pending ? '<span>有一次操作待确认，请先重试。</span><button onclick="retryMistakeReview()">重试上次操作</button>' : actions}</div>
     <div id="mistakeReviewError" class="mistake-inline-error" role="alert"></div>`;

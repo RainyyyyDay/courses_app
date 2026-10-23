@@ -5,7 +5,7 @@ const {reviewPlanContext,completePlanItem} = require('./reviewPlans');
 const {recordGradeInTransaction} = require('./reviewItems');
 const TYPES = {material:'materials',note:'notes',mistake:'mistakes'};
 const SOURCES = ['plan','total',...Object.keys(TYPES)];
-const LABELS = {plan:'考前计划复习',total:'总复习',material:'资料复习',note:'笔记复习',mistake:'错题复习'};
+const LABELS = {plan:'考前计划复习',total:'复习',material:'资料复习',note:'笔记复习',mistake:'错题复习'};
 function sourceRow(type,id) {
   return Object.hasOwn(TYPES,type) ? db.prepare(`SELECT * FROM ${TYPES[type]} WHERE id=?`).get(id) : null;
 }

@@ -18,7 +18,7 @@ const coursesAiSettings = (() => {
   });
   const guessPreset=(kind,url)=>kind==='compatible'?(Object.entries(presets).find(([id,p])=>id!=='compatible'&&p.baseUrl&&p.baseUrl===String(url||'').replace(/\/chat\/completions\/?$/,'').replace(/\/$/,''))?.[0]||'compatible'):kind;
   let applyError='';
-  let calls=0, message='尚未配置；原有手动输入和 Mock 演示可继续使用。';
+  let calls=0, message='尚未配置 AI；可以继续手动填写。';
   const active=new Set(), seen=new Set(), drafts=new Map();
   const waiting=new Map();let waitingPanel=null,waitingTimer=null;
   function renderWaiting(){
@@ -53,16 +53,16 @@ const coursesAiSettings = (() => {
   }
   const providerLabel=()=>serviceName(provider,baseUrl);
   const describe=credentials=>credentials?`${serviceName(credentials.provider||'deepseek',credentials.baseUrl).split('（')[0]} / ${credentials.model}`:'Mock 演示';
-  const label=()=>provider==='mock'?'共用 AI 设置：Mock 演示':`共用 AI 设置：${providerLabel()} / ${model}（${key?'Key 就绪':'待填写 Key'}）`;
+  const label=()=>provider==='mock'?'共用 AI 设置：尚未配置':`共用 AI 设置：${providerLabel()} / ${model}（${key?'Key 就绪':'待填写 Key'}）`;
   function invalidate(){epoch++;for(const cancel of active)cancel();active.clear();}
   function refresh(){
     if(!node('Summary'))return;
-    node('Summary').textContent=provider==='mock'?'当前：Mock 演示，不调用真实模型。':
+    node('Summary').textContent=provider==='mock'?'当前：尚未配置 AI，可以继续手动填写。':
       `当前：${providerLabel()} / ${model}；${key?'Key 已在本标签页就绪':'未持有 Key（不会回退 Mock）'}；已发起 ${calls} 次共享请求。`;
     node('Message').textContent=message;
-    if(node('Verification'))node('Verification').textContent=provider==='mock'?'Mock 不请求真实模型。':connectionState==='passed'?'当前配置最近一次连接测试已通过；不代表所有生成场景或模型都已验证。':connectionState==='failed'?'当前配置最近一次连接测试未通过，请查看下方具体原因。':'当前配置尚未通过连接测试。预设已按文档适配，不代表你的账号已联调成功。';
+    if(node('Verification'))node('Verification').textContent=provider==='mock'?'请选择 AI 服务并配置后再测试。':connectionState==='passed'?'当前配置最近一次连接测试已通过；不代表所有生成场景或模型都已验证。':connectionState==='failed'?'当前配置最近一次连接测试未通过，请查看下方具体原因。':'当前配置尚未通过连接测试。预设已按文档适配，不代表你的账号已联调成功。';
     node('Message').classList.toggle('ai-settings-error',!!applyError);
-    if(node('Applied'))node('Applied').textContent=provider==='mock'?'已生效：Mock 演示（不调用真实模型）':`已生效：${providerLabel()} / ${model} · ${key?'Key 就绪':'需要填写 Key'}`;
+    if(node('Applied'))node('Applied').textContent=provider==='mock'?'尚未启用 AI':`已生效：${providerLabel()} / ${model} · ${key?'Key 就绪':'需要填写 Key'}`;
     node('Open').textContent='AI 设置'+(drafts.size?` · 草稿 ${drafts.size}`:'');
     if(typeof updateResourceAiSource==='function')updateResourceAiSource();
     for(const prefix of ['mistakeAi','mistakeCreateAi','mistakeCreateAnswerAi','mistakeEditAnswerAi']){
@@ -99,7 +99,7 @@ const coursesAiSettings = (() => {
     for(const prefix of ['mistakeAi','mistakeCreateAi','mistakeCreateAnswerAi','mistakeEditAnswerAi']){
       const select=document.getElementById(prefix+'Provider');if(select){select.value='shared';changeMistakeAiProvider(prefix);}
     }
-    message=provider==='mock'?'已应用 Mock 演示；未启用真实 AI。':`已应用 ${providerLabel()} / ${model}。现在可测试连接${retain?'。':'；Key 仅供下一次请求，测试也会使用这次 Key。'}`;refresh();
+    message=provider==='mock'?'尚未启用 AI。':`已应用 ${providerLabel()} / ${model}。现在可测试连接${retain?'。':'；Key 仅供下一次请求，测试也会使用这次 Key。'}`;refresh();
   }
   function read(){
     if(provider==='mock')return null;
@@ -156,6 +156,7 @@ const coursesAiSettings = (() => {
   function syncWorkspace(){let host='';try{host=new URL(node('BaseUrl').value).hostname;}catch{}node('WorkspaceGroup').hidden=host!=='api.anthropic.com';}
   function apply(){
     const choice=node('Provider').value,preset=presets[choice];
+    if(choice==='mock'){message='请选择真实 AI 服务；也可以继续手动填写。';refresh();return;}
     if(!preset){message='请选择有效服务商。';refresh();return;}
     try{configure({preset:choice,workspaceId:node('WorkspaceGroup').hidden?'':node('Workspace').value.trim(),provider:preset.provider,model:preset.provider==='compatible'?node('CustomModel').value.trim():(node('Model').value||'deepseek-flash'),baseUrl:node('BaseUrl').value.trim(),apiKey:node('Key').value||(choice===selectedPreset&&(provider!=='compatible'||node('BaseUrl').value.trim().replace(/\/$/,'')===baseUrl)?key:''),
       retain:node('Retain').checked,auto:node('Auto').checked,consent:node('Consent').checked});node('Key').value='';}
@@ -239,7 +240,7 @@ const coursesAiSettings = (() => {
       <div class="ai-settings-body"><p id="coursesAiSummary" class="ai-settings-status" role="status"></p>
       <p class="ai-help">用于资料、笔记和错题的复习建议、材料草稿、答案解析及作答后的可选批改。手动填写不受影响，AI 批改不自动修改评分，其余生成结果需确认后采用。</p>
       <section class="ai-settings-section"><h3>服务与凭据</h3><div class="ai-settings-fields">
-      <label>服务商<select id="coursesAiProvider">${Object.entries(presets).map(([id,p])=>`<option value="${id}">${p.name}</option>`).join('')}</select></label>
+      <label>服务商<select id="coursesAiProvider"><option value="mock" disabled>请选择 AI 服务</option>${Object.entries(presets).filter(([id])=>id!=='mock').map(([id,p])=>`<option value="${id}">${p.name}</option>`).join('')}</select></label>
       <label id="coursesAiModelLabel">模型<select id="coursesAiModel" disabled><option value=""></option><option>deepseek-flash</option><option>deepseek-v4-pro</option></select></label><label id="coursesAiModelPickLabel" hidden>模型<select id="coursesAiModelPick"></select></label></div>
       <div id="coursesAiCustom" hidden><label id="coursesAiCustomModelLabel">模型 / 接入点 ID<input list="coursesAiModelSuggestions" id="coursesAiCustomModel" maxlength="200" placeholder="填写完整模型 ID，或 ep- 接入点 ID" autocomplete="off"></label><datalist id="coursesAiModelSuggestions"></datalist>
       <details id="coursesAiAdvanced" class="ai-settings-extras"><summary>高级设置（修改 API 地址）</summary><label>API 地址<input id="coursesAiBaseUrl" type="url" maxlength="2048" placeholder="https://服务商域名/v1" autocomplete="off"></label>

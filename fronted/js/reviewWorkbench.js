@@ -164,7 +164,7 @@ async function confirmCenterQuickMode(){
 function renderWorkbenchInfo(s){
   const actual=s.attempt?.modeId||readReviewActive(s)?.mode||(s.type==='mistake'?mistakeDetailState?.progress?.mode?.id:'reading');
   const suggestion=readReviewAiMethod(s),selection=workbenchSelection(s);
-  wb('Info').textContent=s.sessionItemId?`当前实际流程：${AI_REVIEW_METHODS[actual]||'尚未开始'}。待使用：${AI_REVIEW_METHODS[s.mode]}（${{user:'本次明确选择',ai:'已保存的 AI 建议，尚需本次采用',rule:'规则推荐'}[selection.source]}）。选择/准备不评分；开始本轮后才执行选中模式。切换不会改写历史、评分或计划；已完成项目请在记录中再次复习。`:'材料准备：手动填写即可，AI 可选。确认保存后从总复习或计划进入。';
+  wb('Info').textContent=s.sessionItemId?`当前实际流程：${AI_REVIEW_METHODS[actual]||'尚未开始'}。待使用：${AI_REVIEW_METHODS[s.mode]}（${{user:'本次明确选择',ai:'已保存的 AI 建议，尚需本次采用',rule:'规则推荐'}[selection.source]}）。选择/准备不评分；开始本轮后才执行选中模式。切换不会改写历史、评分或计划；已完成项目请在记录中再次复习。`:'材料准备：手动填写即可，AI 可选。确认保存后从复习或计划进入。';
   wb('Suggestion').innerHTML=s.sessionItemId&&suggestion?`<p>已保存的 AI 建议：${escapeHtml(AI_REVIEW_METHODS[suggestion])}；不等于已创建材料。</p>${s.mode===suggestion?'<p>本次已选用此建议，无需重复确认。</p>':'<button type="button" onclick="useWorkbenchSuggestion()">本次使用此建议（先检查材料）</button>'}`:'';
 }
 async function useWorkbenchSuggestion(){const s=reviewWorkbench,mode=s&&readReviewAiMethod(s);if(mode)await loadReviewWorkbenchMode(mode);}
@@ -260,7 +260,7 @@ async function loadReviewWorkbenchMode(mode,explicit=true){
     renderWorkbenchReadiness(incompatible?'missing':mode==='retry'&&s.type!=='mistake'?'checking':'ready',incompatible?'还缺已确认的选择题选项和正确答案':mode==='retry'&&s.type!=='mistake'?'开始前将检查已有任务；不会用通用输入框代替缺失材料':'使用已有原题和答案，无需额外创建材料');
     if(s.type==='mistake'&&mistakeDetailState?.id===s.id&&!mistakeDetailState.progress?.reviewable)renderWorkbenchReadiness('missing','还需在错题详情补齐原题、参考答案或题型信息；不需要另建专属材料');
     wb('Editor').textContent=incompatible?'当前缺少已确认且完整的选择题选项和正确答案。请在错题详情编辑题型，或明确切换标准复习。':mode==='retry'?'将隐藏旧作答、答案和解析，开启新轮次。复用已有流程和判分，旧轮次证据保留；不会覆盖历史。':'使用原题和答案，不需要额外材料。进入后先独立作答，再揭示答案并自评。切换原生模式会重新开始本轮，但不改变记忆状态。';
-    wb('Actions').innerHTML=incompatible?'<button onclick="loadReviewWorkbenchMode(\'standard\')">切换标准复习</button>':s.sessionItemId?'<button onclick="runExistingReviewMode()">确认并进入本轮流程</button>':'<p>请从总复习或考前计划中运行。</p>';
+    wb('Actions').innerHTML=incompatible?'<button onclick="loadReviewWorkbenchMode(\'standard\')">切换标准复习</button>':s.sessionItemId?'<button onclick="runExistingReviewMode()">确认并进入本轮流程</button>':'<p>请从复习或考前计划中运行。</p>';
     if(mode==='retry'&&s.type!=='mistake'){
       s.busy=true;wb('Mode').disabled=true;
       try{
@@ -290,7 +290,7 @@ async function loadReviewWorkbenchMode(mode,explicit=true){
       wb('Editor').innerHTML=(draft?'<p class="mistake-ai-note">已恢复本浏览器未确认草稿，尚未覆盖正式材料。</p>':'')+(mode==='cloze'?clozeEditorHtml(m):wbInput('任务 / 阅读正文','Prompt',m.prompt,5))
         +(mode==='cloze'?'':mode==='reading'?'':wbInput('参考要点 / 关键异同','Reference',m.reference)+wbInput('核对标准 / 评分量规','Rubric',m.rubric))
         +(mode==='contrast'?wbInput('对比对象（每行一个，至少两个）','Objects',(m.objects||[]).join('\n'))+wbInput('对比维度（每行一个）','Dimensions',(m.dimensions||[]).join('\n')):'')
-        +'<details class="review-ai-generator"><summary>AI 一键生成材料<span class="ai-optional-tag">可选</span></summary><p class="ai-help">使用共用 AI 设置生成可编辑草稿。当前所选 AI 服务会接收当前题面及参考文字，可能计费；不会自动覆盖、保存或评分。</p><div class="ai-action-row"><button type="button" class="ai-primary" data-material-ai-generate onclick="requestWorkbenchDraft(true)">生成材料草稿</button><button type="button" onclick="coursesAiSettings.open()">AI 设置</button><button type="button" onclick="requestWorkbenchDraft()">Mock 演示（非真实 AI）</button><button type="button" class="ai-text-button" onclick="reviewWorkbench?.draftController?.abort()">取消生成</button></div><p id="reviewWbDraftStatus" role="status"></p><div id="reviewWbDraft" class="review-ai-draft"></div></details>';
+        +'<details class="review-ai-generator"><summary>AI 一键生成材料<span class="ai-optional-tag">可选</span></summary><p class="ai-help">使用共用 AI 设置生成可编辑草稿。当前所选 AI 服务会接收当前题面及参考文字，可能计费；不会自动覆盖、保存或评分。</p><div class="ai-action-row"><button type="button" class="ai-primary" data-material-ai-generate onclick="requestWorkbenchDraft(true)">生成材料草稿</button><button type="button" onclick="coursesAiSettings.open()">AI 设置</button><button type="button" class="ai-text-button" onclick="reviewWorkbench?.draftController?.abort()">取消生成</button></div><p id="reviewWbDraftStatus" role="status"></p><div id="reviewWbDraft" class="review-ai-draft"></div></details>';
       wb('Actions').innerHTML='<button onclick="saveWorkbenchMaterial()">确认并保存正式材料</button>'+(s.sessionItemId?'<button data-save-start onclick="saveWorkbenchMaterial(true)">确认保存并开始本轮复习</button><button onclick="switchWorkbenchToAvailableMode()">'+(s.type==='mistake'?'切换标准复习（保留草稿）':'返回原阅读（保留草稿）')+'</button>':'');
       if(mode==='cloze')initClozeEditor();
       updateWorkbenchPreparation();
@@ -366,15 +366,15 @@ function renderWorkbenchAttempt(){
   else content+=`<${p.modeId==='reading'?'article':'div'} class="${p.modeId==='reading'?'review-reading-body':'detail-content'}">${escapeHtml(m.prompt)}</${p.modeId==='reading'?'article':'div'}>`;
   if(p.stage==='question'){
     if(p.modeId==='contrast')content+=workbenchContrastHtml(m,pending?.answer);
-    else if(p.modeId==='reading')content+='<p>只记录阅读曝光，不评标准答案，不计 Good，不完成掌握型任务。</p>'+wbInput('可选：一句话总结 / 疑问','Answer',pending?.answer||'',2)+'<label class="review-check"><input id="reviewWbReadComplete" type="checkbox"><span>我已完成本段阅读</span></label>';
-    else if(p.modeId!=='cloze')content+=`<p>${p.modeId==='self_explain'?'用自己的话解释概念、原因、例子；提交后才能查看要点与量规。':'先独立回忆或解题；提交后查看参考答案，自评最高 Hard。'}</p>`+wbInput(p.modeId==='self_explain'?'我的讲解（概念、原因与例子）':'看答案前的独立作答 / 回忆','Answer',typeof pending?.answer==='string'?pending.answer:'',p.modeId==='self_explain'?10:5);
+    else if(p.modeId==='reading')content+='<p>只记录阅读曝光，不评标准答案，不计为“已掌握”，不完成掌握型任务。</p>'+wbInput('可选：一句话总结 / 疑问','Answer',pending?.answer||'',2)+'<label class="review-check"><input id="reviewWbReadComplete" type="checkbox"><span>我已完成本段阅读</span></label>';
+    else if(p.modeId!=='cloze')content+=`<p>${p.modeId==='self_explain'?'用自己的话解释概念、原因、例子；提交后才能查看要点与量规。':'先独立回忆或解题；提交后查看参考答案，自评最高为“基本掌握”。'}</p>`+wbInput(p.modeId==='self_explain'?'我的讲解（概念、原因与例子）':'看答案前的独立作答 / 回忆','Answer',typeof pending?.answer==='string'?pending.answer:'',p.modeId==='self_explain'?10:5);
     wb('Actions').innerHTML=`<button onclick="submitWorkbenchAttempt('${p.modeId==='reading'?'complete':'submit'}')">${p.modeId==='reading'?'记录阅读曝光（不评分）':'提交首次作答'}</button>`;
   }else{
     if(p.modeId==='contrast')content+=workbenchContrastHtml(m,p.firstAnswer,true);
     else if(p.modeId!=='cloze')content+=`<h4>${p.modeId==='reading'?'阅读记录':'不可改写的首次作答'}</h4><div class="detail-content">${escapeHtml(p.firstAnswer||'（无）')}</div>`;
     if(!['cloze','reading'].includes(p.modeId))content+=`<h4>参考解释 / 知识要点</h4><div class="detail-content" data-review-reference>${escapeHtml(m.reference||'')}</div><h4>评分量规</h4><div class="detail-content">${escapeHtml(m.rubric||'未另设量规，请核对参考要点')}</div>`+(['self_explain','contrast'].includes(p.modeId)?workbenchCheckpoints(p):'');
-    wb('Actions').innerHTML=p.stage==='answer'?'<p>已看答案，最终评分最高 Hard。</p><button onclick="submitWorkbenchAttempt(\'judge\',1)">Again · 未掌握</button><button onclick="submitWorkbenchAttempt(\'judge\',2)">Hard · 基本掌握</button>':'<button onclick="finishWorkbenchAttempt()">返回复习队列</button>';
-    if(p.stage==='completed')content+=`<p>${p.grade===null?'已记录曝光，未产生评分':`已保存评分：${['','Again','Hard','Good','Easy'][p.grade]}`} · ${p.durationMs} ms</p>`;
+    wb('Actions').innerHTML=p.stage==='answer'?'<p>本轮已查看参考答案，自评可选“未掌握”或“基本掌握”。</p><button onclick="submitWorkbenchAttempt(\'judge\',1)">未掌握</button><button onclick="submitWorkbenchAttempt(\'judge\',2)">基本掌握</button>':'<button onclick="finishWorkbenchAttempt()">返回复习队列</button>';
+    if(p.stage==='completed')content+=`<p>${p.grade===null?'已记录曝光，未产生评分':`已保存评分：${['','未掌握','基本掌握','已掌握','熟练掌握'][p.grade]}`} · ${p.durationMs} ms</p>`;
   }
   wb('Attempt').innerHTML=content;
   if(typeof mountWorkbenchFeedback==='function')mountWorkbenchFeedback(s);
@@ -461,7 +461,7 @@ async function requestWorkbenchDraft(useShared=false){
     if(useShared&&(!source.trim()||source.length>4000||input.reference.length>4000))throw new Error('请先选择并校对不超过 4000 字符的题面和参考文字；不会读取附件或静默截断。');
     const realInput={kind:s.type,mode_id:s.mode,content:source,reference:input.reference};
     if(useShared&&new TextEncoder().encode(JSON.stringify(realInput)).length>15000)throw new Error('本次文字过多，请缩小材料片段后生成。');
-    if(useShared)credentials=coursesAiSettings.read();
+    if(useShared){credentials=coursesAiSettings.read();if(!credentials)throw new Error('请先打开 AI 设置并配置真实 AI；也可以继续手动填写材料。');}
     wb('DraftStatus').textContent=credentials?'正在请求 '+coursesAiSettings.describe(credentials)+'（可能计费）；不会自动采用，请稍候…':'正在生成 Mock 演示草稿，不调用真实模型…';
     s.draftController=new AbortController();
     let draft;

@@ -294,7 +294,7 @@ function closeReviewPlanCreate() {
 async function loadReviewPlanCandidates() {
   const state=reviewPlanCreate;if(!state)return;state.loading=true;renderReviewPlanSelection();
   try {
-    // 原计划候选接口仍决定可选范围；现有总复习候选补充直接关联标签/OCR，不请求知识树。
+    // 原计划候选接口仍决定可选范围；现有复习候选补充直接关联标签/OCR，不请求知识树。
     const [rows,tagged]=await Promise.all([requestList(reviewPlanApi('candidates')),requestList(reviewSessionApi('candidates',state.courseId))]);
     if(reviewPlanCreate!==state || currentCourseId!==state.courseId)return;
     const byKey=new Map(tagged.map(row=>[row.type+':'+row.id,row]));

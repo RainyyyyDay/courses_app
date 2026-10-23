@@ -154,7 +154,7 @@ async function requestResourceAi(){
   if(!input.content){el('Error').textContent='请先填写或校对待复习的文字片段；不会自动读取附件。';return;}
   let credentials;
   try{
-    credentials=coursesAiSettings.read();s.busy=true;s.controller=new AbortController();el('Fields').disabled=true;el('Confirm').disabled=true;
+    credentials=coursesAiSettings.read();if(!credentials)throw new Error('请先打开 AI 设置并配置真实 AI，也可以继续手动选择复习方式。');s.busy=true;s.controller=new AbortController();el('Fields').disabled=true;el('Confirm').disabled=true;
     el('Status').textContent=credentials?'正在请求 '+coursesAiSettings.describe(credentials)+'（可能计费）；不会自动采用…':'正在获取 Mock 规则演示，不调用真实模型…';
     const pending=fetchResourceAi(input,{signal:s.controller.signal,deepseek:credentials});if(credentials)credentials.apiKey='';
     const result=await pending;if(!resourceAiCurrent(s))return;

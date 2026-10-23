@@ -1,12 +1,18 @@
 /* Visual authoring only. Persist the existing prompt + blanks contract unchanged. */
 function clozeEditorHtml(m){return `<section class="cloze-editor">
-  <p class="ai-help">填写完整原文，选中要记忆的文字，再点击“挖空”。答案自动记录；点击彩色空位可调整。</p>
-  <div class="cloze-toolbar"><button type="button" class="ai-primary" id="clozeMakeBlank">选中文字并挖空</button><button type="button" id="clozeUndo">撤销</button><button type="button" id="clozePreviewToggle" aria-pressed="false">试做预览</button></div>
+  <p class="ai-help">填写完整原文，点击“开始选取”，选中文字后点击“确认挖空”；未选中文字时再次点击可取消。答案自动记录；点击彩色空位可调整。</p>
+  <div class="cloze-toolbar"><button type="button" id="clozeMakeBlank" aria-pressed="false">开始选取</button><button type="button" id="clozeUndo">撤销</button><button type="button" id="clozePreviewToggle" aria-pressed="false">试做预览</button></div>
   <label id="clozeSourceLabel">原文与空位</label><div id="clozeSource" class="cloze-source" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="clozeSourceLabel" spellcheck="false"></div>
   <div id="clozePreview" class="cloze-source" hidden></div><p id="clozeStatus" role="status" aria-live="polite"></p>
   <details id="clozeFind"><summary>手机选词不方便？输入要挖的文字</summary><label>要挖的文字<input id="clozeFindText" autocomplete="off"></label><button type="button" id="clozeFindButton">查找可挖位置</button><div id="clozeMatches" class="cloze-matches"></div></details>
   <details id="clozeSettings"><summary>答案与提示（<span id="clozeCount">0</span> 处）</summary><div id="reviewWbBlanks">${(m.blanks||[]).map(wbBlank).join('')}</div></details>
   <textarea id="reviewWbPrompt" hidden>${escapeHtml(m.prompt||'')}</textarea></section>`;}
+function updateClozeSelectionButton(){
+  const source=document.getElementById('clozeSource'),button=document.getElementById('clozeMakeBlank');if(!source||!button)return;
+  const ready=source.selecting&&source.savedRange&&!source.savedRange.collapsed&&source.contains(source.savedRange.commonAncestorContainer);
+  button.textContent=!source.selecting?'开始选取':ready?'确认挖空':'请选中文字（再点取消）';button.classList.toggle('ai-primary',!!source.selecting);button.setAttribute('aria-pressed',String(!!source.selecting));
+}
+function resetClozeSelection(){const source=document.getElementById('clozeSource');if(source){source.selecting=false;source.savedRange=null;}updateClozeSelectionButton();}
 function clozeNodeText(node){
   if(node.nodeType===3)return node.data;
   if(node.nodeType!==1&&node.nodeType!==11)return '';
@@ -35,7 +41,7 @@ function refreshClozeEditor(){
     for(const part of m.prompt.split(/(【[A-Za-z][A-Za-z0-9_]*】)/g)){
       const blank=blanks.get(part.slice(1,-1));source.append(part.startsWith('【')&&part.endsWith('】')&&blank?clozeChip(blank):document.createTextNode(part));
     }
-    source.signature=signature;source.savedRange=null;
+    source.signature=signature;resetClozeSelection();
     for(const row of wb('Blanks').children)row.querySelector('summary').textContent='空位答案：'+(row.querySelector('[data-blank="answer"]').value||'待填写');
   }
   document.getElementById('clozeCount').textContent=m.blanks.length;
@@ -72,7 +78,7 @@ function makeClozeBlank(range=document.getElementById('clozeSource')?.savedRange
   rememberClozeEdit();let n=1;while(blanks.some(b=>b.id==='b'+n)||wb('Prompt').value.includes('【b'+n+'】'))n++;
   const blank={id:'b'+n,answer};wb('Blanks').insertAdjacentHTML('beforeend',wbBlank(blank));
   const chip=clozeChip(blank);range.deleteContents();range.insertNode(chip);source.savedRange=null;
-  saveClozeSource();document.getElementById('clozeCount').textContent=blanks.length+1;
+  saveClozeSource();resetClozeSelection();getSelection()?.removeAllRanges();document.getElementById('clozeCount').textContent=blanks.length+1;
   clozeMessage('已挖空，答案自动记录。点击彩色文字可调整，点击 × 恢复原文。');
 }
 function findClozeText(){
@@ -87,12 +93,17 @@ function findClozeText(){
   }
   clozeMessage(count?'找到 '+count+' 处，点击对应位置挖空。':'没有找到未挖空的匹配文字。');
 }
+let clozeSelectionEvents;
 function initClozeEditor(){
+  clozeSelectionEvents?.abort();clozeSelectionEvents=new AbortController();
   const source=document.getElementById('clozeSource');if(!source)return;source.history=[];refreshClozeEditor();
-  const capture=()=>{const selection=getSelection();if(selection.rangeCount&&source.contains(selection.getRangeAt(0).commonAncestorContainer))source.savedRange=selection.getRangeAt(0).cloneRange();};
+  const capture=()=>{if(!source.selecting)return;const selection=getSelection();if(selection.rangeCount&&source.contains(selection.getRangeAt(0).commonAncestorContainer)){source.savedRange=selection.getRangeAt(0).cloneRange();updateClozeSelectionButton();}};
   source.addEventListener('mouseup',capture);source.addEventListener('keyup',capture);source.addEventListener('touchend',capture);
   document.getElementById('clozeMakeBlank').onpointerdown=e=>{capture();if(e.pointerType==='mouse')e.preventDefault();};
-  document.getElementById('clozeMakeBlank').onclick=()=>makeClozeBlank();
+  document.getElementById('clozeMakeBlank').onclick=()=>{if(reviewWorkbench?.busy)return;if(!source.selecting){source.selecting=true;source.savedRange=null;getSelection()?.removeAllRanges();source.focus();updateClozeSelectionButton();clozeMessage('请在原文中选中要挖空的文字，再点击“确认挖空”；未选中文字时再次点击可取消。');return;}capture();if(!source.savedRange||source.savedRange.collapsed||!source.contains(source.savedRange.commonAncestorContainer)||!source.savedRange.toString().trim()){resetClozeSelection();clozeMessage('已取消选取。');return;}makeClozeBlank();};
+  source.addEventListener('selectstart',()=>{if(source.selecting)source.savedRange=null;});
+  document.addEventListener('selectionchange',()=>{if(source.isConnected)capture();},{signal:clozeSelectionEvents.signal});
+  source.addEventListener('keydown',e=>{if(e.key==='Escape'){resetClozeSelection();clozeMessage('已取消选取。');}});
   source.onbeforeinput=e=>{
     if(reviewWorkbench?.busy){e.preventDefault();return;}
     const selection=getSelection(),range=selection.rangeCount?selection.getRangeAt(0):null;
@@ -102,6 +113,7 @@ function initClozeEditor(){
     rememberClozeEdit();
   };
   source.oninput=()=>{
+    resetClozeSelection();
     // Keep hidden metadata consistent with native browser editing.
     for(const row of [...wb('Blanks').children]){const id=row.querySelector('[data-blank="id"]').value;if(![...source.querySelectorAll('[data-cloze-id]')].some(c=>c.dataset.clozeId===id))row.remove();}
     saveClozeSource();document.getElementById('clozeCount').textContent=wb('Blanks').children.length;
@@ -110,5 +122,5 @@ function initClozeEditor(){
   source.ondrop=e=>e.preventDefault();
   document.getElementById('clozeUndo').onclick=undoClozeEdit;
   document.getElementById('clozeFindButton').onclick=findClozeText;
-  document.getElementById('clozePreviewToggle').onclick=()=>{const preview=document.getElementById('clozePreview'),show=preview.hidden;refreshClozeEditor();preview.hidden=!show;source.hidden=show;document.getElementById('clozeFind').hidden=show;document.getElementById('clozeMakeBlank').disabled=show;const button=document.getElementById('clozePreviewToggle');button.textContent=show?'返回编辑':'试做预览';button.setAttribute('aria-pressed',String(show));clozeMessage(show?'试做不会保存答案或产生复习记录。':'已返回编辑。');};
+  document.getElementById('clozePreviewToggle').onclick=()=>{const preview=document.getElementById('clozePreview'),show=preview.hidden;resetClozeSelection();refreshClozeEditor();preview.hidden=!show;source.hidden=show;document.getElementById('clozeFind').hidden=show;document.getElementById('clozeMakeBlank').disabled=show;const button=document.getElementById('clozePreviewToggle');button.textContent=show?'返回编辑':'试做预览';button.setAttribute('aria-pressed',String(show));clozeMessage(show?'试做不会保存答案或产生复习记录。':'已返回编辑。');};
 }

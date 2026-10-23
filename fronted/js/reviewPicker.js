@@ -1,4 +1,4 @@
-// 仅供总复习和创建计划使用：共享选择卡片、标签与只读预览，不参与复习执行。
+// 仅供复习和创建计划使用：共享选择卡片、标签与只读预览，不参与复习执行。
 function createReviewPickerFilters() {
   return Object.fromEntries(['material','note','mistake'].map(type=>[type,{q:'',favorite:false,status:'',category:'',tags:new Set(),tagsOpen:false,scroll:0}]));
 }

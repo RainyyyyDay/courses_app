@@ -6,6 +6,22 @@ body {
   min-height: 100vh;
 }
 
+/* Shared fallback for every static and dynamically inserted action button.
+   Component rules below retain icon, tab, tag, primary and danger variants. */
+button {
+  appearance:none; font:inherit; font-size:14px; line-height:1.5;
+  padding:9px 14px; border:1px solid #dce1eb; border-radius:9px;
+  background:#f3f4f8; color:#4a5268; cursor:pointer;
+  max-width:100%; overflow-wrap:anywhere;
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
+}
+button:hover:not(:disabled) { border-color:#b9c8ed; }
+button:focus-visible { outline:2px solid #8fa8ff; outline-offset:2px; }
+button:disabled { opacity:.55; cursor:not-allowed; }
+button:is(.ai-primary,.btn-confirm,.btn-primary) { background:#4a6cf7; border-color:#4a6cf7; color:#fff; }
+button:is(.ai-primary,.btn-confirm,.btn-primary):hover:not(:disabled) { background:#3e5fe3; border-color:#3e5fe3; }
+button:is(.btn-danger,.edit-btn-danger) { background:#fff1f0; border-color:#f5c8c5; color:#c83e3e; }
+
 /* ===== 基础布局（只保证元素能排开，不美化） ===== */
 .header {
   background: #fff;
@@ -2242,7 +2258,7 @@ body.plan-modal-open { overflow: hidden; }
 .courses-ai-settings .ai-settings-fields label { margin-top:0; }
 .courses-ai-settings label { color:#526078; font-size:13px; }
 .courses-ai-settings :is(select,input[type=password]) { margin-top:6px; padding:10px 12px; border:1px solid #dbe0ea; border-radius:9px; background:#fcfdff; font:inherit; color:#232a3d; }
-:is(.courses-ai-settings,.review-workbench,#resourceAiPanel) :is(textarea,select,input):focus-visible { outline:2px solid #b9c8ff; outline-offset:2px; }
+:is(.courses-ai-settings,.review-workbench,.mistake-answer-ai,#resourceAiPanel) :is(textarea,select,input):focus-visible { outline:2px solid #b9c8ff; outline-offset:2px; }
 .ai-help,.ai-empty-note { color:#7a8497; font-size:12px; line-height:1.65; }
 :is(.courses-ai-settings,.review-workbench) .ai-check-row { display:flex; align-items:flex-start; gap:10px; margin:10px 0; padding:12px; border:1px solid #e5e9f1; border-radius:10px; background:#fafbfe; font-size:13px; color:#34415a; cursor:pointer; }
 :is(.courses-ai-settings,.review-workbench) .ai-check-row input[type=checkbox] { flex:0 0 auto; width:16px; height:16px; padding:0; margin:3px 0 0; accent-color:#4a6cf7; }
@@ -2259,12 +2275,12 @@ body.plan-modal-open { overflow: hidden; }
 .ai-settings-footer { padding:14px 22px 18px; border-top:1px solid #e8ecf3; background:#fff; flex-shrink:0; }
 #coursesAiMessage { font-size:12px; line-height:1.6; color:#667187; margin-bottom:10px; }
 .ai-settings-footer .modal-actions { flex-wrap:wrap; justify-content:flex-start; gap:8px; }
-:is(.courses-ai-settings,.review-workbench,#resourceAiPanel) button { padding:9px 14px; border:1px solid #dce1eb; border-radius:9px; background:#f3f4f8; color:#4a5268; font:inherit; font-size:13px; line-height:1.5; cursor:pointer; transition:background .15s,border-color .15s; }
-:is(.courses-ai-settings,.review-workbench,#resourceAiPanel) button:hover { background:#e9edf5; border-color:#b9c8ed; }
-:is(.courses-ai-settings,.review-workbench,#resourceAiPanel) button:focus-visible { outline:2px solid #8fa8ff; outline-offset:2px; }
-:is(.courses-ai-settings,.review-workbench,#resourceAiPanel) button:disabled { opacity:.55; cursor:not-allowed; }
-:is(.courses-ai-settings,.review-workbench,#resourceAiPanel) .ai-primary,.review-workbench [data-save-start] { background:#4a6cf7; border-color:#4a6cf7; color:#fff; }
-:is(.courses-ai-settings,.review-workbench,#resourceAiPanel) .ai-primary:hover,.review-workbench [data-save-start]:hover { background:#3e5fe3; border-color:#3e5fe3; }
+:is(.courses-ai-settings,.review-workbench,.mistake-answer-ai,#resourceAiPanel) button { padding:9px 14px; border:1px solid #dce1eb; border-radius:9px; background:#f3f4f8; color:#4a5268; font:inherit; font-size:13px; line-height:1.5; cursor:pointer; transition:background .15s,border-color .15s; }
+:is(.courses-ai-settings,.review-workbench,.mistake-answer-ai,#resourceAiPanel) button:hover { background:#e9edf5; border-color:#b9c8ed; }
+:is(.courses-ai-settings,.review-workbench,.mistake-answer-ai,#resourceAiPanel) button:focus-visible { outline:2px solid #8fa8ff; outline-offset:2px; }
+:is(.courses-ai-settings,.review-workbench,.mistake-answer-ai,#resourceAiPanel) button:disabled { opacity:.55; cursor:not-allowed; }
+:is(.courses-ai-settings,.review-workbench,.mistake-answer-ai,#resourceAiPanel) .ai-primary,.review-workbench [data-save-start] { background:#4a6cf7; border-color:#4a6cf7; color:#fff; }
+:is(.courses-ai-settings,.review-workbench,.mistake-answer-ai,#resourceAiPanel) .ai-primary:hover,.review-workbench [data-save-start]:hover { background:#3e5fe3; border-color:#3e5fe3; }
 :is(.courses-ai-settings,.review-workbench) .ai-text-button { background:transparent; border-color:transparent; color:#788297; }
 .ai-action-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:12px 0; }
 .review-ai-generator { padding:14px; margin-top:18px; border:1px solid #dfe6f5; border-radius:12px; background:#f8faff; }
@@ -2316,3 +2332,14 @@ dialog > .ai-request-progress-dialog { margin:12px 18px; }
 
 .ai-settings-applied { margin:0 0 7px; color:#425a94; font-size:12px; line-height:1.6; }
 #coursesAiMessage.ai-settings-error { color:#b42318; font-weight:500; }
+
+/* Answer generation shares the same card and action layout as material drafts. */
+.mistake-answer-ai .ai-action-row { margin:12px 0 0; }
+.mistake-answer-ai > .ai-help { color:#7d8799; font-size:13px; line-height:1.65; }
+:is(#tagPickerModal,#mistakeEditModal) button[data-answer-ai-toggle] {
+  width:100%; min-height:40px; padding:10px 14px; border:1px solid #dce1eb;
+  border-radius:9px; text-align:left; font-size:14px; line-height:1.5;
+}
+@media(max-width:600px) {
+  .mistake-answer-ai .ai-action-row button { flex:1 1 140px; white-space:normal; }
+}

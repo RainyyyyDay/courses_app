@@ -120,7 +120,7 @@ try{
   if(row.type!=='mistake')check(document.querySelector('#resourceDetailOutlineMap img')?.getAttribute('src').startsWith('data:image/png;base64,'),'upstream mindmap image and local review history coexist');
   if(row.type==='note'){check(root.querySelectorAll('[data-history-key]').length===20&&!root.querySelector('[data-history-more]').hidden,'history list paginates');root.querySelector('[data-history-more]').click();await wait(()=>root.querySelectorAll('[data-history-key]').length===22);}
   const entry=[...root.querySelectorAll('[data-history-key]')].find(n=>n.dataset.historyKey===row.key);check(entry,'correct round');entry.open=true;await wait(()=>entry.dataset.loaded);
-  check(entry.textContent.includes('不会')&&entry.textContent.includes('当时参考')&&entry.textContent.includes('Hard'),'saved answer, snapshot and original grade visible');
+  check(entry.textContent.includes('不会')&&entry.textContent.includes('当时参考')&&entry.textContent.includes('基本掌握'),'saved answer, snapshot and original grade visible');
   check(entry.querySelectorAll('[data-history-feedback-version]').length===2&&entry.textContent.includes('Mock 演示'),'versions and source are distinct');check(!entry.querySelector('img'),'history output is escaped');
  }
  check(aiCalls===0,'opening or expanding historical results never requests AI');check(document.documentElement.scrollWidth<=innerWidth+1,'desktop/mobile fits');
