@@ -101,20 +101,42 @@ async function openTagPicker(mode, resourceType, resourceId) {
     const gen = document.getElementById('tagPickerOutlineGen');
     if (gen) gen.style.display = isResource && mode === 'manual' && pendingManual?.content ? 'inline-flex' : 'none';
     const mindmapBlock = document.getElementById('tagPickerMindmapBlock');
-    if (mindmapBlock) mindmapBlock.style.display = isResource && mode !== 'edit' ? 'block' : 'none';
+    if (mindmapBlock) mindmapBlock.style.display = isResource ? 'block' : 'none';
+    // 上传叫「根据大纲生成」，编辑叫「重新生成」
+    if (mindmapBlock) {
+      const genMapBtn = mindmapBlock.querySelector('.edit-file-actions button:nth-child(2)');
+      if (genMapBtn) genMapBtn.textContent = mode === 'edit' ? '重新生成' : '根据大纲生成';
+    }
     renderPickerMindmapSummary();
   }
   const resourceFields = document.getElementById('tagPickerResourceFields');
   if (resourceFields) {
     const isResourceForm = resourceType === 'material' || resourceType === 'note';
-    resourceFields.style.display = isResourceForm ? 'block' : 'none';
-    if (isResourceForm) {
+    // 编辑标签时不再显示附件/正文，避免误导；大纲与导图在下面单独给
+    resourceFields.style.display = isResourceForm && mode !== 'edit' ? 'block' : 'none';
+    if (isResourceForm && mode !== 'edit') {
       const titleEl = document.getElementById('tagPickerResourceTitle');
       if (titleEl) titleEl.textContent = resourceType === 'note' ? '笔记' : '资料';
       const contentEl = document.getElementById('tagPickerResourceContent');
       if (contentEl && mode === 'manual' && pendingManual) contentEl.value = pendingManual.content || '';
       renderPickerResourceSummary();
     }
+  }
+  // 编辑资料/笔记标签时，也能改大纲与导图
+  if (isResource && mode === 'edit' && outlineBlock) {
+    outlineBlock.style.display = 'block';
+    const row = currentResourceRow(resourceType, resourceId) || {};
+    const outlineInput = document.getElementById('tagPickerOutline');
+    if (outlineInput) outlineInput.value = row.outline || '';
+    if (mode === 'edit') pendingMindmapJson = row.mindmap_json || '';
+    const titleInput = document.getElementById('tagPickerMindmapTitle');
+    if (titleInput) {
+      let mapTitle = '';
+      try { mapTitle = JSON.parse(pendingMindmapJson || 'null')?.title || ''; } catch { mapTitle = ''; }
+      titleInput.value = mapTitle || row.title || '';
+    }
+    // 上面先渲染过一次摘要，这里补一次，确保删除键和预览按已有导图显示
+    renderPickerMindmapSummary();
   }
   const nameInput = document.getElementById('tagPickerName');
   const extChip = document.getElementById('tagPickerNameExt');
@@ -288,6 +310,17 @@ function importPickerMindmapImage(input) {
   reader.readAsDataURL(file);
 }
 
+// 一个入口同时收 JSON 和图片，按类型分派
+function uploadPickerMindmap(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const isJson = /json$/i.test(file.type || '') || /\.json$/i.test(file.name || '');
+  if (isJson) { importPickerMindmap(input); return; }
+  if (/^image\//.test(file.type || '')) { importPickerMindmapImage(input); return; }
+  input.value = '';
+  showToast('只支持导图 JSON 或图片');
+}
+
 function renderPickerMindmapSummary() {
   const box = document.getElementById('tagPickerMindmapSummary');
   const clear = document.getElementById('tagPickerMindmapClear');
@@ -296,6 +329,7 @@ function renderPickerMindmapSummary() {
     box.style.display = 'none';
     box.innerHTML = '';
     if (clear) clear.style.display = 'none';
+    renderPickerMindmapPreview();
     return;
   }
   let count = 0;
@@ -307,6 +341,22 @@ function renderPickerMindmapSummary() {
   if (pendingMindmapImage) parts.push('含导图截图');
   box.innerHTML = `<span class="mistake-create-file-icon">🗺️</span><div><strong>已关联思维导图</strong><small>${parts.join(' · ')} · 保存后可在详情页查看</small></div>`;
   if (clear) clear.style.display = 'inline-flex';
+  renderPickerMindmapPreview();
+}
+
+// 编辑弹窗里的小预览：能大致看清现有导图长什么样
+function renderPickerMindmapPreview() {
+  const host = document.getElementById('tagPickerMindmapPreview');
+  if (!host) return;
+  if (!pendingMindmapJson) { host.style.display = 'none'; host.innerHTML = ''; return; }
+  let map = null;
+  try { map = JSON.parse(pendingMindmapJson); } catch { map = null; }
+  if (!map) { host.style.display = 'none'; host.innerHTML = ''; return; }
+  const outline = mindmapToOutline(map);
+  host.style.display = 'block';
+  host.innerHTML = outline
+    ? renderOutlineSvg(outline, { boxWidth: 120 })
+    : '<div class="empty">这张导图没有可预览的文字节点</div>';
 }
 
 function importPickerMindmap(input) {
@@ -334,11 +384,30 @@ function importPickerMindmap(input) {
 function generatePickerMindmap() {
   const outline = (document.getElementById('tagPickerOutline')?.value || '').trim();
   if (!outline) { showToast('先在上面填写大纲，或者先自动生成大纲'); return; }
-  const title = (document.getElementById('tagPickerName')?.value || '').trim() || '思维导图';
+  const title = (document.getElementById('tagPickerMindmapTitle')?.value || '').trim()
+    || (document.getElementById('tagPickerName')?.value || '').trim() || '思维导图';
   const map = outlineToMindmap(outline, title);
   pendingMindmapJson = JSON.stringify(map);
+  // 重新生成后，旧的导图截图已过期
+  pendingMindmapImage = '';
   renderPickerMindmapSummary();
   showToast(`已生成导图，共 ${countMindmapNodes(map)} 个节点`);
+}
+
+// 中心主题可编辑：改了就把导图根节点的文字一起改掉
+function updatePickerMindmapTitle() {
+  if (!pendingMindmapJson) return;
+  const title = (document.getElementById('tagPickerMindmapTitle')?.value || '').trim();
+  if (!title) return;
+  try {
+    const map = JSON.parse(pendingMindmapJson);
+    if (Array.isArray(map.nodes) && map.nodes[0]) {
+      map.title = title;
+      map.nodes[0].text = title;
+      pendingMindmapJson = JSON.stringify(map);
+      renderPickerMindmapSummary();
+    }
+  } catch { /* 数据坏了就不动 */ }
 }
 
 function clearPickerMindmap() {
@@ -476,6 +545,12 @@ async function generatePickerOutline() {
   }
 }
 
+function clearPickerOutline() {
+  const input = document.getElementById('tagPickerOutline');
+  if (input) input.value = '';
+  showToast('大纲已清空，保存后生效');
+}
+
 // 选择器打开时锁住背景页面，别让它跟着一起滚。
 // （没有真实 body / classList 的环境直接跳过，不影响其它功能）
 function setTagPickerBodyLock(on) {
@@ -569,6 +644,23 @@ async function confirmTagPicker() {
       saved = await doCreateManual(nodeIds);
     } else {
       saved = await saveResourceTags(resourceType, resourceId, nodeIds, title);
+      // 资料/笔记：顺便保存大纲与导图
+      if (saved && (resourceType === 'material' || resourceType === 'note')) {
+        const outlineValue = (document.getElementById('tagPickerOutline')?.value || '').trim();
+        const row = currentResourceRow(resourceType, resourceId) || {};
+        const payload = {};
+        if (outlineValue !== (row.outline || '')) payload.outline = outlineValue;
+        if (pendingMindmapJson !== (row.mindmap_json || '')) payload.mindmapJson = pendingMindmapJson;
+        if (pendingMindmapImage) payload.mindmapImage = pendingMindmapImage;
+        if (Object.keys(payload).length) {
+          const path = resourceType === 'note' ? 'notes' : 'materials';
+          await requestApi(`${API}/courses/${currentCourseId}/${path}/${resourceId}/mindmap`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+        }
+      }
     }
     if (saved && tagPickerState === state && currentCourseId === state.courseId) {
       if(autoInput)void coursesAiSettings.afterCreated(saved,autoInput);

@@ -16,7 +16,8 @@ const app = express();
 
 // 允许跨域、允许解析 JSON 数据
 app.use(cors());
-app.use(express.json());
+// 导图截图以 data URL 回传，2MB 图片转 base64 约 2.7MB，默认 100KB 会 413
+app.use(express.json({ limit: '8mb' }));
 
 // AI 入口先按正式路径占位，但在真实用户认证接入前保持关闭。
 // 不传 authenticate / upstreamBaseUrl 时，模块会在任何上游请求发生前返回 503。
