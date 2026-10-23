@@ -276,3 +276,68 @@ function reuploadMindmap(resourceType, id) {
   };
   input.click();
 }
+
+// ===== 详情页的大纲 / 导图编辑 =====
+function resourceOutlineContext() {
+  const section = document.getElementById('resourceDetailOutlineSection');
+  if (!section) return null;
+  const resourceType = section.dataset.resourceType === 'note' ? 'note' : 'material';
+  const id = Number(section.dataset.resourceId);
+  if (!id) return null;
+  return { section, resourceType, id, path: resourceType === 'note' ? 'notes' : 'materials' };
+}
+
+async function putResourceMindmap(payload, message) {
+  const ctx = resourceOutlineContext();
+  if (!ctx) return;
+  try {
+    await requestApi(`${API}/courses/${currentCourseId}/${ctx.path}/${ctx.id}/mindmap`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    showToast(message);
+    openResourceDetail(ctx.resourceType, ctx.id);
+  } catch (err) {
+    showToast('保存失败：' + err.message);
+  }
+}
+
+function resourceOutlineValue() {
+  return (document.getElementById('resourceDetailOutlineText')?.value || '').trim();
+}
+
+function saveResourceOutline() {
+  putResourceMindmap({ outline: resourceOutlineValue() }, '大纲已保存');
+}
+
+function clearResourceOutline() {
+  putResourceMindmap({ outline: '' }, '大纲已清空');
+}
+
+function generateResourceMindmap() {
+  const outline = resourceOutlineValue();
+  if (!outline) { showToast('先写一段大纲'); return; }
+  const ctx = resourceOutlineContext();
+  const title = ctx?.section.dataset.title || '思维导图';
+  putResourceMindmap({
+    outline,
+    mindmapJson: JSON.stringify(outlineToMindmap(outline, title)),
+    mindmapImage: '',
+  }, '已按大纲生成导图');
+}
+
+function removeResourceMindmap() {
+  putResourceMindmap({ mindmapJson: '', mindmapImage: '' }, '导图已移除');
+}
+
+function openResourceMindmapEditor() {
+  const ctx = resourceOutlineContext();
+  if (!ctx) return;
+  openMindmapEditor(ctx.section.dataset.mindmapJson || '', ctx.section.dataset.title || '', resourceOutlineValue());
+}
+
+function reuploadResourceMindmap() {
+  const ctx = resourceOutlineContext();
+  if (ctx) reuploadMindmap(ctx.resourceType, ctx.id);
+}

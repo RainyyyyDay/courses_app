@@ -382,8 +382,17 @@
       <div id="resourceDetailPreview"></div>
       <section id="resourceDetailOutlineSection" style="display:none;">
         <div class="detail-section-title">重点总结 / 大纲
-          <button type="button" class="edit-mini-btn" onclick="openOutlineFullscreen()">全屏查看</button>
+          <span class="outline-actions">
+            <button type="button" class="edit-mini-btn" onclick="saveResourceOutline()">保存大纲</button>
+            <button type="button" class="edit-mini-btn" onclick="clearResourceOutline()">清空大纲</button>
+            <button type="button" class="edit-mini-btn" onclick="generateResourceMindmap()">用大纲生成导图</button>
+            <button type="button" class="edit-mini-btn" onclick="removeResourceMindmap()">移除导图</button>
+            <button type="button" class="edit-mini-btn" onclick="openResourceMindmapEditor()">在导图中编辑</button>
+            <button type="button" class="edit-mini-btn" onclick="reuploadResourceMindmap()">回传导图</button>
+            <button type="button" class="edit-mini-btn" onclick="openOutlineFullscreen()">全屏查看</button>
+          </span>
         </div>
+        <textarea id="resourceDetailOutlineText" rows="5" placeholder="重点总结 / 大纲（一行一条，缩进两格表示下一级）"></textarea>
         <div id="resourceDetailOutlineMap" class="outline-map"></div>
       </section>
       <div class="detail-actions">
