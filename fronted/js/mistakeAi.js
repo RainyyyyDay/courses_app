@@ -36,7 +36,7 @@ function clearMistakeAiKey(prefix, resetProvider=false) {
   if(node('Cost'))node('Cost').checked=false;
   const shared=node('Provider')?.querySelector('option[value="shared"]');
   if(shared&&typeof coursesAiSettings!=='undefined')shared.textContent=coursesAiSettings.label();
-  if(resetProvider&&node('Provider')){node('Provider').value=typeof coursesAiSettings!=='undefined'&&coursesAiSettings.status().configured?'shared':'default';node('Model').value='deepseek-flash';node('KeySettings').hidden=true;}
+  if(resetProvider&&node('Provider')){node('Provider').value='shared';node('Model').value='deepseek-flash';node('KeySettings').hidden=true;}
 }
 function changeMistakeAiProvider(prefix) {
   clearMistakeAiKey(prefix);
@@ -44,7 +44,7 @@ function changeMistakeAiProvider(prefix) {
 }
 function readMistakeAiKey(prefix) {
   const node=name=>document.getElementById(prefix+name);
-  if(node('Provider').value==='shared')return coursesAiSettings.read();
+  if(node('Provider').value==='shared'){const credentials=coursesAiSettings.read();if(!credentials)throw new Error('请先打开 AI 设置并配置真实 AI，也可以继续手动填写。');return credentials;}
   if(node('Provider').value!=='deepseek')return null;
   if(!/^[\x21-\x7e]{1,512}$/.test(node('ApiKey').value))throw mistakeAiError('INVALID_API_KEY');
   if(!node('Cost').checked)throw mistakeAiError('COST_CONFIRMATION_REQUIRED');
@@ -164,7 +164,7 @@ function startMistakeAi(detail, options = {}) {
   if(typeof refreshReviewMethodApiAvailability==='function')refreshReviewMethodApiAvailability();
   mistakeAiState = { detail, busy: false, result: null, controller: null, ...options };
   const row = detail.row;
-  if (globalThis.COURSES_AI_LOCAL_MOCK) mistakeAiElement('Status').textContent = '本地 Mock 演示：按明确的错误原因返回固定规则建议，不调用真实模型。';
+  mistakeAiElement('Status').textContent = '请配置 AI 后获取建议，也可以继续手动选择。';
   // 不截断原文；超过契约限制时要求用户精简，不能静默丢失上下文。
   mistakeAiElement('Question').value = row.content || row.ocr_text || '';
   mistakeAiElement('CorrectAnswer').value = row.answer_content || '';

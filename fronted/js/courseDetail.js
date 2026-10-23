@@ -63,6 +63,6 @@ function switchTab(tab, el = null) {
   // 只有切到“知识框架”时，右上角才显示 ➕
   const treeBtn = document.getElementById('treeBtn');
   if (treeBtn) {
-  treeBtn.style.display = (tab === 'knowledge') ? 'block' : 'none';
+  treeBtn.style.display = (tab === 'knowledge') ? 'inline-flex' : 'none';
   }
 }

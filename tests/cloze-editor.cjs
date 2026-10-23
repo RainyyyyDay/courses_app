@@ -31,6 +31,10 @@ function scenario(base,courseId){return `window.COURSES_API_BASE=${JSON.stringif
   const source=el('clozeSource');check(source.textContent===original,'prefills full original text');
   check(el('clozeExitMode').disabled,'exit control is grey before entering cloze mode');
   const select=(node,start,end)=>{source.focus();const r=document.createRange();r.setStart(node,start);r.setEnd(node,end);const s=getSelection();s.removeAllRanges();s.addRange(r);source.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));};
+  check(!wb('Editor').querySelector('.review-ai-generator').textContent.includes('Mock'),'no mock generator entry');
+  check(!document.getElementById('coursesAiProvider').textContent.includes('Mock'),'no mock service option');
+  check(!document.querySelector('option[value=default]'),'no default mock source option');
+  check(el('clozeMakeBlank').textContent==='选中文字并挖空'&&el('clozeExitMode').disabled,'selection starts in clear idle state');
   el('clozeMakeBlank').click();
   check(el('clozeMakeBlank').textContent==='确定'&&el('clozeMakeBlank').disabled&&el('clozeMakeBlank').classList.contains('is-picking'),'first click enters grey continuous picking mode');
   const index=source.firstChild.data.indexOf('叶绿体');select(source.firstChild,index,index+3);

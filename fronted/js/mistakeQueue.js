@@ -520,7 +520,7 @@ async function openReviewCompleteModal(session) {
   const perfect = Number(session.total) > 0 && session.passed === session.total;
   document.getElementById('mistakeCompleteTitle').textContent = perfect
     ? `恭喜你！你成功复习了 ${summary || '所有所选题'}`
-    : '本轮总复习完成';
+    : '本轮复习完成';
   document.getElementById('mistakeCompleteText').textContent = perfect
     ? `本轮共 ${session.total} 项，全部通过。`
     : `本轮共 ${session.total} 项${summary ? `：${summary}` : ''}。通过 ${session.passed || 0} 项，未通过 ${session.failed || 0} 项，仅阅读曝光 ${session.exposed || 0} 项，跳过 ${session.skipped || 0} 项。`;

@@ -24,19 +24,19 @@ function toggleMistakeAnswerAi(prefix){
   if(!host.hidden){resetMistakeAnswerAi(prefix);return;}
   const state={owner,view:currentView,busy:false,controller:null,draft:null};mistakeAnswerAiStates[prefix]=state;
   const id='mistake'+prefix+'AnswerAi';
-  host.innerHTML=`<p>可选功能：不影响手工输入。先校对题干和选项；不上传附件、不自动保存或判分。</p>
-    <fieldset id="${id}Controls"><label>生成来源<select id="${id}Provider" onchange="changeMistakeAiProvider('${id}')"><option value="shared">共用 AI 设置（右下角可配置）</option><option value="default">Mock 演示（不生成真实答案）</option><option value="deepseek">DeepSeek 官方（临时 Key）</option></select></label>
+  host.innerHTML=`<p class="ai-help">可选功能：不影响手工输入。先校对题干和选项；不上传附件、不自动保存或判分。</p>
+    <fieldset id="${id}Controls"><label>生成来源<select id="${id}Provider" onchange="changeMistakeAiProvider('${id}')"><option value="shared">共用 AI 设置（右下角可配置）</option><option value="deepseek">DeepSeek 官方（临时 Key）</option></select></label>
     <div id="${id}KeySettings" class="mistake-ai-key-settings" hidden><label>本次 Key<input id="${id}ApiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512"></label>
     <label>模型<select id="${id}Model"><option>deepseek-flash</option><option>deepseek-v4-pro</option></select></label>
     <label><input id="${id}Cost" type="checkbox">同意本次文字发送至 DeepSeek 官方，知晓可能产生费用。</label><small>Key 发送后清空，不保存；不自动重试或回退 Mock。</small></div>
-    <button type="button" onclick="coursesAiSettings.open()">打开共用 AI 设置</button>
-    <button type="button" id="${id}Generate" onclick="generateMistakeAnswerAi('${prefix}')">生成草稿（不保存）</button></fieldset>
+    <div class="ai-action-row"><button type="button" onclick="coursesAiSettings.open()">打开共用 AI 设置</button>
+    <button type="button" class="ai-primary" id="${id}Generate" onclick="generateMistakeAnswerAi('${prefix}')">生成草稿（不保存）</button></div></fieldset>
     <p id="${id}Status" role="status"></p><p id="${id}Error" class="mistake-inline-error" role="alert"></p>
     <section id="${id}Preview" hidden><h4>AI 参考草稿 · 待人工核实，不是客观判分依据</h4><p id="${id}Caveats"></p>
     <label id="${id}AnswerLabel">可编辑参考答案<textarea id="${id}Answer" maxlength="4000" rows="3"></textarea></label>
     <label>可编辑解析<textarea id="${id}Explanation" maxlength="4000" rows="5"></textarea></label>
-    <label><input id="${id}Accept" type="checkbox">我已核实／修改所选内容，确认填入当前表单（仍需手动保存）。</label>
-    <div class="modal-actions"><button type="button" onclick="applyMistakeAnswerAi('${prefix}','empty')">仅填空白字段</button><button type="button" onclick="applyMistakeAnswerAi('${prefix}','answer')">替换答案</button><button type="button" onclick="applyMistakeAnswerAi('${prefix}','explanation')">替换解析</button><button type="button" onclick="applyMistakeAnswerAi('${prefix}','undo')">撤回上次填入</button><button type="button" onclick="resetMistakeAnswerAi('${prefix}')">放弃草稿</button></div></section>`;
+    <label><input id="${id}Accept" type="checkbox">我已核实／修改所选内容，确认填入当前表单；本份草稿只需勾选一次（仍需手动保存）。</label>
+    <div class="modal-actions"><button type="button" onclick="applyMistakeAnswerAi('${prefix}','empty')">仅填空白字段</button><button type="button" onclick="applyMistakeAnswerAi('${prefix}','answer')">替换答案</button><button type="button" onclick="applyMistakeAnswerAi('${prefix}','explanation')">替换解析</button><button type="button" onclick="applyMistakeAnswerAi('${prefix}','undo')">撤回上次填入</button><button type="button" onclick="resetMistakeAnswerAi('${prefix}')">放弃草稿</button></div><p id="${id}ApplyStatus" class="ai-settings-applied" role="status" aria-live="polite"></p></section>`;
   host.hidden=false;
   clearMistakeAiKey(id,true);
 }
@@ -84,7 +84,7 @@ async function generateMistakeAnswerAi(prefix){
     const pending=fetchMistakeAnswerDraft(input,{signal:state.controller.signal,deepseek});
     clearMistakeAiKey('mistake'+prefix+'AnswerAi');if(deepseek)deepseek.apiKey='';
     const draft=await pending;if(!answerAiCurrent(prefix,state))return;
-    state.draft=draft;state.undo=null;state.fingerprint=answerAiFingerprint(input);node('Preview').hidden=false;node('Accept').checked=false;
+    state.draft=draft;state.undo=null;state.fingerprint=answerAiFingerprint(input);node('Preview').hidden=false;node('Accept').checked=false;node('ApplyStatus').textContent='';
     node('Answer').value=input.question_format==='choice'?draft.choice_answer.join(','):draft.answer;
     node('AnswerLabel').firstChild.textContent=input.question_format==='choice'?'候选正确选项（逗号分隔，人工核对）':'可编辑参考答案';
     node('Explanation').value=draft.explanation;node('Caveats').textContent=(deepseek?'AI 草稿，尚未验证正确。':'Mock 演示，不是本题解答。')+
@@ -108,7 +108,7 @@ function applyMistakeAnswerAi(prefix,target){
     else field('Answer').value=state.undo.before.existing_answer;
     field('Explanation').value=state.undo.before.existing_explanation;state.undo=null;
     if(prefix==='Edit')refreshMistakeEditDirty();else{updateMistakeCreateAnswerClear();updateMistakeCreateExplanationClear();}
-    node('Status').textContent='已撤回上次填入，仍未保存。';return;
+    node('Status').textContent='已撤回上次填入，仍未保存。';node('ApplyStatus').textContent='已撤回上次填入，仍需保存。';showToast('已撤回上次填入');return;
   }
   if(!node('Accept').checked){node('Error').textContent='请先核实或编辑草稿，并勾选确认；不会自动填入。';return;}
   const answer=node('Answer').value.trim(),explanation=node('Explanation').value.trim();
@@ -127,6 +127,7 @@ function applyMistakeAnswerAi(prefix,target){
   if(fillExplanation)field('Explanation').value=explanation;
   if(fillAnswer||fillExplanation)state.undo={before:input,after:answerAiInput(prefix)};
   if(prefix==='Edit')refreshMistakeEditDirty();else{updateMistakeCreateAnswerClear();updateMistakeCreateExplanationClear();}
-  node('Accept').checked=false;node('Status').textContent=fillAnswer||fillExplanation?'已按你的确认填入表单，尚未保存；请继续核对后点击原保存按钮。':'答案和解析均已有内容，未覆盖任何字段。';
+  const message=fillAnswer||fillExplanation?'已'+(target==='empty'?'填入空白字段':fillAnswer?'替换答案':'替换解析')+'，仍需点击保存。':'答案和解析均已有内容，未覆盖任何字段。';
+  node('Status').textContent=message;node('ApplyStatus').textContent=message;if(fillAnswer||fillExplanation)showToast(message);
 }
 addEventListener('pagehide',()=>{resetMistakeAnswerAi('Create');resetMistakeAnswerAi('Edit');});

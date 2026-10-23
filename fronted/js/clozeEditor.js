@@ -7,6 +7,11 @@ function clozeEditorHtml(m){return `<section class="cloze-editor">
   <details id="clozeFind"><summary>手机选词不方便？输入要挖的文字</summary><label>要挖的文字<input id="clozeFindText" autocomplete="off"></label><button type="button" id="clozeFindButton">查找可挖位置</button><div id="clozeMatches" class="cloze-matches"></div></details>
   <details id="clozeSettings"><summary>答案与提示（<span id="clozeCount">0</span> 处）</summary><div id="reviewWbBlanks">${(m.blanks||[]).map(wbBlank).join('')}</div></details>
   <textarea id="reviewWbPrompt" hidden>${escapeHtml(m.prompt||'')}</textarea></section>`;}
+function resetClozeSelection(){
+  const source=document.getElementById('clozeSource');
+  if(source)source.savedRange=null;
+  updateClozePickingButton();
+}
 function clozeNodeText(node){
   if(node.nodeType===3)return node.data;
   if(node.nodeType!==1&&node.nodeType!==11)return '';
@@ -36,6 +41,7 @@ function updateClozePickingButton(){
 }
 function captureClozeSelection(){
   const source=document.getElementById('clozeSource');if(!source||source.hidden)return;
+  if(!source.picking){source.savedRange=null;return;}
   const selection=getSelection();
   if(!selection.rangeCount)return;
   const range=selection.getRangeAt(0);
@@ -43,8 +49,6 @@ function captureClozeSelection(){
   source.savedRange=!range.collapsed&&clozeRangeIsValid(range)?range.cloneRange():null;
   updateClozePickingButton();
 }
-let clozeSelectionBound=false;
-function bindClozeSelection(){if(clozeSelectionBound)return;clozeSelectionBound=true;document.addEventListener('selectionchange',captureClozeSelection);}
 function clozeChip(blank){
   const chip=document.createElement('span');chip.className='cloze-chip';chip.dataset.clozeId=blank.id;chip.contentEditable='false';
   const edit=document.createElement('button');edit.type='button';edit.textContent=blank.answer||'待填写答案';edit.setAttribute('aria-label','调整空位：'+edit.textContent);edit.onclick=()=>{
@@ -67,7 +71,7 @@ function refreshClozeEditor(){
     for(const part of m.prompt.split(/(【[A-Za-z][A-Za-z0-9_]*】)/g)){
       const blank=blanks.get(part.slice(1,-1));source.append(part.startsWith('【')&&part.endsWith('】')&&blank?clozeChip(blank):document.createTextNode(part));
     }
-    source.signature=signature;source.savedRange=null;
+    source.signature=signature;resetClozeSelection();
     for(const row of wb('Blanks').children)row.querySelector('summary').textContent='空位答案：'+(row.querySelector('[data-blank="answer"]').value||'待填写');
   }
   document.getElementById('clozeCount').textContent=m.blanks.length;
@@ -99,8 +103,8 @@ function makeClozeBlank(range=document.getElementById('clozeSource')?.savedRange
   rememberClozeEdit();let n=1;while(blanks.some(b=>b.id==='b'+n)||wb('Prompt').value.includes('【b'+n+'】'))n++;
   const blank={id:'b'+n,answer};wb('Blanks').insertAdjacentHTML('beforeend',wbBlank(blank));
   const chip=clozeChip(blank);range.deleteContents();range.insertNode(chip);source.savedRange=null;
-  saveClozeSource();document.getElementById('clozeCount').textContent=blanks.length+1;
-  updateClozePickingButton();
+  saveClozeSource();getSelection()?.removeAllRanges();document.getElementById('clozeCount').textContent=blanks.length+1;
+  resetClozeSelection();
   clozeMessage('已挖空，答案自动记录。点击彩色文字可调整，点击 × 恢复原文。');
 }
 function findClozeText(){
@@ -116,20 +120,30 @@ function findClozeText(){
   }
   clozeMessage(count?'找到 '+count+' 处，点击对应位置挖空。':'没有找到未挖空的匹配文字。');
 }
+let clozeSelectionEvents;
 function initClozeEditor(){
-  const source=document.getElementById('clozeSource');if(!source)return;source.history=[];source.picking=false;source.savedRange=null;refreshClozeEditor();
-  bindClozeSelection();
+  clozeSelectionEvents?.abort();clozeSelectionEvents=new AbortController();
+  const source=document.getElementById('clozeSource');if(!source)return;
+  source.history=[];source.picking=false;source.savedRange=null;refreshClozeEditor();
   source.addEventListener('mouseup',captureClozeSelection);source.addEventListener('keyup',captureClozeSelection);source.addEventListener('touchend',captureClozeSelection);
   document.getElementById('clozeMakeBlank').onpointerdown=e=>{captureClozeSelection();if(e.pointerType==='mouse')e.preventDefault();};
   document.getElementById('clozeMakeBlank').onclick=()=>{
+    if(reviewWorkbench?.busy)return;
     if(!source.picking){
-      source.picking=true;source.savedRange=null;updateClozePickingButton();source.focus();
-      clozeMessage('请在原文中选择要记忆的文字；选中后点击蓝色“确定”。');
+      source.picking=true;source.savedRange=null;getSelection()?.removeAllRanges();source.focus();
+      updateClozePickingButton();clozeMessage('请在原文中选择要记忆的文字；选中后点击蓝色“确定”。');
       return;
     }
-    if(!clozeRangeIsValid(source.savedRange)){updateClozePickingButton();clozeMessage('请先在原文中选择一段可挖空的文字。');return;}
+    captureClozeSelection();
+    if(!clozeRangeIsValid(source.savedRange)){
+      updateClozePickingButton();clozeMessage('请先在原文中选择一段可挖空的文字。');
+      return;
+    }
     makeClozeBlank(source.savedRange);
   };
+  source.addEventListener('selectstart',()=>{if(source.picking){source.savedRange=null;updateClozePickingButton();}});
+  document.addEventListener('selectionchange',captureClozeSelection,{signal:clozeSelectionEvents.signal});
+  source.addEventListener('keydown',e=>{if(e.key==='Escape'&&source.picking){resetClozeSelection();clozeMessage('已取消本次选词，仍处于挖空模式。');}});
   source.onbeforeinput=e=>{
     if(reviewWorkbench?.busy){e.preventDefault();return;}
     const selection=getSelection(),range=selection.rangeCount?selection.getRangeAt(0):null;
@@ -139,6 +153,7 @@ function initClozeEditor(){
     rememberClozeEdit();
   };
   source.oninput=()=>{
+    resetClozeSelection();
     // Keep hidden metadata consistent with native browser editing.
     for(const row of [...wb('Blanks').children]){const id=row.querySelector('[data-blank="id"]').value;if(![...source.querySelectorAll('[data-cloze-id]')].some(c=>c.dataset.clozeId===id))row.remove();}
     saveClozeSource();document.getElementById('clozeCount').textContent=wb('Blanks').children.length;updateClozePickingButton();
@@ -148,7 +163,7 @@ function initClozeEditor(){
   document.getElementById('clozeUndo').onclick=undoClozeEdit;
   document.getElementById('clozeFindButton').onclick=findClozeText;
   document.getElementById('clozeExitMode').onclick=()=>{
-    source.picking=false;source.savedRange=null;updateClozePickingButton();
+    source.picking=false;source.savedRange=null;getSelection()?.removeAllRanges();updateClozePickingButton();
     clozeMessage('已退出挖空模式。再次点击“选中文字并挖空”可继续设置。');
   };
   updateClozePickingButton();

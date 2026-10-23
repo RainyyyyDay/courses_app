@@ -594,10 +594,26 @@ app.get('/api/courses/:id/assessments', (req, res) => {
 
 // 考核：文字内容是必填的，附件可选。
 // 不传文件时就是一条纯文字考核，和以前的行为完全一致。
+function validAssessmentDate(value) {
+  if(value==='')return true;
+  if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
+  const stamp=Date.parse(value+'T00:00:00Z');
+  return Number.isFinite(stamp)&&new Date(stamp).toISOString().slice(0,10)===value;
+}
+app.put('/api/courses/:courseId/assessments/:id', (req,res)=>{
+  const body=req.body,courseId=Number(req.params.courseId),id=Number(req.params.id);
+  if(!Number.isSafeInteger(courseId)||courseId<1||!Number.isSafeInteger(id)||id<1||!body||Array.isArray(body)||typeof body!=='object'||!Object.keys(body).length||Object.keys(body).some(k=>!['title','deadline','requirement','completed'].includes(k)))return res.status(400).json({message:'考核参数无效'});
+  if(body.title!==undefined&&(typeof body.title!=='string'||!body.title.trim()||body.title.trim().length>200)||body.deadline!==undefined&&!validAssessmentDate(body.deadline)||body.requirement!==undefined&&(typeof body.requirement!=='string'||body.requirement.length>4000)||body.completed!==undefined&&typeof body.completed!=='boolean')return res.status(400).json({message:'请检查考核名称、日期或完成状态'});
+  const row=db.updateAssessment(courseId,id,{...body,...(body.title!==undefined?{title:body.title.trim()}:{})});
+  if(!row)return res.status(404).json({message:'考核不存在或不属于当前课程'});
+  res.json(row);
+});
+
 app.post('/api/courses/:id/assessments', upload.single('file'), (req, res) => {
   const body = req.body || {};
   const title = typeof body.title === 'string' ? body.title.trim() : '';
   if (!title) return res.status(400).json({ message: '考核名不能为空' });
+  if(title.length>200||!validAssessmentDate(body.deadline||'')||typeof (body.requirement||'')!=='string'||(body.requirement||'').length>4000)return res.status(400).json({message:'请检查考核名称、日期和要求长度'});
 
   const newItem = db.createAssessment(
     Number(req.params.id),

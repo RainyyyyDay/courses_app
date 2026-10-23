@@ -12,6 +12,8 @@ test('confirmation top layer supports material replacement and other modal calle
   await openCourse(${ids.courseId},'确认层测试','notes');
   const row=await(await requestApi(API+'/courses/'+${ids.courseId}+'/notes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:'确认测试${index}',content:'中国首都是北京'})})).json();
   await openReviewWorkbench('note',row.id,{row,sourceText:row.content,mode:'cloze'});wb('Editor').querySelector('.review-ai-generator').open=true;
+  check(!wb('Editor').querySelector('.review-ai-generator').textContent.includes('Mock'),'normal generator has no mock entry');
+  await requestWorkbenchDraft(true);check(!reviewWorkbench.aiDraft&&wb('Error').textContent.includes('配置真实 AI'),'unconfigured real generation cannot fall back to mock');
   await requestWorkbenchDraft();const beforeMaterial=JSON.stringify(readWorkbenchMaterial()),parent=wb('Dialog');
   check(!el('confirmModal').open&&wb('Draft').querySelectorAll('button').length===2,'AI draft uses inline adopt/reject, not replacement confirmation');
   [...wb('Draft').querySelectorAll('button')].find(button=>button.textContent==='不采纳').click();

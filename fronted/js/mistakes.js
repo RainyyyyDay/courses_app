@@ -225,7 +225,7 @@ function mistakeCreationFields() {
 function renderMistakeCategories(rows = null) {
   const home = !mistakeUi.type;
   const reviewEntry = document.getElementById('mistakeHomeReview');
-  // 错题单独复习入口已移除；只保留总复习和考前计划。
+  // 错题单独复习入口已移除；只保留复习和考前计划。
   if (reviewEntry) reviewEntry.style.display = 'none';
   // 录入入口（上传文件 / 手动输入）只留在「错题」大页：
   // 分类详情页是用来查看和复习的，加题请回大页点分类上方的按钮。

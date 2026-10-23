@@ -1,7 +1,7 @@
 /* Tab-memory credentials only. Host authentication/quotas must still run server-side. */
 const coursesAiSettings = (() => {
   let baseUrl='', key='', provider='mock', model='deepseek-flash', retain=false, auto=false, configured=false, epoch=0;
-  let selectedPreset='mock', workspaceId='', connectionState='untested';
+  let selectedPreset='mock', formPreset='mock', workspaceId='', connectionState='untested';
   const presets=Object.freeze({
     mock:{name:'Mock 演示（非真实 AI）',provider:'mock',models:[]},
     zhipu:{name:'GLM（智谱）',provider:'compatible',baseUrl:'https://open.bigmodel.cn/api/paas/v4',models:['glm-5.3-flash','glm-5.3','glm-5.3-flashx','glm-4.7-flash'],note:'普通 API 按量调用。Coding Plan 需使用套餐专用地址和对应 Key，请按控制台说明修改地址。',docs:'https://docs.bigmodel.cn/cn/guide/develop/openai/introduction'},
@@ -18,7 +18,7 @@ const coursesAiSettings = (() => {
   });
   const guessPreset=(kind,url)=>kind==='compatible'?(Object.entries(presets).find(([id,p])=>id!=='compatible'&&p.baseUrl&&p.baseUrl===String(url||'').replace(/\/chat\/completions\/?$/,'').replace(/\/$/,''))?.[0]||'compatible'):kind;
   let applyError='';
-  let calls=0, message='尚未配置；原有手动输入和 Mock 演示可继续使用。';
+  let calls=0, message='尚未配置 AI；可以继续手动填写。';
   const active=new Set(), seen=new Set(), drafts=new Map();
   const waiting=new Map();let waitingPanel=null,waitingTimer=null;
   function renderWaiting(){
@@ -54,17 +54,16 @@ const coursesAiSettings = (() => {
   }
   const providerLabel=()=>serviceName(provider,baseUrl);
   const describe=credentials=>credentials?`${serviceName(credentials.provider||'deepseek',credentials.baseUrl).split('（')[0]} / ${credentials.model}`:'Mock 演示';
-  const label=()=>provider==='mock'?'共用 AI 设置：Mock 演示':`共用 AI 设置：${providerLabel()} / ${model}（${key?'Key 就绪':'待填写 Key'}）`;
+  const label=()=>provider==='mock'?'共用 AI 设置：尚未配置':`共用 AI 设置：${providerLabel()} / ${model}（${key?'Key 就绪':'待填写 Key'}）`;
   function invalidate(){epoch++;for(const cancel of active)cancel();active.clear();}
   function refresh(){
-    if(!node('Summary'))return;
-    node('Summary').textContent=provider==='mock'?'当前：Mock 演示，不调用真实模型。':
-      `当前：${providerLabel()} / ${model}；${key?'Key 已在本标签页就绪':'未持有 Key（不会回退 Mock）'}；已发起 ${calls} 次共享请求。`;
+    if(!node('Dialog'))return;
     node('Message').textContent=message;
-    if(node('Verification'))node('Verification').textContent=provider==='mock'?'Mock 不请求真实模型。':connectionState==='passed'?'当前配置最近一次连接测试已通过；不代表所有生成场景或模型都已验证。':connectionState==='failed'?'当前配置最近一次连接测试未通过，请查看下方具体原因。':'当前配置尚未通过连接测试。预设已按文档适配，不代表你的账号已联调成功。';
+    if(node('Verification'))node('Verification').textContent=provider==='mock'?'尚未配置 AI。':connectionState==='passed'?'当前配置最近一次连接测试已通过；不代表所有生成场景或模型都已验证。':connectionState==='failed'?'最近一次连接测试未通过。':'尚未通过连接测试。';
     node('Message').classList.toggle('ai-settings-error',!!applyError);
-    if(node('Applied'))node('Applied').textContent=provider==='mock'?'已生效：Mock 演示（不调用真实模型）':`已生效：${providerLabel()} / ${model} · ${key?'Key 就绪':'需要填写 Key'}`;
-    node('Open').textContent='AI 设置'+(drafts.size?` · 草稿 ${drafts.size}`:'');
+    if(node('Applied'))node('Applied').textContent=provider==='mock'?'尚未启用 AI':`已生效：${providerLabel()} / ${model} · ${key?'Key 就绪':'需要填写 Key'}`;
+    node('Open').textContent='AI 设置';
+    if(node('DraftOpen')){node('DraftOpen').hidden=!drafts.size;node('DraftOpen').textContent='AI 草稿 · '+drafts.size;}
     if(typeof updateResourceAiSource==='function')updateResourceAiSource();
     for(const prefix of ['mistakeAi','mistakeCreateAi','mistakeCreateAnswerAi','mistakeEditAnswerAi']){
       const option=document.getElementById(prefix+'Provider')?.querySelector('option[value="shared"]');if(option)option.textContent=label();
@@ -87,7 +86,7 @@ const coursesAiSettings = (() => {
       if(!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(value.model||''))throw new Error('请填写服务商提供的模型 ID。');
       nextUrl=url.href.replace(/\/$/,'');
     }
-    if(value.provider!=='mock'&&!/^[\x21-\x7e]{1,512}$/.test(value.apiKey||''))throw Object.assign(new Error('请填写有效的 API Key，不要包含空格或换行。'),{field:'Key'});
+    if(value.provider!=='mock'&&!/^[\x21-\x7e]{1,512}$/.test(value.apiKey||''))throw Object.assign(new Error(!value.apiKey?'未读取到 API Key，请粘贴后再应用设置。':'API Key 含有不支持的字符，请检查是否复制了多余文字或中间的空格、换行。'),{field:'Key'});
     if(value.provider!=='mock'&&value.consent!==true)throw Object.assign(new Error('请先勾选“同意文字发送及可能产生的费用”，再应用设置。'),{field:'Consent'});
     if(value.auto&&(value.provider==='mock'||!value.retain||value.consent!==true))throw new Error('自动分析需要真实 AI、标签页内保留 Key，并勾选包含自动调用的统一授权。');
     const nextWorkspace=value.workspaceId||'';
@@ -121,10 +120,11 @@ const coursesAiSettings = (() => {
     active.add(abort);return release;
   }
   function valid(credentials){return credentials?.sharedEpoch===undefined||credentials.sharedEpoch===epoch;}
-  function clear(){
-    applyError='';workspaceId='';connectionState='untested';if(node('Workspace'))node('Workspace').value='';invalidate();key='';auto=false;retain=false;drafts.clear();seen.clear();
+  function clearKey(){
+    applyError='';workspaceId='';connectionState='untested';if(node('Workspace'))node('Workspace').value='';invalidate();key='';auto=false;retain=false;
+    for(const draft of drafts.values())if(!draft.result)draft.message='已取消，可到错题详情重新分析。';
     // Keep the selected real provider: a cleared Key must not silently become Mock.
-    message='Key、自动调用授权和内存草稿已清除；手工输入不受影响。';
+    message='Key 和自动调用授权已清除；草稿及手工输入保留。';
     if(node('Key')){node('Key').value='';node('Retain').checked=false;node('Auto').checked=false;node('Consent').checked=false;}
     for(const prefix of ['mistakeAi','mistakeCreateAi','mistakeCreateAnswerAi','mistakeEditAnswerAi']){
       if(typeof clearMistakeAiKey==='function')clearMistakeAiKey(prefix);
@@ -133,20 +133,25 @@ const coursesAiSettings = (() => {
     if(typeof refreshReviewMethodApiAvailability==='function')refreshReviewMethodApiAvailability();
     if(typeof refreshWorkbenchAiAvailability==='function')refreshWorkbenchAiAvailability();
   }
+  function clearDrafts(){drafts.clear();message='AI 草稿已清空；Key 和当前设置保留。';refresh();}
+  function clear(){clearKey();drafts.clear();seen.clear();message='Key、授权和内存草稿已清除。';refresh();}
+  function openDrafts(){refresh();if(!node('DraftDialog').open)node('DraftDialog').showModal();}
   function open(){
+    if(node('Dialog').open){node('Dialog').focus();return;}
     node('Provider').value=selectedPreset;node('Workspace').value=workspaceId;node('BaseUrl').value=baseUrl;node('CustomModel').value=provider==='compatible'?model:'';node('Model').value=provider==='deepseek'?model:'deepseek-flash';node('Key').value='';node('Retain').checked=retain;
     node('Model').dataset.selectedModel=provider==='deepseek'?model:'deepseek-flash';syncProviderModel(false);
     node('Auto').checked=auto;node('Consent').checked=false;
-    refresh();if(!node('Dialog').open)node('Dialog').showModal();
+    node('Body')?.scrollTo(0,0);refresh();if(!node('Dialog').open)node('Dialog').showModal();
   }
   function syncProviderModel(changed=false){
     const choice=node('Provider').value,preset=presets[choice]||presets.compatible;
+    const serviceChanged=changed&&choice!==formPreset;formPreset=choice;
     const field=node('Model'),real=choice==='deepseek',custom=preset.provider==='compatible';
     if(field.value)field.dataset.selectedModel=field.value;
-    field.disabled=!real;node('Custom').hidden=!custom;node('ModelLabel').hidden=custom;node('ModelPickLabel').hidden=!custom;
-    node('Advanced').open=choice==='compatible';node('Advanced').querySelector('summary').textContent=choice==='compatible'?'自定义接口设置':'高级设置（修改 API 地址）';
+    field.disabled=!real;node('EndpointGroup').hidden=!custom;node('Custom').hidden=!custom;node('ModelLabel').hidden=custom;node('ModelPickLabel').hidden=!custom;
+    node('Advanced').open=choice==='compatible';node('Advanced').querySelector('summary').textContent=choice==='compatible'?'高级设置 · 自定义接口':'高级设置';
     field.value=real?(field.dataset.selectedModel||'deepseek-flash'):'';
-    if(changed){
+    if(serviceChanged){
       node('Key').value='';node('Workspace').value='';node('Consent').checked=false;applyError='';
       if(custom){node('BaseUrl').value=preset.baseUrl||'';node('CustomModel').value=preset.models[0]||'';}
       message='已选择 '+preset.name+'；请填写该服务的 Key、确认授权并应用设置。';refresh();
@@ -162,8 +167,10 @@ const coursesAiSettings = (() => {
   function syncWorkspace(){let host='';try{host=new URL(node('BaseUrl').value).hostname;}catch{}node('WorkspaceGroup').hidden=host!=='api.anthropic.com';}
   function apply(){
     const choice=node('Provider').value,preset=presets[choice];
+    if(choice==='mock'){message='请选择真实 AI 服务；也可以继续手动填写。';refresh();return;}
     if(!preset){message='请选择有效服务商。';refresh();return;}
-    try{configure({preset:choice,workspaceId:node('WorkspaceGroup').hidden?'':node('Workspace').value.trim(),provider:preset.provider,model:preset.provider==='compatible'?node('CustomModel').value.trim():(node('Model').value||'deepseek-flash'),baseUrl:node('BaseUrl').value.trim(),apiKey:node('Key').value||(choice===selectedPreset&&(provider!=='compatible'||node('BaseUrl').value.trim().replace(/\/$/,'')===baseUrl)?key:''),
+    const enteredKey=node('Key').value.trim();
+    try{configure({preset:choice,workspaceId:node('WorkspaceGroup').hidden?'':node('Workspace').value.trim(),provider:preset.provider,model:preset.provider==='compatible'?node('CustomModel').value.trim():(node('Model').value||'deepseek-flash'),baseUrl:node('BaseUrl').value.trim(),apiKey:enteredKey||(choice===selectedPreset&&(provider!=='compatible'||node('BaseUrl').value.trim().replace(/\/$/,'')===baseUrl)?key:''),
       retain:node('Retain').checked,auto:node('Auto').checked,consent:node('Consent').checked});node('Key').value='';}
     catch(err){applyError='设置未应用：'+err.message;message=applyError;refresh();if(err.field){node(err.field)?.scrollIntoView({block:'center',behavior:'smooth'});node(err.field)?.focus({preventScroll:true});}}
   }
@@ -194,7 +201,7 @@ const coursesAiSettings = (() => {
         else message='未能完成与本地 AI 接口的通信。请检查服务是否运行，以及浏览器网络面板中的本次请求；不会回退 Mock。';
       }
     }
-    finally{if(credentials)credentials.apiKey='';release();clearTimeout(timer);node('Test').disabled=false;node('Test').textContent='测试已应用的连接（可能计费）';refresh();}
+    finally{if(credentials)credentials.apiKey='';release();clearTimeout(timer);node('Test').disabled=false;node('Test').textContent='测试连接';refresh();}
   }
   function captureCreation(){
     if(!auto)return null;
@@ -226,7 +233,7 @@ const coursesAiSettings = (() => {
     if(typeof tagPickerState!=='undefined'&&tagPickerState||typeof mistakeEditPending!=='undefined'&&mistakeEditPending||typeof mistakeDetailState!=='undefined'&&mistakeDetailState?.review){message='请先关闭编辑表单或退出本轮复习，再查看分析草稿，避免打断作答。';refresh();return;}
     // Display in the existing AI panel. Adoption still uses its original confirm button.
     if(currentCourseId!==draft.row.course_id){message='请先打开该草稿所属课程，再查看；未切换页面或修改内容。';refresh();return;}
-    node('Dialog').close();resetMistakeAi();
+    node('Dialog').close();node('DraftDialog')?.close();resetMistakeAi();
     const dialog=document.getElementById('mistakeAiDialog');
     document.getElementById('mistakeAiDialogBody').append(mistakeAiElement('Panel'));
     document.getElementById('mistakeAiDialogFoot').append(mistakeAiElement('Actions'));
@@ -241,29 +248,32 @@ const coursesAiSettings = (() => {
     const button=document.createElement('button');button.id='coursesAiOpen';button.type='button';button.className='courses-ai-open';button.onclick=open;document.body.append(button);
     const dialog=document.createElement('dialog');dialog.id='coursesAiDialog';dialog.className='courses-ai-settings';
     dialog.setAttribute('aria-labelledby','coursesAiTitle');
-    dialog.innerHTML=`<header class="ai-settings-head"><div><h2 id="coursesAiTitle">AI 设置</h2><p>当前标签页共用 · 刷新或关闭后失效</p></div><button type="button" id="coursesAiDismiss" aria-label="关闭 AI 设置">×</button></header>
-      <div class="ai-settings-body"><p id="coursesAiSummary" class="ai-settings-status" role="status"></p>
-      <p class="ai-help">用于资料、笔记和错题的复习建议、材料草稿、答案解析及作答后的可选批改。手动填写不受影响，AI 批改不自动修改评分，其余生成结果需确认后采用。</p>
-      <section class="ai-settings-section"><h3>服务与凭据</h3><div class="ai-settings-fields">
-      <label>服务商<select id="coursesAiProvider">${Object.entries(presets).map(([id,p])=>`<option value="${id}">${p.name}</option>`).join('')}</select></label>
-      <label id="coursesAiModelLabel">模型<select id="coursesAiModel" disabled><option value=""></option><option>deepseek-flash</option><option>deepseek-v4-pro</option></select></label><label id="coursesAiModelPickLabel" hidden>模型<select id="coursesAiModelPick"></select></label></div>
-      <div id="coursesAiCustom" hidden><label id="coursesAiCustomModelLabel">模型 / 接入点 ID<input list="coursesAiModelSuggestions" id="coursesAiCustomModel" maxlength="200" placeholder="填写完整模型 ID，或 ep- 接入点 ID" autocomplete="off"></label><datalist id="coursesAiModelSuggestions"></datalist>
-      <details id="coursesAiAdvanced" class="ai-settings-extras"><summary>高级设置（修改 API 地址）</summary><label>API 地址<input id="coursesAiBaseUrl" type="url" maxlength="2048" placeholder="https://服务商域名/v1" autocomplete="off"></label>
+    dialog.innerHTML=`<header class="ai-settings-head"><div><h2 id="coursesAiTitle">AI 设置</h2><p>当前标签页共用 · 刷新或关闭页面后失效</p></div><button type="button" id="coursesAiClose" aria-label="关闭 AI 设置">×</button></header>
+      <div class="ai-settings-body" id="coursesAiBody">
+      <div class="ai-settings-fields">
+      <label>AI 服务<select id="coursesAiProvider"><option value="mock" disabled>请选择 AI 服务</option>${Object.entries(presets).filter(([id])=>id!=='mock').map(([id,p])=>`<option value="${id}">${p.name}</option>`).join('')}</select></label>
+      <label id="coursesAiModelLabel">模型<select id="coursesAiModel" disabled><option value=""></option><option>deepseek-flash</option><option>deepseek-v4-pro</option></select></label>
+      <label id="coursesAiModelPickLabel" hidden>模型<select id="coursesAiModelPick"></select></label></div>
+      <div id="coursesAiCustom" hidden><label id="coursesAiCustomModelLabel">模型 / 接入点 ID<input list="coursesAiModelSuggestions" id="coursesAiCustomModel" maxlength="200" placeholder="填写完整模型 ID，或 ep- 接入点 ID" autocomplete="off"></label><datalist id="coursesAiModelSuggestions"></datalist></div>
+      <label>API Key<input id="coursesAiKey" type="password" autocomplete="new-password" autocapitalize="none" autocorrect="off" data-lpignore="true" data-1p-ignore spellcheck="false" maxlength="512" placeholder="输入新 Key；留空可沿用本标签页已保留的 Key"></label>
+      <p class="ai-help">Key 仅暂存在当前标签页，不写入浏览器存储或数据库。</p>
+      <label class="ai-check-row"><input id="coursesAiRetain" type="checkbox"><span>在本标签页保留 Key<small>不勾选则仅下一次请求可用。</small></span></label>
+      <label class="ai-check-row ai-consent-row"><input id="coursesAiConsent" type="checkbox"><span>同意发送所选文字及可能产生的费用<small>测试连接也可能计费；包含下方明确开启的自动分析。</small></span></label>
+      <details id="coursesAiAdvanced" class="ai-settings-extras"><summary>高级设置</summary>
+      <div id="coursesAiEndpointGroup" hidden><label>API 地址<input id="coursesAiBaseUrl" type="url" maxlength="2048" placeholder="https://服务商域名/v1" autocomplete="off"></label><p class="ai-help">预设地址通常无需修改。自定义地址仅支持公网 HTTPS 的 Chat Completions 兼容接口。</p></div>
+      <label id="coursesAiWorkspaceGroup" hidden>Anthropic 工作区 ID（按 Key 类型需要时填写）<input id="coursesAiWorkspace" maxlength="128" autocomplete="off" placeholder="控制台显示的工作区 ID"></label>
+      <p id="coursesAiPresetNote" class="ai-help"></p><a id="coursesAiPresetDocs" href="#" class="ai-help" target="_blank" rel="noopener noreferrer" hidden>服务商接入文档 ↗</a>
+      <label class="ai-check-row"><input id="coursesAiAuto" type="checkbox"><span>保存新错题后自动生成分析草稿<small>默认关闭。需保留 Key，且题干和学生作答齐全；不自动采用或重试。</small></span></label>
+      <p class="ai-help">学生作答在新增错题的“AI 复习建议”中填写。每标签页最多 20 次共享调用；不代替后端配额。</p>
+      <div class="ai-settings-maintenance"><button type="button" class="ai-text-button" id="coursesAiClear">清除 Key</button><button type="button" class="ai-text-button" id="coursesAiClearDrafts">清空 AI 草稿</button></div></details></div>
+      <footer class="ai-settings-footer"><div class="modal-actions"><button type="button" class="ai-primary" id="coursesAiApply">应用设置</button><button type="button" id="coursesAiTest">测试连接</button></div><div class="ai-settings-state" aria-label="当前 AI 状态"><p id="coursesAiApplied" class="ai-settings-applied"></p><p id="coursesAiVerification" class="ai-help"></p><p id="coursesAiMessage" role="status"></p></div></footer>`;
+    dialog.addEventListener('close',()=>{if(!dialog.open)node('Key').value='';});document.body.append(dialog);
+    node('Apply').onclick=apply;node('Test').onclick=testConnection;node('Clear').onclick=clearKey;node('ClearDrafts').onclick=clearDrafts;node('Close').onclick=()=>dialog.close();
+    const draftDialog=document.createElement('dialog');draftDialog.id='coursesAiDraftDialog';draftDialog.className='courses-ai-settings';draftDialog.setAttribute('aria-labelledby','coursesAiDraftTitle');
+    draftDialog.innerHTML='<header class="ai-settings-head"><div><h2 id="coursesAiDraftTitle">AI 分析草稿</h2><p>仅当前标签页保留，查看后需人工确认采用。</p></div><button type="button" id="coursesAiDraftClose" aria-label="关闭 AI 草稿">×</button></header><div class="ai-settings-body" id="coursesAiDrafts"></div>';
+    document.body.append(draftDialog);
+    const draftOpen=document.createElement('button');draftOpen.id='coursesAiDraftOpen';draftOpen.className='courses-ai-open courses-ai-draft-open';draftOpen.type='button';draftOpen.hidden=true;draftOpen.onclick=openDrafts;document.body.append(draftOpen);node('DraftClose').onclick=()=>draftDialog.close();refresh();
 
-      <p class="ai-help">支持 Chat Completions 兼容协议和文本 JSON 回复。地址可填 API 基础路径或完整 /chat/completions 地址；仅允许公网 HTTPS。其他原生协议需另加适配器。</p></details><label id="coursesAiWorkspaceGroup" hidden>Anthropic 工作区 ID（按 Key 类型需要时填写）<input id="coursesAiWorkspace" maxlength="128" autocomplete="off" placeholder="例如控制台显示的工作区 ID"></label></div>
-      <p id="coursesAiPresetNote" class="ai-help"></p><a id="coursesAiPresetDocs" href="#" class="ai-help" target="_blank" rel="noopener noreferrer" hidden>查看该服务商官方接入文档 ↗</a>
-      <label>API Key<input id="coursesAiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512" placeholder="输入 Key，不回显已保留的内容"></label>
-      <p class="ai-help">Key 不写入浏览器存储或数据库。</p></section>
-      <section class="ai-settings-section"><h3>使用偏好与授权</h3>
-      <label class="ai-check-row"><input id="coursesAiRetain" type="checkbox"><span>在当前标签页保留 Key<small>供多次操作使用；默认关闭，不勾选则仅下一次请求可用。</small></span></label>
-      <label class="ai-check-row"><input id="coursesAiAuto" type="checkbox"><span>保存新错题后自动生成一次分析草稿<small>默认关闭；需要保留 Key，且题干和学生作答齐全。不自动采用或重试。</small></span></label>
-      <label class="ai-check-row ai-consent-row"><input id="coursesAiConsent" type="checkbox"><span>同意文字发送及可能产生的费用<small>同意将所选文字发送至当前配置的服务商（自定义地址请先核实）；若开启上方自动分析，本授权同时涵盖该自动调用。</small></span></label>
-      <p class="ai-help">学生作答在新增错题的“AI 复习建议”中填写，不根据参考答案猜作答。每标签页最多 20 次共享调用，不代替后端账户配额。</p></section>
-      <details class="ai-settings-extras"><summary>自动草稿与测试工具</summary><h3>本标签页的自动分析草稿</h3><div id="coursesAiDrafts"></div>${globalThis.COURSES_AI_LOCAL_MOCK?'<p class="ai-help"><a href="/ai-test" target="_blank" rel="noopener noreferrer">打开独立 AI 测试页 ↗</a><br>仅验证接口，不保存业务结果，也不继承当前标签页的 Key。</p>':''}</details></div>
-      <footer class="ai-settings-footer"><p id="coursesAiApplied" class="ai-settings-applied"></p><p id="coursesAiVerification" class="ai-help"></p><p id="coursesAiMessage" role="status"></p><div class="modal-actions"><button type="button" class="ai-primary" id="coursesAiApply">应用设置</button><button type="button" id="coursesAiTest">测试已应用的连接（可能计费）</button><button type="button" class="ai-text-button" id="coursesAiClear">清除 Key 和草稿</button><button type="button" id="coursesAiClose">关闭</button></div></footer>`;
-    dialog.addEventListener('close',()=>{node('Key').value='';});document.body.append(dialog);
-    node('Apply').onclick=apply;node('Test').onclick=testConnection;node('Clear').onclick=clear;node('Close').onclick=()=>dialog.close();refresh();
-    node('Dismiss').onclick=()=>dialog.close();
     node('Provider').onchange=()=>syncProviderModel(true);node('BaseUrl').oninput=syncWorkspace;
     node('ModelPick').onchange=()=>{const chosen=node('ModelPick').value;node('CustomModelLabel').hidden=!!chosen;if(chosen)node('CustomModel').value=chosen;else node('CustomModel').focus();};
     node('CustomModel').oninput=()=>{node('ModelPick').value=presets[node('Provider').value]?.models.includes(node('CustomModel').value)?node('CustomModel').value:'';};syncProviderModel(false);
@@ -273,5 +283,5 @@ const coursesAiSettings = (() => {
   // Host calls this on verified login/logout/account switch. It supplies no browser-trusted identity.
   addEventListener('courses-ai-identity-changed',clear);
   if(document.readyState==='loading')addEventListener('DOMContentLoaded',mount,{once:true});else mount();
-  return Object.freeze({status,label,describe,configure,read,track,valid,clear,open,captureCreation,afterCreated,identityChanged:clear,realReady});
+  return Object.freeze({status,label,describe,configure,read,track,valid,clear,open,openDrafts,captureCreation,afterCreated,identityChanged:clear,realReady});
 })();

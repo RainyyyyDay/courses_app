@@ -41,7 +41,7 @@ async function requestReviewFeedback(){
     if(!s.input.question.trim()||!s.input.student_answer.trim()||Object.values(s.input).some(v=>typeof v!=='string'||v.length>4000)||new TextEncoder().encode(JSON.stringify(s.input)).length>15000)throw new Error('题面或首次作答缺失，或本轮文字超过长度限制；不会猜测附件或静默截断，仍可手动核对。');
     const endpoint=new URL((globalThis.COURSES_AI_API_BASE??API).replace(/\/$/,'')+'/ai/review-feedback',location.href);
     if(endpoint.origin!==location.origin||endpoint.username||endpoint.password||!(endpoint.protocol==='https:'||endpoint.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname)))throw mistakeAiError('AI_TEMP_KEY_ORIGIN');
-    credentials=coursesAiSettings.read();
+    credentials=coursesAiSettings.read();if(!credentials)throw new Error('请先打开 AI 设置并配置真实 AI，也可以继续手动核对。');
     body=JSON.stringify({provider:credentials?(credentials.provider||'deepseek'):'mock',...(credentials?{api_key:credentials.apiKey,model:credentials.model,confirm_cost:credentials.confirmCost,...(credentials.provider==='compatible'?{base_url:credentials.baseUrl,...(credentials.workspaceId?{workspace_id:credentials.workspaceId}:{})}:{})}:{}),input:s.input});
     if(credentials)credentials.apiKey='';
     s.busy=true;s.open=true;s.controller=new AbortController();renderReviewFeedback();

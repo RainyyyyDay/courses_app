@@ -12,7 +12,7 @@ function mountItemReviewHistory(host,type,id){
 }
 function itemHistoryBase(s){return `${API}/courses/${s.courseId}/review-items/${s.type}/${s.id}/history`;}
 function historyDate(value){const d=new Date(value);return Number.isNaN(d.getTime())?value:d.toLocaleString('zh-CN');}
-function historyGrade(row){return row.modeId==='reading'?'仅阅读曝光，不评分':row.grade===null?'尚无关联评分':(['','Again · 未掌握','Hard · 基本掌握','Good · 掌握','Easy · 熟练'][row.grade]||'未知评分');}
+function historyGrade(row){return row.modeId==='reading'?'仅阅读曝光，不评分':row.grade===null?'尚无关联评分':(['','未掌握','基本掌握','已掌握','熟练掌握'][row.grade]||'未知评分');}
 async function loadItemReviewHistory(s=itemReviewHistoryState){
   if(!s||s.busy||!itemHistoryCurrent(s))return;s.busy=true;
   const error=s.host.querySelector('[data-history-error]'),more=s.host.querySelector('[data-history-more]');error.textContent='';more.disabled=true;

@@ -10,12 +10,12 @@ const { db, nowText } = require('./connection');
 // ==================== 考核 ====================
 
 const ASSESSMENT_COLUMNS =
-  'id, course_id, title, deadline, requirement, archived, file_url, file_type, created_at';
+  'id, course_id, title, deadline, requirement, archived, file_url, file_type, created_at, completed_at';
 
-// 考核列表保持和原来一样：按加入的先后顺序返回（没有额外排序）
+// Pending deadlines first; undated items last, completed items at the end.
 function listAssessments(courseId) {
   return db
-    .prepare(`SELECT ${ASSESSMENT_COLUMNS} FROM assessments WHERE course_id = ? ORDER BY id`)
+    .prepare(`SELECT ${ASSESSMENT_COLUMNS} FROM assessments WHERE course_id = ? ORDER BY (completed_at IS NOT NULL), (deadline = ''), deadline, id`)
     .all(courseId);
 }
 
@@ -31,6 +31,15 @@ function createAssessment(courseId, title, deadline, requirement, fileUrl, fileT
     .get(Number(info.lastInsertRowid));
 }
 
+function updateAssessment(courseId, id, changes) {
+  const row=db.prepare(`SELECT ${ASSESSMENT_COLUMNS} FROM assessments WHERE id=? AND course_id=?`).get(id,courseId);
+  if(!row)return null;
+  const completedAt=changes.completed===undefined?row.completed_at:changes.completed?(row.completed_at||nowText()):null;
+  db.prepare('UPDATE assessments SET title=?, deadline=?, requirement=?, completed_at=? WHERE id=? AND course_id=?')
+    .run(changes.title??row.title,changes.deadline??row.deadline,changes.requirement??row.requirement,completedAt,id,courseId);
+  return db.prepare(`SELECT ${ASSESSMENT_COLUMNS} FROM assessments WHERE id=? AND course_id=?`).get(id,courseId);
+}
+
 function deleteAssessment(id) {
   db.prepare('DELETE FROM assessments WHERE id = ?').run(id);
 }
@@ -39,5 +48,6 @@ function deleteAssessment(id) {
 module.exports = {
   listAssessments,
   createAssessment,
-  deleteAssessment
+  deleteAssessment,
+  updateAssessment
 };

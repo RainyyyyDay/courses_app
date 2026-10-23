@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>课内</title>
-  <link rel="stylesheet" href="style.css?v=20261024-cloze-exit-mode-1" />
+  <link rel="stylesheet" href="style.css?v=20261024-merge-1" />
 </head>
 <body>
 
@@ -89,7 +89,7 @@
   <div id="listPage">
     <div class="header">
       <h1>课内</h1>
-      <button class="add-btn" onclick="openCourseModal()">＋</button>
+      <button class="add-btn" type="button" aria-label="添加课程" title="添加课程" onclick="openCourseModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg></button>
     </div>
     <!-- 👇 新增：搜索框 -->
     <div class="search-bar">
@@ -107,9 +107,9 @@
       <h1 id="detailTitle">课程</h1>
     </div>
     <div class="course-header-actions">
-      <button class="course-search-entry" id="totalReviewOpen" type="button" onclick="openTotalReview()">总复习</button>
+      <button class="course-search-entry" id="totalReviewOpen" type="button" onclick="openTotalReview()">复习</button>
       <button class="course-search-entry" id="courseSearchOpen" type="button" onclick="openCourseSearch()">搜索本课程</button>
-      <button class="add-btn" id="treeBtn" onclick="event.stopPropagation();openAddMenu(null, event)" style="display:none;" title="添加内容">＋</button>
+      <button class="add-btn" type="button" aria-label="添加内容" id="treeBtn" onclick="event.stopPropagation();openAddMenu(null, event)" style="display:none;" title="添加内容"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg></button>
     </div>
   </div>
 
@@ -296,13 +296,13 @@
         <span id="mistakeAiHome" hidden></span>
         <section id="mistakeAiPanel" class="mistake-ai-panel" aria-labelledby="mistakeAiTitle" hidden>
           <h2 id="mistakeAiTitle">AI 分类 · 复习方式建议</h2>
-          <p class="mistake-ai-note">默认沿用网站 AI（本地为 Mock）；也可明确选择 DeepSeek 官方并填写本次 Key。结果需人工复核，不会自动修改原错题分类。只发送下方文字，不上传附件；请勿填写个人敏感信息。</p>
+          <p class="mistake-ai-note">使用共用 AI 设置；也可明确选择 DeepSeek 官方并填写本次 Key。结果需人工复核，不会自动修改原错题分类。只发送下方文字，不上传附件；请勿填写个人敏感信息。</p>
           <form id="mistakeAiForm" class="edit-card" onsubmit="event.preventDefault();requestMistakeAi()">
             <h3 class="tag-sheet-section-title">题目信息</h3>
             <fieldset id="mistakeAiInputs">
               <label for="mistakeAiProvider">本次 AI 来源</label>
               <button type="button" onclick="coursesAiSettings.open()">打开共用 AI 设置</button>
-              <select id="mistakeAiProvider" onchange="changeMistakeAiProvider('mistakeAi')"><option value="shared">共用 AI 设置（右下角可配置）</option><option value="default">网站默认（本地为 Mock）</option><option value="deepseek">DeepSeek 官方（临时 Key）</option></select>
+              <select id="mistakeAiProvider" onchange="changeMistakeAiProvider('mistakeAi')"><option value="shared">共用 AI 设置（右下角可配置）</option><option value="deepseek">DeepSeek 官方（临时 Key）</option></select>
               <div id="mistakeAiKeySettings" class="mistake-ai-key-settings" hidden>
                 <label for="mistakeAiApiKey">本次 API Key（不保存）</label>
                 <input id="mistakeAiApiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512">
@@ -344,7 +344,7 @@
               <option value="reading">阅读标记</option><option value="contrast">对比辨析</option>
               <option value="retry">重新作答</option>
             </select>
-            <p class="mistake-ai-note">这里只保存复习建议；进入总复习或计划后可使用，专属材料仍需另行准备和确认，不自动评分。</p>
+            <p class="mistake-ai-note">这里只保存复习建议；进入复习或计划后可使用，专属材料仍需另行准备和确认，不自动评分。</p>
             <p class="mistake-ai-note">确认后的复习方式保存在本浏览器，刷新后重新打开 AI 面板可恢复；清除浏览器数据后会丢失，不跨浏览器同步。输入和 AI 理由不保存。如需修改原错题分类，请使用上方“编辑”。</p>
           </div>
           <span id="mistakeAiActionsHome" hidden></span>
@@ -418,17 +418,18 @@
   <!-- 添加考核弹窗 -->
   <div class="modal-mask" id="assessmentModal">
     <div class="modal">
-      <h3>添加考核</h3>
-      <input id="assessTitle" placeholder="考核名称，如期中考试" />
-      <input id="assessDeadline" type="date" />
-      <textarea id="assessReq" placeholder="考核要求（可选）"></textarea>
+      <h3 id="assessModalTitle">添加考核</h3>
+      <label for="assessTitle">考核名称</label><input id="assessTitle" maxlength="200" placeholder="考核名称，如期中考试" />
+      <label for="assessDeadline">截止日期（可选）</label><input id="assessDeadline" type="date" />
+      <label for="assessReq">考核要求（可选）</label><textarea id="assessReq" maxlength="4000" placeholder="考核要求（可选）"></textarea>
+      <div id="assessAttachment">
       <!-- 附件是可选的：不选就是一条纯文字考核 -->
       <input type="file" id="assessFile" style="display:none"
              onchange="showPickedFile('assessFile', 'assessFileName')" />
       <button type="button" class="file-pick-btn" onclick="document.getElementById('assessFile').click()">
         📎 选择附件（可选）
       </button>
-      <div class="file-name-tip" id="assessFileName">未选择附件</div>
+      <div class="file-name-tip" id="assessFileName">未选择附件</div></div><p id="assessError" class="mistake-inline-error" role="alert"></p>
       <div class="modal-actions">
         <button class="btn-cancel" onclick="closeAssessmentModal()">取消</button>
         <button class="btn-confirm" onclick="addAssessment()">确定</button>
@@ -517,7 +518,7 @@
     </div>
   </div>
 
-  <!-- 复习完成弹窗：总复习全部完成后出现；全部通过时飘彩带 -->
+  <!-- 复习完成弹窗：复习全部完成后出现；全部通过时飘彩带 -->
   <div id="mistakeCompleteModal" class="modal-mask" onclick="if(event.target===this)cancelReviewComplete()" onkeydown="if(event.key==='Escape'){event.preventDefault();cancelReviewComplete()}">
     <!-- 彩带分两层，都在弹窗卡片后面：库可用时用 canvas-confetti，否则退回自绘 CSS 版 -->
     <div id="mistakeLibConfetti" class="mistake-confetti" style="display:none" aria-hidden="true">
@@ -694,7 +695,7 @@
           </div>
           <div class="edit-card-body">
             <textarea id="mistakeEditExplanation" rows="3" placeholder="解析 / 错误原因" oninput="refreshMistakeEditDirty()"></textarea>
-            <button type="button" class="btn-cancel" onclick="toggleMistakeAnswerAi('Edit')">AI 生成答案与解析（可选）</button>
+            <button type="button" class="btn-cancel" data-answer-ai-toggle onclick="toggleMistakeAnswerAi('Edit')">AI 生成答案与解析（可选）</button>
             <section id="mistakeEditAnswerAiHost" class="mistake-answer-ai" hidden></section>
           </div>
         </section>
@@ -924,7 +925,7 @@
             </div>
             <div class="edit-card-body">
               <textarea id="mistakeCreateExplanation" rows="2" placeholder="解析 / 错误原因" oninput="updateMistakeCreateExplanationClear()"></textarea>
-              <button type="button" class="btn-cancel" onclick="toggleMistakeAnswerAi('Create')">AI 生成答案与解析（可选）</button>
+              <button type="button" class="btn-cancel" data-answer-ai-toggle onclick="toggleMistakeAnswerAi('Create')">AI 生成答案与解析（可选）</button>
               <section id="mistakeCreateAnswerAiHost" class="mistake-answer-ai" hidden></section>
             </div>
           </section>
@@ -934,7 +935,7 @@
             <fieldset id="mistakeCreateAiFields" class="edit-card-body">
               <label for="mistakeCreateAiProvider">本次 AI 来源</label>
               <button type="button" onclick="coursesAiSettings.open()">打开共用 AI 设置</button>
-              <select id="mistakeCreateAiProvider" onchange="changeMistakeAiProvider('mistakeCreateAi')"><option value="shared">共用 AI 设置（右下角可配置）</option><option value="default">网站默认（本地为 Mock）</option><option value="deepseek">DeepSeek 官方（临时 Key）</option></select>
+              <select id="mistakeCreateAiProvider" onchange="changeMistakeAiProvider('mistakeCreateAi')"><option value="shared">共用 AI 设置（右下角可配置）</option><option value="deepseek">DeepSeek 官方（临时 Key）</option></select>
               <div id="mistakeCreateAiKeySettings" class="mistake-ai-key-settings" hidden>
                 <label for="mistakeCreateAiApiKey">本次 API Key（不保存）</label>
                 <input id="mistakeCreateAiApiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512">
@@ -1074,7 +1075,7 @@
   </div>
 
   <div id="reviewHistoryPage" style="display:none"><div class="header"><div class="header-left"><button class="back-btn" onclick="backToReviewPlans()">←</button><h1>全部复习记录</h1></div></div><div class="tab-content">
-    <div class="reading-browse-controls"><select id="reviewHistoryStatus" aria-label="记录状态" onchange="loadReviewHistory()"><option value="all">全部状态</option><option value="ongoing">进行中</option><option value="completed">已完成</option></select><select id="reviewHistorySource" aria-label="复习来源" onchange="loadReviewHistory()"><option value="all">全部来源</option><option value="plan">考前计划</option><option value="total">总复习</option><option value="material">资料</option><option value="note">笔记</option><option value="mistake">错题</option></select></div>
+    <div class="reading-browse-controls"><select id="reviewHistoryStatus" aria-label="记录状态" onchange="loadReviewHistory()"><option value="all">全部状态</option><option value="ongoing">进行中</option><option value="completed">已完成</option></select><select id="reviewHistorySource" aria-label="复习来源" onchange="loadReviewHistory()"><option value="all">全部来源</option><option value="plan">考前计划</option><option value="total">复习</option><option value="material">资料</option><option value="note">笔记</option><option value="mistake">错题</option></select></div>
     <div id="reviewHistoryList"></div><button id="reviewHistoryMore" type="button" onclick="loadReviewHistory(true)" hidden>加载更多</button>
   </div></div>
   <div id="reviewSessionDetailPage" style="display:none"><div class="header"><div class="header-left"><button class="back-btn" onclick="openReviewHistory()">←</button><h1>复习记录详情</h1></div></div><div id="reviewSessionDetailBody" class="tab-content"></div></div>
@@ -1082,7 +1083,7 @@
   <div id="totalReviewModal" class="modal-mask review-picker" onclick="if(event.target===this){if(totalReviewState?.preview)closeTotalReviewPreview();else closeTotalReview()}" onkeydown="handleTotalReviewKey(event)">
     <form class="modal total-review-dialog" role="dialog" aria-modal="true" aria-labelledby="totalReviewTitle" onsubmit="event.preventDefault();if(!totalReviewState?.preview)startTotalReview()">
       <div id="totalReviewSelector" class="total-review-selector">
-        <header class="total-review-head"><h3 id="totalReviewTitle" tabindex="-1">总复习 · 当前课程</h3><button type="button" class="total-review-close" onclick="closeTotalReview()" aria-label="关闭总复习">×</button></header>
+        <header class="total-review-head"><h3 id="totalReviewTitle" tabindex="-1">复习 · 当前课程</h3><button type="button" class="total-review-close" onclick="closeTotalReview()" aria-label="关闭复习">×</button></header>
         <div id="totalReviewModules" class="total-review-tabs" role="tablist" aria-label="复习模块">
           <button id="totalReviewTab-material" type="button" role="tab" aria-controls="totalReviewPanel" aria-selected="true" onclick="switchTotalReviewTab('material')">资料</button>
           <button id="totalReviewTab-note" type="button" role="tab" aria-controls="totalReviewPanel" aria-selected="false" tabindex="-1" onclick="switchTotalReviewTab('note')">笔记</button>
@@ -1123,22 +1124,22 @@
   <script src="js/config.js"></script>
   <script src="js/state.js"></script>
   <script src="js/utils.js?v=20261021-confirm-layer-1"></script>
-  <script src="js/ai.js?v=20261024-ai-context-2"></script>
-  <script src="js/aiSettings.js?v=20261024-ai-draft-accept-1"></script>
+  <script src="js/ai.js?v=20261024-merge-1"></script>
+  <script src="js/aiSettings.js?v=20261024-merge-1"></script>
 
   <!-- 课程 -->
   <script src="js/courses.js"></script>
-  <script src="js/courseDetail.js"></script>
+  <script src="js/courseDetail.js?v=20261024-header-add-23"></script>
 
   <!-- 四类资源（列表页） -->
   <script src="js/tags.js"></script>
   <script src="js/readingBrowse.js"></script>
-  <script src="js/materials.js?v=20261024-review-mode-1"></script>
-  <script src="js/notes.js?v=20261024-review-mode-1"></script>
-  <script src="js/assessments.js"></script>
+  <script src="js/materials.js?v=20261024-merge-1"></script>
+  <script src="js/notes.js?v=20261024-merge-1"></script>
+  <script src="js/assessments.js?v=20261023-assessment-20"></script>
   <script src="js/ocrBrowser.js"></script>
-  <script src="js/outlineMap.js?v=20261024-handoff-autorefresh-1"></script>
-  <script src="js/mistakes.js?v=20261021-cards-4"></script>
+  <script src="js/outlineMap.js?v=20261024-merge-1"></script>
+  <script src="js/mistakes.js?v=20261023-review-label-16"></script>
 
   <!-- 录入流程：手动输入 + 选标签 -->
   <script src="js/manualEntry.js?v=20261024-review-mode-1"></script>
@@ -1147,20 +1148,20 @@
 
   <!-- 详情页 -->
   <script src="js/page.js?v=20261022-history-1"></script>
-  <script src="js/itemReviewHistory.js?v=20261023-domestic-presets-7"></script>
+  <script src="js/itemReviewHistory.js?v=20261023-chinese-grades-17"></script>
   <script src="js/nodeDetail.js"></script>
   <script src="js/resourceDetail.js?v=20261024-upload-mindmap-1"></script>
   <script src="js/materialReview.js?v=20261024-auto-mode-2"></script>
   <script src="js/noteReview.js"></script>
-  <script src="js/mistakeDetail.js?v=20261024-auto-mode-2"></script>
-  <script src="js/mistakeAi.js?v=20261024-ai-context-2"></script>
-  <script src="js/mistakeAnswerAi.js?v=20261023-global-presets-8"></script>
-  <script src="js/resourceAi.js?v=20261024-ai-context-2"></script>
-  <script src="js/reviewMethodChoice.js?v=20261024-ai-draft-accept-2"></script>
-  <script src="js/clozeEditor.js?v=20261024-cloze-exit-mode-1"></script>
-  <script src="js/reviewWorkbench.js?v=20261024-ai-draft-accept-2"></script>
-  <script src="js/reviewFeedback.js?v=20261023-global-presets-8"></script>
-  <script src="js/reviewMaterialAi.js?v=20261024-ai-draft-accept-2"></script>
+  <script src="js/mistakeDetail.js?v=20261024-merge-1"></script>
+  <script src="js/mistakeAi.js?v=20261024-merge-1"></script>
+  <script src="js/mistakeAnswerAi.js?v=20261023-adoption-confirm-19"></script>
+  <script src="js/resourceAi.js?v=20261024-merge-1"></script>
+  <script src="js/reviewMethodChoice.js?v=20261024-merge-1"></script>
+  <script src="js/clozeEditor.js?v=20261024-merge-1"></script>
+  <script src="js/reviewWorkbench.js?v=20261024-merge-1"></script>
+  <script src="js/reviewFeedback.js?v=20261023-select-cloze-14"></script>
+  <script src="js/reviewMaterialAi.js?v=20261024-merge-1"></script>
   <dialog id="mistakeAiDialog" aria-labelledby="mistakeAiDialogTitle" oncancel="event.preventDefault();resetMistakeAi()" onclick="if(event.target===this)resetMistakeAi()">
     <header class="mistake-ai-dialog-head"><div><h2 id="mistakeAiDialogTitle" tabindex="-1">AI 复习建议</h2><p id="mistakeAiDialogQuestionTitle" class="mistake-ai-note"></p></div><button type="button" class="tag-sheet-close" onclick="resetMistakeAi()" aria-label="关闭 AI 复习建议">×</button></header>
     <div id="mistakeAiDialogBody" class="tag-sheet-body"></div>
@@ -1197,11 +1198,11 @@
       <div class="modal-actions"><button type="button" class="btn-cancel" onclick="closeCreationReviewSuggestion()">关闭</button><button type="button" id="creationModeAdviceRetry" onclick="retryCreationReviewSuggestion()" hidden>重新读取</button><button type="button" class="btn-primary" id="creationModeAdviceAnalyze" onclick="analyzeCreationReviewAdvice()" hidden>分析复习方式</button><button type="button" class="btn-primary" id="creationModeAdviceAdopt" onclick="adoptCreationReviewSuggestion()" hidden>采用建议</button></div>
     </footer>
   </dialog>
-  <script src="js/mistakeQueue.js?v=20261024-auto-mode-2"></script>
+  <script src="js/mistakeQueue.js?v=20261024-merge-1"></script>
   <script src="js/courseSearch.js"></script>
-  <script src="js/reviewPicker.js"></script>
-  <script src="js/reviewPlans.js"></script>
-  <script src="js/reviewCenter.js?v=20261024-auto-mode-3"></script>
+  <script src="js/reviewPicker.js?v=20261023-review-label-16"></script>
+  <script src="js/reviewPlans.js?v=20261023-review-label-16"></script>
+  <script src="js/reviewCenter.js?v=20261024-merge-1"></script>
 
   <!-- 知识框架 -->
   <script src="js/knowledgeTree.js"></script>
