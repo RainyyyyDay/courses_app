@@ -3,6 +3,8 @@ function createReadingReview(kind, label, resumeId, options = {}) {
   const state = {kind, label, selection:null, queue:null, row:null, busy:false, request:0};
   const el = suffix => document.getElementById('materialReview' + suffix);
   const current = () => state.queue?.courseId === currentCourseId && currentView.type === 'readingReview' && currentView.reviewKind === kind;
+  const hasCenterNavigation = () => !!(options.sessionId && typeof centerReview !== 'undefined'
+    && centerReview?.session?.id === options.sessionId && centerReview.session.course_id === currentCourseId);
   const store = value => {
     try { localStorage.setItem(options.storageKey || (kind === 'materials' ? 'material' : 'note') + '-review-queue:' + currentCourseId, JSON.stringify(value)); }
     catch { /* 当前浏览器禁用存储时仍可完成本轮；实际状态已保存到后端。 */ }
@@ -170,7 +172,7 @@ function createReadingReview(kind, label, resumeId, options = {}) {
     }catch{return 'standard';}
   };
   const reviewProgressText = row => {
-    const inCenter=!!(options.sessionId&&typeof centerReview!=='undefined'&&centerReview?.session?.id===options.sessionId);
+    const inCenter=hasCenterNavigation();
     const session=inCenter?centerReview.session:null;
     const current=inCenter?centerReview.position+1:state.queue.index+1;
     const total=inCenter?session.total:state.queue.ids.length;
@@ -181,6 +183,8 @@ function createReadingReview(kind, label, resumeId, options = {}) {
   };
   state.actions = () => {
     if (!current() || state.queue.finished) return;
+    // The center owns navigation; this panel only supplies recall/exposure and save retry controls.
+    el('Progress').hidden = hasCenterNavigation();
     if(options.readOnly){el('Actions').innerHTML='<p>本项已处理，可使用上方按钮查看其他项目。</p>';return;}
     const queue = state.queue, disabled = !state.row || state.busy || queue.pending ? 'disabled' : '';
     el('Progress').textContent = reviewProgressText(state.row);
@@ -194,7 +198,8 @@ function createReadingReview(kind, label, resumeId, options = {}) {
     const assessment=mode==='reading'
       ? `<p class="mistake-ai-note">当前是阅读标记：只记录曝光，不计成功复习；掌握情况需切换到标准复习再作答。</p><button data-material-review="exposure" onclick="saveMaterialReview('exposure')" ${disabled}>已阅读（仅曝光）</button>`
       : `<div class="review-recall-actions" aria-label="这遍回忆得怎么样"><button data-material-review="reviewed" onclick="saveMaterialReview('reviewed')" ${disabled}>清楚</button><button data-material-review="vague" onclick="saveMaterialReview('vague')" ${disabled}>模糊</button><button data-material-review="forgotten" onclick="saveMaterialReview('forgotten')" ${disabled}>不记得</button></div><p class="mistake-ai-note">“清楚”计为成功复习；“模糊/不记得”会再次展示内容，但不计成功。</p>`;
-    el('Actions').innerHTML = `${assessment}${queue.pending ? `<button onclick="retryMaterialReview()" ${state.busy ? 'disabled' : ''}>重试上次保存</button>` : ''}<button id="materialReviewNext" onclick="nextMaterialReview()" ${disabled}>跳过此条</button><button onclick="pauseMaterialReview()" ${state.busy ? 'disabled' : ''}>退出，稍后继续</button><button onclick="endMaterialReview()" ${state.busy ? 'disabled' : ''}>结束本轮</button>`;
+    const navigation = hasCenterNavigation() ? '' : `<button id="materialReviewNext" onclick="nextMaterialReview()" ${disabled}>跳过此条</button><button onclick="pauseMaterialReview()" ${state.busy ? 'disabled' : ''}>退出，稍后继续</button><button onclick="endMaterialReview()" ${state.busy ? 'disabled' : ''}>结束本轮</button>`;
+    el('Actions').innerHTML = `${assessment}${queue.pending ? `<button onclick="retryMaterialReview()" ${state.busy ? 'disabled' : ''}>重试上次保存</button>` : ''}${navigation}`;
     if(options.sessionId && typeof renderCenterReviewToolbar==='function')renderCenterReviewToolbar();
   };
   state.show = async () => {
@@ -237,7 +242,8 @@ function createReadingReview(kind, label, resumeId, options = {}) {
     } catch (err) {
       if (request !== state.request || !current()) return;
       el('Error').textContent = err.message;
-      el('Actions').innerHTML = '<button onclick="showMaterialReview()">重新加载本条内容</button><button onclick="pauseMaterialReview()">退出，稍后继续</button>';
+      el('Actions').innerHTML = '<button onclick="showMaterialReview()">重新加载本条内容</button>'
+        + (hasCenterNavigation() ? '' : '<button onclick="pauseMaterialReview()">退出，稍后继续</button>');
     }
   };
   const advance = async () => {
