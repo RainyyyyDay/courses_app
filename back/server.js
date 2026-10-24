@@ -37,6 +37,17 @@ const storage = multer.diskStorage({
   }
 });
 const upload = multer({ storage });
+const officePreview = require('./officePreview').createOfficePreview({
+  uploadDir, cacheDir: path.join(__dirname, 'data', 'office-preview')
+});
+officePreview.register(app);
+// Prepare only successful uploads, after the response; saving never waits for conversion.
+app.use((req, res, next) => {
+  res.once('finish', () => {
+    if (res.statusCode < 400 && req.file) officePreview.prepare(req.file.filename);
+  });
+  next();
+});
 
 // 让上传的文件可以通过地址访问（比如 http://localhost:3000/uploads/xxx.jpg）
 app.use('/uploads', express.static(uploadDir));

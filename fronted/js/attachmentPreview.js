@@ -12,6 +12,7 @@ function attachmentKind(type,url){
   const mime=String(type||'').split(';')[0].toLowerCase(),name=String(url||'').split(/[?#]/)[0];
   if(mime==='application/pdf'||(!mime||mime==='application/octet-stream')&&/\.pdf$/i.test(name))return 'pdf';
   if(mime.startsWith('image/')||(!mime||mime==='application/octet-stream')&&/\.(png|jpe?g|gif|webp|bmp|svg|avif|ico)$/i.test(name))return 'image';
+  if(/\.(docx?|pptx?)$/i.test(name))return 'office';
   return '';
 }
 function attachmentActionsHtml(value,type,name='附件'){
@@ -23,6 +24,7 @@ function closeAttachmentPreview(){document.getElementById('attachmentPreviewDial
 function disposeAttachmentViewer(){
   const state=attachmentViewer;attachmentViewer=null;if(!state)return;
   clearTimeout(state.timer);state.render?.cancel();state.task?.destroy()?.catch(()=>{});
+  clearTimeout(state.pollTimer);state.controller?.abort();state.cancelPoll?.();
   if(state.image){state.image.onload=null;state.image.onerror=null;state.image.removeAttribute('src');}
   state.canvas&&(state.canvas.width=state.canvas.height=0);
   if(document.fullscreenElement===state.dialog)document.exitFullscreen?.().catch(()=>{});
@@ -74,21 +76,52 @@ async function openAttachmentPreview(value,type,name='附件'){
   dialog.classList.remove('attachment-expanded');dialog.querySelector('[data-viewer-expand]').textContent='全屏查看';
   const s={url,kind,dialog,zoom:1,rotation:0,page:1,version:0,ready:false,trigger:document.activeElement};attachmentViewer=s;
   document.getElementById('attachmentPreviewTitle').textContent=name||'附件预览';document.getElementById('attachmentPreviewDownload').href=url;
-  document.getElementById('attachmentPdfPages').hidden=kind!=='pdf';dialog.querySelector('[data-viewer-rotate]').hidden=kind!=='image';document.getElementById('attachmentPageInfo').textContent='';document.getElementById('attachmentZoomInfo').textContent='100%';
+  document.getElementById('attachmentPdfPages').hidden=kind==='image';dialog.querySelector('[data-viewer-rotate]').hidden=kind!=='image';document.getElementById('attachmentPageInfo').textContent='';document.getElementById('attachmentZoomInfo').textContent='100%';
   dialog.querySelectorAll('[data-viewer-prev],[data-viewer-next]').forEach(b=>b.disabled=true);attachmentStatus('附件加载中，请稍候…');
   if(!dialog.open)dialog.showModal();
-  s.timer=setTimeout(()=>{if(attachmentViewer===s&&!s.ready){attachmentStatus('附件加载超时，请关闭后重试或下载原文件。',true);s.task?.destroy()?.catch(()=>{});}},35000);
+  if(kind!=='office')s.timer=setTimeout(()=>{if(attachmentViewer===s&&!s.ready){attachmentStatus('附件加载超时，请关闭后重试或下载原文件。',true);s.task?.destroy()?.catch(()=>{});}},35000);
   if(kind==='image'){
     const img=new Image();img.alt=name;s.image=img;const wrap=document.createElement('div');wrap.className='attachment-image-wrap';wrap.append(img);stage.append(wrap);
     img.onload=()=>{if(attachmentViewer!==s)return;clearTimeout(s.timer);s.ready=true;attachmentStatus('可缩放、旋转或下载原图。');void renderAttachment();};
     img.onerror=()=>{clearTimeout(s.timer);if(attachmentViewer===s)attachmentStatus('图片加载失败，文件可能已删除；可尝试下载原文件。',true);};img.src=url;return;
   }
   try{
+    let documentUrl=url;
+    if(kind==='office'){
+      documentUrl=await prepareOfficeAttachment(s);
+      if(attachmentViewer!==s||!documentUrl)return;
+      s.timer=setTimeout(()=>{if(attachmentViewer===s&&!s.ready){attachmentStatus('预览文件加载超时，请关闭后重试或下载原文件。',true);s.task?.destroy()?.catch(()=>{});}},35000);
+    }
     const lib=await loadPdfJs();if(attachmentViewer!==s)return;
-    s.task=lib.getDocument({url,isEvalSupported:false,disableAutoFetch:true,disableStream:true});
+    s.task=lib.getDocument({url:documentUrl,isEvalSupported:false,disableAutoFetch:true,disableStream:true});
     s.task.onPassword=()=>{s.passwordRequired=true;clearTimeout(s.timer);if(attachmentViewer===s)attachmentStatus('此 PDF 需要密码，请下载后使用支持密码的阅读器打开。',true);s.task.destroy().catch(()=>{});};
     s.pdf=await s.task.promise;if(attachmentViewer!==s)return;clearTimeout(s.timer);s.ready=true;await renderAttachment();
-  }catch(err){clearTimeout(s.timer);if(attachmentViewer===s&&!s.passwordRequired)attachmentStatus('PDF 无法加载，文件可能损坏、已删除或阅读组件不可用；请下载原文件查看。',true);}
+  }catch(err){clearTimeout(s.timer);if(attachmentViewer===s&&!s.passwordRequired)attachmentStatus('文档无法加载，文件可能损坏、已删除或预览服务不可用；请下载原文件查看。',true);}
+}
+
+async function prepareOfficeAttachment(s){
+  const name=new URL(s.url).pathname.split('/').pop();
+  // Local blob files have not been uploaded yet and cannot be converted by the server.
+  if(new URL(s.url).protocol==='blob:'){attachmentStatus('请先保存附件，再打开在线预览。',true);return '';}
+  const base=new URL('/api/attachments/'+encodeURIComponent(name)+'/preview',s.url).href;
+  const messages={CONVERTER_UNAVAILABLE:'文档预览服务尚未安装或配置，请联系维护人员；仍可下载原文件。',FILE_TOO_LARGE:'附件超过 50 MB，请下载原文件查看。',CONVERSION_TIMEOUT:'文档转换超时，请重试或下载原文件。',QUEUE_FULL:'预览任务较多，请稍后重试。'};
+  s.controller=new AbortController();
+  for(let attempt=0;attachmentViewer===s;attempt++){
+    attachmentStatus('正在准备文档预览，首次打开可能需要一些时间；原文件已保存。');
+    let response,state;
+    try{response=await fetch(base,{signal:s.controller.signal});state=await response.json();}
+    catch(error){if(attachmentViewer!==s)return '';throw error;}
+    if(attachmentViewer!==s)return '';
+    if(state.status==='ready')return base+'.pdf';
+    if(!response.ok||['failed','unavailable','busy','missing'].includes(state.status)||attempt>=119){
+      attachmentStatus(messages[state.code]||'文档暂时无法预览，可能已删除、损坏、加密或格式不受支持；可重试或下载原文件。',true);
+      const button=document.createElement('button');button.type='button';button.textContent='重试预览';
+      button.onclick=async()=>{button.disabled=true;try{await fetch(base+'?retry=1',{signal:s.controller.signal});if(attachmentViewer===s)void openAttachmentPreview(s.url,'',document.getElementById('attachmentPreviewTitle').textContent);}catch{if(attachmentViewer===s)button.disabled=false;}};
+      document.getElementById('attachmentPreviewStage').replaceChildren(button);return '';
+    }
+    await new Promise(resolve=>{s.cancelPoll=resolve;s.pollTimer=setTimeout(resolve,1500);});
+  }
+  return '';
 }
 document.addEventListener('click',e=>{const button=e.target.closest?.('[data-attachment-preview]');if(!button)return;e.preventDefault();e.stopPropagation();void openAttachmentPreview(button.dataset.url,button.dataset.type,button.dataset.name);});
 addEventListener('resize',()=>{if(attachmentViewer?.ready)void renderAttachment();});

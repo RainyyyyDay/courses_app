@@ -151,7 +151,7 @@ test('normal website list to FastAPI over HTTP, confirm/reload/total review at d
     const serverSource=fs.readFileSync(serverPath,'utf8');
     assert.ok(serverSource.includes('app.listen(3000,'),'expected existing listener');
     fs.writeFileSync(serverPath,serverSource.replace('app.listen(3000,',`app.listen(${nodePort}, '127.0.0.1',`));
-    for(const folder of ['db','ai','ocr'])fs.cpSync(path.join(root,'back',folder),path.join(backend,folder),{recursive:true,filter:source=>fs.statSync(source).isDirectory() || source.endsWith('.js')});
+    for(const folder of ['db','ai','ocr','officePreview'])fs.cpSync(path.join(root,'back',folder),path.join(backend,folder),{recursive:true,filter:source=>fs.statSync(source).isDirectory() || source.endsWith('.js')});
     const env={...process.env,NODE_PATH:path.join(root,'back/node_modules'),AI_PROVIDER:'mock',AI_ENABLE_REAL:'false',PYTHONPATH:path.join(root,'.local-ai-deps')};
     delete env.NODE_OPTIONS;delete env.NPM_CONFIG_NODE_OPTIONS;
     const seed=spawnSync(process.execPath,['-e',`const db=require('./db/index.js');const c=db.createCourse('真实 HTTP 隔离测试');const m=db.createMistake(c.id,'HTTP 测试错题','', '1+1=?','',[],{mistakeType:'knowledge',answerContent:'2',explanation:'虚构题目'});console.log(JSON.stringify({courseId:c.id,mistakeId:m.id}));db.db.close();`],{cwd:backend,env,encoding:'utf8',windowsHide:true});

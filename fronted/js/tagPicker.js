@@ -23,7 +23,15 @@ function currentResourceNodes(resourceType, resourceId) {
 }
 
 //   resourceId   = edit 时的资源 id，upload 传 null
+function cancelPickerResourceText() {
+  const request = recognizePickerResourceFile.request;
+  if (!request) return;
+  request.controller.abort();
+  if (request.button) { request.button.disabled = false; request.button.textContent = request.original; }
+  recognizePickerResourceFile.request = null;
+}
 async function openTagPicker(mode, resourceType, resourceId) {
+  cancelPickerResourceText();
   cancelPickerOutline();
   const mapStatus = document.getElementById('tagPickerMindmapStatus');
   if (mapStatus) mapStatus.textContent = '';
@@ -280,6 +288,7 @@ function initTagPickerExpanded() {
 
 // 关闭选择器（取消时不会提交任何东西）
 function closeTagPicker() {
+  cancelPickerResourceText();
   cancelPickerOutline();
   cancelMistakeCreateAi();
   if(typeof resetPendingCreationCloze==='function')resetPendingCreationCloze('tagPicker');
@@ -511,11 +520,17 @@ async function recognizePickerResourceFile() {
   const button = document.getElementById('tagPickerResourceOcrBtn');
   if (button?.disabled) return;
   const original = button ? button.textContent : '';
+  const file = pendingUploadFile, state = tagPickerState;
+  const request = { controller: new AbortController(), button, original };
+  recognizePickerResourceFile.request = request;
+  const isCurrent = () => recognizePickerResourceFile.request === request && !request.controller.signal.aborted
+    && tagPickerState === state && pendingUploadFile === file;
   if (button) { button.disabled = true; button.textContent = '识别中…'; }
   try {
-    const result = await recognizeUploadedFile(pendingUploadFile, (message) => {
-      if (button) button.textContent = message;
-    });
+    const result = await recognizeUploadedFile(file, (message) => {
+      if (isCurrent() && button) button.textContent = message;
+    }, { signal: request.controller.signal });
+    if (!isCurrent()) return;
     const text = document.getElementById('tagPickerResourceOcrText');
     const panel = document.getElementById('tagPickerResourceOcrPanel');
     const meta = document.getElementById('tagPickerResourceOcrMeta');
@@ -536,9 +551,12 @@ async function recognizePickerResourceFile() {
     if (panel) panel.dataset.pendingAdoption = 'true';
     notifyTextRecognitionSuccess(result, panel);
   } catch (err) {
-    showToast(err.message);
+    if (isCurrent()) showToast(err.message);
   } finally {
-    if (button) { button.disabled = false; button.textContent = original; }
+    if (recognizePickerResourceFile.request === request) {
+      recognizePickerResourceFile.request = null;
+      if (button) { button.disabled = false; button.textContent = original; }
+    }
   }
 }
 
@@ -564,6 +582,7 @@ function closePickerResourceOcr() {
 }
 
 function choosePickerResourceFile(input) {
+  cancelPickerResourceText();
   pendingUploadFile = input.files?.[0] || null;
   renderPickerResourceSummary();
   const nameInput = document.getElementById('tagPickerName');
@@ -576,6 +595,7 @@ function choosePickerResourceFile(input) {
 }
 
 function clearPickerResourceFile() {
+  cancelPickerResourceText();
   if (!pendingUploadFile && pickerExistingFile) {
     // 编辑既有资料：标记为"保存后删除原附件"
     pendingResourceRemoveFile = true;
