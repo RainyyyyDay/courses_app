@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>课内</title>
-  <link rel="stylesheet" href="style.css?v=20261024-unified-task-flow-41" />
+  <link rel="stylesheet" href="style.css?v=20261024-review-flow-merge-46" />
 </head>
 <body>
 
@@ -797,10 +797,14 @@
           <div class="edit-card-head">
             <span class="edit-card-icon">🧭</span>
             <div class="edit-card-titles"><b>重点总结 / 大纲</b><small>一行一条，缩进两格表示下一级；用来生成结构图</small></div>
-            <button type="button" class="edit-mini-btn" id="tagPickerOutlineGen" style="display:none;" onclick="generatePickerOutline()">自动生成</button>
             <button type="button" class="edit-mini-btn" onclick="clearPickerOutline()">清空</button>
           </div>
           <div class="edit-card-body">
+            <div class="outline-ai-actions">
+            <button type="button" class="edit-mini-btn" id="tagPickerOutlineGen" onclick="generatePickerOutline()">AI 一键生成大纲</button>
+            <button type="button" class="edit-mini-btn" onclick="coursesAiSettings.open()">AI 设置</button>
+            </div>
+            <p id="tagPickerOutlineStatus" class="muted" role="status" aria-live="polite">使用共用 AI 设置，根据正文生成；可能计费，生成后可修改。</p>
             <textarea id="tagPickerOutline" rows="6" placeholder="- 第一章&#10;  - 1.1 极限&#10;  - 1.2 连续"></textarea>
           </div>
         </section>
@@ -818,6 +822,7 @@
               <button type="button" class="edit-btn edit-btn-danger" id="tagPickerMindmapClear" style="display:none;" onclick="clearPickerMindmap()">删除导图</button>
             </div>
             <p id="tagPickerMindmapAiNote" class="mindmap-generation-note" role="status"></p>
+            <p id="tagPickerMindmapStatus" class="mindmap-generation-note" role="status" aria-live="polite"></p>
             <label class="mistake-create-field" style="margin-top:8px;">中心主题
               <input id="tagPickerMindmapTitle" maxlength="40" placeholder="默认使用资料名称" oninput="updatePickerMindmapTitle()" />
             </label>
@@ -1144,10 +1149,10 @@
   <script src="js/config.js"></script>
   <script src="js/state.js"></script>
   <script src="js/utils.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/ai.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/aiSettings.js?v=20261024-merged-attachment-review-31"></script>
+  <script src="js/ai.js?v=20261024-mindmap-ai-38"></script>
+  <script src="js/aiSettings.js?v=20261024-ai-outline-34"></script>
 
-  <script src="js/attachmentPreview.js?v=20261024-attachment-preview-24"></script>
+  <script src="js/attachmentPreview.js?v=20261024-office-preview-40"></script>
 
   <!-- 课程 -->
   <script src="js/courses.js"></script>
@@ -1160,31 +1165,31 @@
   <script src="js/notes.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/assessments.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/ocrBrowser.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/outlineMap.js?v=20261024-split-outline-mindmap-33"></script>
-  <script src="js/officeText.js?v=20261024-merged-attachment-review-31"></script>
+  <script src="js/outlineMap.js?v=20261024-outline-draft-37"></script>
+  <script src="js/officeText.js?v=20261024-legacy-office-text-41"></script>
   <script src="js/mistakes.js?v=20261024-merged-attachment-review-31"></script>
 
   <!-- 录入流程：手动输入 + 选标签 -->
-  <script src="js/manualEntry.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/tagPicker.js?v=20261024-tree-root-collapse-34"></script>
+  <script src="js/manualEntry.js?v=20261024-outline-save-39"></script>
+  <script src="js/tagPicker.js?v=20261024-legacy-office-text-41"></script>
   <script src="js/tagPickerView.js?v=20261024-tree-root-collapse-34"></script>
 
   <!-- 详情页 -->
   <script src="js/page.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/itemReviewHistory.js?v=20261023-chinese-grades-17"></script>
+  <script src="js/itemReviewHistory.js?v=20261024-empty-review-43"></script>
   <script src="js/nodeDetail.js"></script>
-  <script src="js/resourceDetail.js?v=20261024-split-outline-mindmap-33"></script>
+  <script src="js/resourceDetail.js?v=20261024-office-preview-40"></script>
   <script src="js/resourceText.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/materialReview.js?v=20261024-unified-task-flow-41"></script>
+  <script src="js/materialReview.js?v=20261024-review-flow-merge-46"></script>
   <script src="js/noteReview.js"></script>
-  <script src="js/mistakeDetail.js?v=20261024-tree-root-collapse-34"></script>
+  <script src="js/mistakeDetail.js?v=20261024-empty-review-43"></script>
   <script src="js/mistakeAi.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/mistakeAnswerAi.js?v=20261023-adoption-confirm-19"></script>
   <script src="js/resourceAi.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/reviewMethodChoice.js?v=20261024-split-outline-mindmap-33"></script>
   <script src="js/clozeEditor.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/reviewWorkbench.js?v=20261024-result-colors-autonext-36"></script>
-  <script src="js/reviewFeedback.js?v=20261023-select-cloze-14"></script>
+  <script src="js/reviewWorkbench.js?v=20261024-review-flow-merge-46"></script>
+  <script src="js/reviewFeedback.js?v=20261024-review-flow-merge-46"></script>
   <script src="js/reviewMaterialAi.js?v=20261024-merged-attachment-review-31"></script>
   <dialog id="mistakeAiDialog" aria-labelledby="mistakeAiDialogTitle" oncancel="event.preventDefault();resetMistakeAi()" onclick="if(event.target===this)resetMistakeAi()">
     <header class="mistake-ai-dialog-head"><div><h2 id="mistakeAiDialogTitle" tabindex="-1">AI 复习建议</h2><p id="mistakeAiDialogQuestionTitle" class="mistake-ai-note"></p></div><button type="button" class="tag-sheet-close" onclick="resetMistakeAi()" aria-label="关闭 AI 复习建议">×</button></header>
@@ -1222,11 +1227,11 @@
       <div class="modal-actions"><button type="button" class="btn-cancel" onclick="closeCreationReviewSuggestion()">关闭</button><button type="button" id="creationModeAdviceRetry" onclick="retryCreationReviewSuggestion()" hidden>重新读取</button><button type="button" class="btn-primary" id="creationModeAdviceAnalyze" onclick="analyzeCreationReviewAdvice()" hidden>分析复习方式</button><button type="button" class="btn-primary" id="creationModeAdviceAdopt" onclick="adoptCreationReviewSuggestion()" hidden>采用建议</button></div>
     </footer>
   </dialog>
-  <script src="js/mistakeQueue.js?v=20261024-unified-task-flow-41"></script>
+  <script src="js/mistakeQueue.js?v=20261024-review-flow-merge-46"></script>
   <script src="js/courseSearch.js"></script>
   <script src="js/reviewPicker.js?v=20261024-attachment-preview-24"></script>
-  <script src="js/reviewPlans.js?v=20261024-plan-finish-unified-45"></script>
-  <script src="js/reviewCenter.js?v=20261024-plan-finish-unified-45"></script>
+  <script src="js/reviewPlans.js?v=20261024-review-flow-merge-46"></script>
+  <script src="js/reviewCenter.js?v=20261024-review-flow-merge-46"></script>
 
   <!-- 知识框架 -->
   <script src="js/knowledgeTree.js"></script>

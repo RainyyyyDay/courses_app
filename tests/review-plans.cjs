@@ -120,9 +120,11 @@ async function testReviewPlanApi({base,temp}) {
     assert.equal((await api('GET',review)).version,p.version);assert.equal((await api('GET',url)).completed,0);
     d.exec('DROP TRIGGER reject_mistake_event');
     d.exec('DROP TRIGGER reject_plan_completion');
-    const completed=await api('POST',review+'/events'+context,operation);
+    const recalled=await api('POST',review+'/events'+context,operation);
+    assert.equal(recalled.stage,'answer','forgotten recall reveals the reference before judgment');
+    assert.deepEqual(await api('POST',review+'/events'+context,operation),recalled,'same requestId remains idempotent');
+    const completed=await api('POST',review+'/events'+context,{action:'judge',correct:false,requestId:'plan-failed-judge',expectedVersion:recalled.version});
     assert.equal(completed.stage,'completed');assert.equal(completed.reviewStatus,'unreviewed');
-    assert.deepEqual(await api('POST',review+'/events'+context,operation),completed,'same requestId remains idempotent');
     const otherTask=(await api('GET',prefix+'/'+second.id+'/items')).find(row=>row.item_type==='mistake');
     await api('POST',review+'/events?planItemId='+otherTask.id,operation,409);
     await api('POST',review+'/events'+context,{...operation,requestId:'new-stale'},409);
@@ -156,12 +158,16 @@ async function testReviewPlanApi({base,temp}) {
     const linked=afterSchedule.days.find(day=>day.date===futureDay.date);
     assert.ok(linked && Array.isArray(linked.sessionItems) && linked.sessionItems.length===1,'preview-date session appears on the calendar');
     // 排期快照：提前复习后先保持旧排期，点「应用新排期」才切换。
-    const snapPlan=await api('POST',prefix,{...body,name:'snapshot',examDate:spanExam,selectedItems:[{type:'material',id:m.id}]},201);
+    const snapMaterial=await api('POST',c+'/materials',{title:'snapshot future material',content:'future snapshot body'});
+    const snapMaterial2=await api('POST',c+'/materials',{title:'snapshot second material',content:'second future body'});
+    const snapPlan=await api('POST',prefix,{...body,name:'snapshot',examDate:spanExam,selectedItems:[
+      {type:'material',id:snapMaterial.id},{type:'material',id:snapMaterial2.id},
+    ]},201);
     const firstSchedule=await api('GET',prefix+'/'+snapPlan.id+'/schedule');
     assert.equal(firstSchedule.hasNewSchedule,false,'initial snapshot matches the computed schedule');
     const snapFutureTask=(await api('GET',prefix+'/'+snapPlan.id+'/items')).find(item=>item.scheduled_date>today);
     assert.ok(snapFutureTask,'snapshot fixture has a future task');
-    await api('PATCH',`${c}/materials/${m.id}/review?planItemId=${snapFutureTask.id}`,{reviewStatus:'reviewed'});
+    await api('PATCH',`${c}/materials/${snapFutureTask.item_id}/review?planItemId=${snapFutureTask.id}`,{reviewStatus:'reviewed'});
     const changedSchedule=await api('GET',prefix+'/'+snapPlan.id+'/schedule');
     assert.equal(changedSchedule.hasNewSchedule,true,'successfully reviewing a future item early is flagged for approval');
     assert.deepEqual(changedSchedule.days.map(day=>day.date),firstSchedule.days.map(day=>day.date),'old schedule stays until applied');

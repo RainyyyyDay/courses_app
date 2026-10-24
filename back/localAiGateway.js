@@ -16,7 +16,7 @@ function createLocalAiGateway({ fetchImpl = fetch, timeoutMs = 95000 } = {}) {
       || req.headers['sec-fetch-site'] === 'cross-site') return fail(403, 'AI_LOCAL_ONLY');
     let body = JSON.stringify(req.body);
     if (!body || !req.is('application/json')) return fail(400, 'INVALID_INPUT');
-    const maxBytes=req.path==='/review-mode-advice'?32768:16384;
+    const maxBytes=['/review-mode-advice', '/outline-polish'].includes(req.path)?32768:16384;
     if (Buffer.byteLength(body) > maxBytes) return fail(413, 'BODY_TOO_LARGE');
     const controller = new AbortController();
     const cancel = () => { if (!res.writableEnded) controller.abort(); };

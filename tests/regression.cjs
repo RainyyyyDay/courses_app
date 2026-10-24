@@ -47,6 +47,7 @@ async function testBackend() {
   fs.cpSync(path.join(source, 'db'), path.join(temp, 'db'), { recursive: true });
   fs.cpSync(path.join(source, 'ai'), path.join(temp, 'ai'), { recursive: true });
   fs.cpSync(path.join(source, 'ocr'), path.join(temp, 'ocr'), { recursive: true });
+  fs.cpSync(path.join(source, 'officePreview'), path.join(temp, 'officePreview'), { recursive: true });
   fs.copyFileSync(path.join(source, 'aiProxy.js'), path.join(temp, 'aiProxy.js'));
   fs.copyFileSync(path.join(source, 'db.js'), path.join(temp, 'db.js'));
   fs.mkdirSync(path.join(temp, 'data'));

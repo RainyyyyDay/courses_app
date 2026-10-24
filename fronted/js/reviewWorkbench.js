@@ -406,8 +406,8 @@ function workbenchClozeHtml(p,pending){
     const b=m.blanks.find(b=>part==='【'+b.id+'】');if(!b)return escapeHtml(part);
     if(p.stage==='question')return `<label class="review-inline-blank"><span class="sr-only">${escapeHtml(b.id)} ${escapeHtml(b.hint)}</span><input data-review-blank="${escapeHtml(b.id)}" aria-label="${escapeHtml(b.id+' '+b.hint)}" placeholder="${escapeHtml(b.hint||b.id)}" value="${escapeHtml(pending?.answer?.[b.id]||'')}" autocomplete="off" maxlength="2000"></label>`;
     const correct=p.result?.results.some(r=>r.id===b.id&&r.correct);
-    const submitted=String(p.firstAnswer?.[b.id]||'');
-    return `<span class="review-blank-result ${correct?'is-correct':'is-wrong'}" data-blank-result="${escapeHtml(b.id)}"><span class="review-blank-submitted">${escapeHtml(submitted||'（未填）')}</span> · <strong class="review-result-status">${correct?'正确':'错误'}</strong>（答案：<span class="review-answer-diff">${reviewAnswerDiffHtml(b.answer,submitted,correct)}</span>${b.aliases.length?'；别名：'+escapeHtml(b.aliases.join('、')):''}）</span>`;
+    const submitted=String(p.firstAnswer?.[b.id]||''),unanswered=!submitted.trim();
+    return `<span class="review-blank-result ${correct?'is-correct':'is-wrong'}" data-blank-result="${escapeHtml(b.id)}"><span class="review-blank-submitted">${escapeHtml(unanswered?'（未作答）':submitted)}</span> · <strong class="review-result-status">${unanswered?'未作答，按不会记录':correct?'正确':'错误'}</strong>（答案：<span class="review-answer-diff">${reviewAnswerDiffHtml(b.answer,submitted,correct)}</span>${b.aliases.length?'；别名：'+escapeHtml(b.aliases.join('、')):''}）</span>`;
   }).join('')+'</div>';
 }
 function workbenchContrastHtml(m,answer='',readonly=false){
@@ -436,10 +436,13 @@ function renderWorkbenchAttempt(){
     if(p.modeId==='contrast')content+=workbenchContrastHtml(m,pending?.answer);
     else if(p.modeId==='reading')content+='<p>只记录阅读曝光，不评标准答案，不计为“已掌握”，不完成掌握型任务。</p>'+wbInput('可选：一句话总结 / 疑问','Answer',pending?.answer||'',2)+'<label class="review-check"><input id="reviewWbReadComplete" type="checkbox"><span>我已完成本段阅读</span></label>';
     else if(p.modeId!=='cloze')content+=`<p>${p.modeId==='self_explain'?'用自己的话解释概念、原因、例子；提交后才能查看要点与量规。':'先独立回忆或解题；提交后查看参考答案，自评最高为“基本掌握”。'}</p>`+wbInput(p.modeId==='self_explain'?'我的讲解（概念、原因与例子）':'看答案前的独立作答 / 回忆','Answer',typeof pending?.answer==='string'?pending.answer:'',p.modeId==='self_explain'?10:5);
-    wb('Actions').innerHTML=`<button onclick="submitWorkbenchAttempt('${p.modeId==='reading'?'complete':'submit'}')">${p.modeId==='reading'?'记录阅读曝光（不评分）':'提交首次作答'}</button>`;
+    if(p.modeId!=='reading')content+='<p class="ai-help">留空提交按不会记录；部分作答会保留，空白项按未答处理。离开页面不会自动提交。</p>';
+    wb('Actions').innerHTML=`<button onclick="submitWorkbenchAttempt('${p.modeId==='reading'?'complete':'submit'}')">${p.modeId==='reading'?'记录阅读曝光（不评分）':'提交作答'}</button>`
+      +(!['reading','cloze'].includes(p.modeId)?'<button onclick="submitWorkbenchAttempt(\'submit\',undefined,true)">不会，查看参考</button>':'');
   }else{
-    if(p.modeId==='contrast')content+=workbenchContrastHtml(m,p.firstAnswer,true);
-    else if(p.modeId!=='cloze')content+=`<h4>${p.modeId==='reading'?'阅读记录':'不可改写的首次作答'}</h4><div class="detail-content">${escapeHtml(p.firstAnswer||'（无）')}</div>`;
+    if(p.result?.unanswered)content+='<p class="ai-help" data-unanswered>本轮未作答，按不会记录。可对照参考学习，再开始新一轮尝试；本轮不提供 AI 批改。</p>';
+    if(p.modeId==='contrast'&&!p.result?.unanswered)content+=workbenchContrastHtml(m,p.firstAnswer,true);
+    else if(p.modeId!=='cloze')content+=`<h4>${p.modeId==='reading'?'阅读记录':'不可改写的首次作答'}</h4><div class="detail-content">${escapeHtml(p.result?.unanswered?'（未作答）':p.firstAnswer||'（无）')}</div>`;
     if(!['cloze','reading'].includes(p.modeId))content+=`<h4>参考解释 / 知识要点</h4><div class="detail-content" data-review-reference>${escapeHtml(m.reference||'')}</div><h4>评分量规</h4><div class="detail-content">${escapeHtml(m.rubric||'未另设量规，请核对参考要点')}</div>`+(['self_explain','contrast'].includes(p.modeId)?workbenchCheckpoints(p):'');
     wb('Actions').innerHTML=p.stage==='answer'?'<p>本轮已查看参考答案，自评可选“未掌握”或“基本掌握”。</p><button onclick="submitWorkbenchAttempt(\'judge\',1)">未掌握</button><button onclick="submitWorkbenchAttempt(\'judge\',2)">基本掌握</button>':'';
     if(p.stage==='completed'){
@@ -463,7 +466,7 @@ function scheduleWorkbenchAutoAdvance(s){
   },1800);
   return true;
 }
-async function submitWorkbenchAttempt(action,grade){
+async function submitWorkbenchAttempt(action,grade,unanswered=false){
   const s=reviewWorkbench;if(!s?.attempt||s.busy)return;
   const key=reviewWorkbenchKey(s),saved=mistakeStorageGet(key+':pending')||s.pending;
   const body=saved||{action,requestId:reviewRequestId(),expectedVersion:s.attempt.version,durationMs:Math.max(1,Math.min(86400000,Date.now()-Date.parse(s.attempt.startedAt)))};
@@ -472,12 +475,12 @@ async function submitWorkbenchAttempt(action,grade){
     else if(s.attempt.modeId==='cloze')body.answer=Object.fromEntries([...wb('Attempt').querySelectorAll('[data-review-blank]')].map(n=>[n.dataset.reviewBlank,n.value]));
     else if(s.attempt.modeId==='contrast'){
       const fields=Object.fromEntries([...wb('Attempt').querySelectorAll('[data-contrast-field]')].map(n=>[n.dataset.contrastField,n.value]));
-      if(!Object.values(fields).some(v=>v.trim())){wb('Error').textContent='请先填写比较内容；不会也可以在对应字段写“不记得”。';return;}
       body.answer=JSON.stringify({kind:'contrast-v1',fields});
     }else{
       if(action==='complete'&&!wb('ReadComplete')?.checked){wb('Error').textContent='请先勾选已完成阅读；总结可留空。';return;}
       body.answer=wb('Answer').value;
     }
+    if(unanswered&&action==='submit')body.answer='';
     mistakeStorageSet(key+':pending',body);s.pending=body;
   }
   s.busy=true;wb('Error').textContent='';

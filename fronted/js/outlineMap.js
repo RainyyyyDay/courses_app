@@ -359,7 +359,7 @@ async function requestBasicMindmapOutline(text, title = '') {
   return { title, outline: data.outline.trim(), source: 'basic' };
 }
 
-async function requestAiMindmapOutline(text, title = '') {
+async function requestAiMindmapOutline(text, title = '', options = {}) {
   if (!mindmapAiReady()) {
     throw new Error('AI 润色尚未接入真实 API；基础生成仍然可用。');
   }
@@ -381,6 +381,7 @@ async function requestAiMindmapOutline(text, title = '') {
       ...(credentials.workspaceId ? { workspace_id: credentials.workspaceId } : {}),
     } : {}),
     input: { title, text },
+    ...(options.purpose === 'outline_draft' ? { purpose: 'outline_draft' } : {}),
   });
   credentials.apiKey = '';
   if (new TextEncoder().encode(body).length > 32768) {
@@ -388,7 +389,10 @@ async function requestAiMindmapOutline(text, title = '') {
     throw new Error('大纲内容过长，请精简后再使用 AI 润色');
   }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 100000);
+  const abort = () => controller.abort();
+  options.signal?.addEventListener('abort', abort, { once: true });
+  if (options.signal?.aborted) controller.abort();
+  const timer = setTimeout(abort, 100000);
   const release = coursesAiSettings.track(credentials, () => controller.abort());
   try {
     const response = await fetch(endpoint.href, {
@@ -418,6 +422,7 @@ async function requestAiMindmapOutline(text, title = '') {
   } finally {
     body = '';
     clearTimeout(timer);
+    options.signal?.removeEventListener('abort', abort);
     release();
   }
 }

@@ -61,7 +61,10 @@ function getMistakeReview(id) {
     mistakeId: id, courseId: mistake.course_id, mistakeType: mistake.mistake_type,
     reviewStatus: mistake.review_status, reviewRevision: mistake.review_revision,
     stage: progress.stage, recall: progress.recall, round: progress.round, version: progress.version,
-    firstAnswer: progress.first_answer || null, answerRevealed: !!progress.answer_revealed,
+    firstAnswer: progress.first_answer ?? null, answerRevealed: !!progress.answer_revealed,
+    responseKind: progress.first_answer?.trim() ? 'written_answer'
+      : mistake.mistake_type === 'knowledge' && mode.id === 'standard' && progress.recall ? 'memory_self_report'
+      : progress.answer_revealed ? 'unanswered' : null,
     startedAt: progress.started_at || null,
     durationMs:progress.duration_ms || 0,
     updatedAt: progress.updated_at,
@@ -88,8 +91,12 @@ function validateOperation(body, startOnly = false) {
   const allowed = ['action', 'requestId', 'expectedVersion'];
   if (['recall','reveal_answer'].includes(body.action)) {
     allowed.push('firstAnswer');
-    if (typeof body.firstAnswer !== 'string' || !body.firstAnswer.trim() || body.firstAnswer.length>12000) {
-      fail(400,'INVALID_ARGUMENT','请先提交首次作答；不记得时也请明确填写“不记得”');
+    if (body.action === 'recall') {
+      if (body.firstAnswer !== undefined && (typeof body.firstAnswer !== 'string' || body.firstAnswer.length > 12000)) {
+        fail(400, 'INVALID_ARGUMENT', '选填的回忆内容必须是最多 12000 字符的文字');
+      }
+    } else if (body.firstAnswer !== undefined && (typeof body.firstAnswer !== 'string' || body.firstAnswer.length>12000)) {
+      fail(400,'INVALID_ARGUMENT','首次作答必须是最多 12000 字符的文字；留空提交按不会记录');
     }
   }
   if (body.durationMs !== undefined) {
@@ -111,8 +118,8 @@ function validateOperation(body, startOnly = false) {
   if (body.action === 'choose') {
     allowed.push('selectedOption');
     const selected = body.selectedOption;
-    const validString = typeof selected === 'string' && !!selected.trim() && selected.length <= 20;
-    const validArray = Array.isArray(selected) && selected.length >= 1 && selected.length <= 26
+    const validString = typeof selected === 'string' && selected.length <= 20;
+    const validArray = Array.isArray(selected) && selected.length <= 26
       && selected.every(value => typeof value === 'string' && !!value.trim() && value.length <= 20)
       && new Set(selected.map(value => value.trim())).size === selected.length;
     if (!validString && !validArray) fail(400, 'INVALID_ARGUMENT', 'selectedOption 必须是选项字符串或选项字符串数组');
@@ -174,26 +181,28 @@ function applyMistakeReview(id, body, startOnly = false, planItemId = null, sess
       } else {
         if (!Array.isArray(operation.selectedOption)) fail(400, 'INVALID_ARGUMENT', '多选题需要提交选项数组');
         selectedIds = [...new Set(operation.selectedOption.map(value => value.trim()).filter(Boolean))];
-        if (!selectedIds.length) fail(400, 'INVALID_ARGUMENT', '多选题至少选择一个选项');
       }
+      selectedIds=selectedIds.filter(Boolean);
       if (selectedIds.some(id => !options.some(option => option.id === id))) {
         fail(400, 'INVALID_ARGUMENT', 'selectedOption 不属于当前题目的选项');
       }
       choiceCorrect = selectedIds.length === correctIds.length && selectedIds.every(id => correctIds.includes(id)) ? 1 : 0;
-      selectedOption = choiceType === 'single' ? selectedIds[0] : JSON.stringify(selectedIds);
-      firstAnswer=selectedOption;
+      selectedOption = choiceType === 'single' ? (selectedIds[0]??null) : JSON.stringify(selectedIds);
+      firstAnswer=selectedIds.length ? selectedOption : '';
       answerRevealed=true; // Correct answer is returned only after this objective submission is scored.
       status = choiceCorrect ? 'reviewed' : 'unreviewed';
       result = choiceCorrect ? 'correct' : 'incorrect';
       stage = 'completed';
     } else if (operation.action === 'recall') {
-      firstAnswer=operation.firstAnswer;answerRevealed=true;
+      if (mistake.mistake_type !== 'knowledge' || mode.id !== 'standard') fail(409, 'INVALID_REVIEW_STEP', '当前模式不使用记忆自评');
+      firstAnswer=operation.firstAnswer?.trim() ? operation.firstAnswer : null;answerRevealed=true;
       recall = operation.recall;
       // 清楚/模糊/不记得都先展示答案；最终只有明确判断正确或已掌握才算通过。
       stage = 'answer';
     } else if (operation.action === 'reveal_answer') {
-      firstAnswer=operation.firstAnswer;answerRevealed=true;
-      stage = 'answer';
+      firstAnswer=operation.firstAnswer?.trim() ? operation.firstAnswer : '';answerRevealed=true;
+      stage = firstAnswer ? 'answer' : 'completed';
+      if(!firstAnswer){status='unreviewed';result=['thinking','unclassified'].includes(mistake.mistake_type)?'needs_review':'incorrect';}
     } else {
       if (isChoice) fail(409, 'INVALID_REVIEW_STEP', '选择题复现请直接提交选项');
       // 思维类与待分类共用掌握判断，其余类型仍使用正确/错误判断。
@@ -247,7 +256,10 @@ function applyMistakeReview(id, body, startOnly = false, planItemId = null, sess
         modeId: mode.id,
         durationMs,
         firstAnswer,answerRevealed,
-        evidence:{judgedBeforeReveal:isChoice,nativeHistoryKey:`n:${mistake.review_revision}:${round}`},
+        evidence:{judgedBeforeReveal:isChoice&&!!firstAnswer?.trim(),nativeHistoryKey:`n:${mistake.review_revision}:${round}`,
+          ...(firstAnswer===''?{unanswered:true}:{}),
+          ...(mistake.mistake_type === 'knowledge' && mode.id === 'standard'
+            ? {responseKind:firstAnswer ? 'written_answer' : 'memory_self_report',recall} : {})},
       });
     }
     const response = getMistakeReview(id);

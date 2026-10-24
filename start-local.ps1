@@ -63,6 +63,15 @@ try {
         throw '没有找到 Node.js，请先安装 Node 20 或更高版本。'
     }
 
+    $officeModule = Join-Path $backendPath 'officePreview'
+    $officeConverter = & node.exe -e "process.stdout.write(require(process.argv[1]).converterPath())" $officeModule 2>$null
+    if ($officeConverter) {
+        Write-Host 'Word/PPT 预览及旧版文字提取转换组件已找到。'
+    } else {
+        Write-Host '提示：未找到 LibreOffice，Word/PPT 在线预览和旧版 doc/ppt 文字提取暂不可用；附件保存、下载及新版 docx/pptx 文字提取仍可使用。' -ForegroundColor Yellow
+        Write-Host '  安装 LibreOffice 后重启网站；非默认位置可通过 OFFICE_PREVIEW_CONVERTER 指定 soffice.com 的完整路径。' -ForegroundColor Yellow
+    }
+
     if (-not (Test-Path -LiteralPath $ocrEntry)) {
         Write-Host '提示：浏览器端 OCR 资源缺失，图片识别会回退服务端，扫描 PDF 暂不可识别。' -ForegroundColor Yellow
         Write-Host '  修复：cd ocr-trial; npm install; cd ..; node tools/prepare-ocr-web.cjs' -ForegroundColor Yellow

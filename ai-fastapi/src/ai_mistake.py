@@ -275,10 +275,10 @@ class DeepSeekProvider:
                                      json={"model": self.config.model, "stream": False, **options,
                                            "messages": [{"role": "system", "content": prompt + "\n必须输出合法 JSON 对象，键名和字符串使用双引号，不添加 Markdown 代码围栏或说明。"},
                                                         {"role": "user", "content": json.dumps(data, ensure_ascii=False)}]}) as response:
-                if self.config.provider != "compatible" and not 200 <= response.status_code < 300:
+                if self.config.provider != "compatible" and not 200 <= response.status_code < 300 and response.status_code not in (400, 403, 404):
                     code, status = {401: ("AI_AUTH_FAILED", 502), 402: ("AI_BALANCE_UNAVAILABLE", 503),
                                     429: ("AI_UPSTREAM_RATE_LIMITED", 503)}.get(response.status_code, ("AI_UNAVAILABLE", 502))
-                    raise AIError(status, code, source="error")
+                    raise AIError(status, code, source="error", details={"upstream_status": response.status_code})
                 chunks, size = [], 0
                 async for chunk in response.aiter_bytes(chunk_size=4096):
                     size += len(chunk)
@@ -312,11 +312,33 @@ class DeepSeekProvider:
                         return _json(fenced.group(1) if fenced else content)
                     except ValueError:
                         raise AIError(502, "AI_INVALID_JSON", source="error") from None
-                payload = _json(b"".join(chunks).decode("utf-8"))
-                choice = payload["choices"][0]
-                if choice.get("finish_reason") != "stop" or not isinstance(choice.get("message", {}).get("content"), str):
-                    raise AIError(502, "AI_UNAVAILABLE", source="error")
-                return _json(choice["message"]["content"])
+                try:
+                    payload = _json(b"".join(chunks).decode("utf-8"))
+                except (ValueError, UnicodeError):
+                    if not 200 <= response.status_code < 300:
+                        from .ai_provider import upstream_failure
+                        raise upstream_failure(response.status_code, {}) from None
+                    raise AIError(502, "AI_RESPONSE_FORMAT", source="error") from None
+                if not 200 <= response.status_code < 300 or isinstance(payload, dict) and 'error' in payload:
+                    from .ai_provider import upstream_failure
+                    raise upstream_failure(response.status_code, payload)
+                try:
+                    choice = payload["choices"][0]
+                    content = choice.get("message", {}).get("content")
+                except (KeyError, IndexError, TypeError, AttributeError):
+                    raise AIError(502, "AI_RESPONSE_FORMAT", source="error") from None
+                if choice.get("finish_reason") == "length":
+                    raise AIError(502, "AI_OUTPUT_LIMIT", source="error")
+                if choice.get("finish_reason") != "stop":
+                    raise AIError(502, "AI_RESPONSE_FORMAT", source="error")
+                if not isinstance(content, str) or not content.strip():
+                    raise AIError(502, "AI_EMPTY_RESPONSE", source="error")
+                try:
+                    fenced = re.fullmatch(r"\s*```(?:json)?\s*\n([\s\S]*?)\n```\s*", content, re.IGNORECASE)
+                    return _json(fenced.group(1) if fenced else content)
+                except ValueError:
+                    raise AIError(502, "AI_INVALID_JSON", source="error") from None
+
 
 
 class Classifier:
@@ -377,7 +399,7 @@ class Classifier:
                 raise AIError(504, "AI_CONNECT_TIMEOUT", source="error") from None
             if isinstance(exc, httpx.TimeoutException):
                 raise AIError(504, "AI_TIMEOUT", source="error") from None
-            if self.config.provider == 'compatible' and isinstance(exc, httpx.ConnectError):
+            if isinstance(exc, httpx.ConnectError):
                 raise AIError(502, "AI_CONNECTION_FAILED", source="error") from None
             raise AIError(502, "AI_UNAVAILABLE", source="error") from None
 

@@ -212,6 +212,8 @@ function renderResourcePreview(fileType, value, target = null) {
     img.onerror=()=>{button.replaceChildren(document.createTextNode('图片加载失败，可尝试下载原图。'));};button.append(img);button.onclick=()=>void openAttachmentPreview(url,fileType||'image/unknown','图片附件');box.append(button);
   }else if(kind==='pdf'){
     const card=document.createElement('div');card.className='attachment-pdf-card';card.textContent='PDF 文档 · 支持站内翻页和缩放';box.append(card);
+  }else if(kind==='office'){
+    const card=document.createElement('div');card.className='attachment-pdf-card';card.textContent='Word / PPT 文档 · 支持站内翻页和缩放，首次预览需准备';box.append(card);
   }
   box.insertAdjacentHTML('beforeend',attachmentActionsHtml(url,fileType,kind==='pdf'?'PDF':kind==='image'?'图片':'附件'));
 }

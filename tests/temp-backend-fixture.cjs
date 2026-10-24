@@ -29,7 +29,7 @@ async function fixture(run) {
     for(const file of ['server.js','aiProxy.js','localAiGateway.js','db.js']){
       fs.copyFileSync(path.join(root,'back',file),path.join(back,file));
     }
-    for(const folder of ['db','ai','ocr']){
+    for(const folder of ['db','ai','ocr','officePreview']){
       fs.cpSync(path.join(root,'back',folder),path.join(back,folder),
         {recursive:true,filter:p=>fs.statSync(p).isDirectory()||p.endsWith('.js')});
     }
@@ -47,7 +47,7 @@ async function fixture(run) {
     const port=probe.address().port;await new Promise(resolve=>probe.close(resolve));
     const serverPath=path.join(back,'server.js');
     fs.writeFileSync(serverPath,fs.readFileSync(serverPath,'utf8')
-      .replace('app.listen(3000,',`app.listen(${port}, '127.0.0.1',`));
+      .replace(/app\.listen\(3000,\s*(?:listenHost,\s*)?/,`app.listen(${port}, '127.0.0.1', `));
     const base='http://127.0.0.1:'+port+'/api';
     let logs='';
     const start=async()=>{

@@ -11,14 +11,15 @@ const {testReviewPlanMigrations}=require('./review-plans.cjs');
 const {testReviewCenterMigration}=require('./review-center.cjs');
 const root=path.resolve(__dirname,'..');
 async function stop(child){if(child?.exitCode===null)await new Promise(resolve=>{child.once('exit',resolve);child.kill();});}
-async function fixture(run,{legacy=true}={}){
+async function fixture(run,{legacy=true,setupBackend}={}){
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'courses-format-')),back=path.join(temp,'back');fs.mkdirSync(back);
   let child,staticServer;
   try{
     for(const file of ['server.js','aiProxy.js','localAiGateway.js','db.js'])fs.copyFileSync(path.join(root,'back',file),path.join(back,file));
-    for(const folder of ['db','ai','ocr'])fs.cpSync(path.join(root,'back',folder),path.join(back,folder),{recursive:true,filter:p=>fs.statSync(p).isDirectory()||p.endsWith('.js')});
+    for(const folder of ['db','ai','ocr','officePreview'])fs.cpSync(path.join(root,'back',folder),path.join(back,folder),{recursive:true,filter:p=>fs.statSync(p).isDirectory()||p.endsWith('.js')});
     const env={...process.env,NODE_PATH:path.join(root,'back/node_modules'),AI_PROVIDER:'mock',AI_ENABLE_REAL:'false',OCR_PROVIDER:'mock'};
     delete env.NODE_OPTIONS;delete env.NPM_CONFIG_NODE_OPTIONS;
+    if(setupBackend)await setupBackend({back,temp,env});
     const schemaPath=path.join(back,'db/schema.js'),schema=fs.readFileSync(schemaPath,'utf8');
     if(legacy)fs.writeFileSync(schemaPath,schema.replace('CURRENT_DB_VERSION = 20','CURRENT_DB_VERSION = 17').replace('migrateQuestionFormatConfirmation();','').replace('migrateReviewEvidence();','').replace('migrateReviewArtifacts();',''));
     const seed=spawnSync(process.execPath,['-e',`
@@ -40,7 +41,7 @@ async function fixture(run,{legacy=true}={}){
     const snapshot=(tables=protectedTables)=>read(db=>Object.fromEntries(tables.map(name=>[name,db.prepare('SELECT * FROM '+name+' ORDER BY rowid').all()])));
     const before=snapshot();fs.writeFileSync(schemaPath,schema);
     const probe=net.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));
-    const serverPath=path.join(back,'server.js');fs.writeFileSync(serverPath,fs.readFileSync(serverPath,'utf8').replace('app.listen(3000,',`app.listen(${port}, '127.0.0.1',`));
+    const serverPath=path.join(back,'server.js');fs.writeFileSync(serverPath,fs.readFileSync(serverPath,'utf8').replace(/app\.listen\(3000,\s*(?:listenHost,\s*)?/,`app.listen(${port}, '127.0.0.1', `));
     const base='http://127.0.0.1:'+port+'/api';let logs='';
     const start=async()=>{
       child=spawn(process.execPath,['server.js'],{cwd:back,env,windowsHide:true});

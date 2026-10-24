@@ -23,7 +23,7 @@ async function loadItemReviewHistory(s=itemReviewHistoryState){
     if(!s.loaded&&!data.items.length)list.textContent='暂无复习历史，开始并提交复习后可在这里查看。';
     for(const row of data.items){if(s.keys.has(row.key))continue;s.keys.add(row.key);
       const entry=document.createElement('details');entry.className='review-ai-draft';entry.dataset.historyKey=row.key;
-      const stages={question:'未完成',answer:'已作答，待自评',completed:'本轮已完成',skipped:'已跳过'};
+      const stages={question:'未完成',answer:'已看参考，待自评',completed:'本轮已完成',skipped:'已跳过'};
       entry.innerHTML='<summary>'+escapeHtml(historyDate(row.startedAt))+' · '+escapeHtml(AI_REVIEW_METHODS[row.modeId]||row.modeId)+' · '+escapeHtml(stages[row.stage]||'状态未知')+'</summary><p>'+escapeHtml(historyGrade(row))+' · '+(row.feedbackCount?'AI 批改 '+row.feedbackCount+' 版':'暂无已保存的 AI 批改')+'</p><div data-history-detail></div>';
       entry.addEventListener('toggle',event=>{if(event.target===entry&&entry.open&&!entry.dataset.loaded)void loadItemReviewHistoryDetail(s,entry,row.key);});list.append(entry);
     }
@@ -52,8 +52,8 @@ async function loadItemReviewHistoryDetail(s,entry,key,before){
   const host=entry.querySelector('[data-history-detail]');host.querySelector('[data-history-detail-error]')?.remove();
   try{
     const data=await(await requestApi(itemHistoryBase(s)+'/'+encodeURIComponent(key)+(before?'?beforeFeedbackId='+before:''))).json();if(!itemHistoryCurrent(s))return;
-    if(!before){const m=data.material;host.innerHTML=historyText('本轮题面 / 阅读正文',m?.prompt)+historyText('比较对象',m?.objects?.join(' / '))+historyText('比较维度',m?.dimensions?.join('、'))+historyText('选项',m?.options?.map(o=>o.id+'：'+o.text).join('\n'))+historyText('首次作答',data.firstAnswer)
-      +historyText('参考答案 / 要点',m?.reference)+historyText('评分量规 / 解析',m?.rubric)+historyText('正确选项',m?.correctOption)+historyClozeReferences(data)+historyText('耗时',data.durationMs?Math.round(data.durationMs/1000)+' 秒':'未记录')+historyText('说明',data.note)
+    if(!before){const m=data.material;host.innerHTML=historyText('本轮题面 / 阅读正文',m?.prompt)+historyText('比较对象',m?.objects?.join(' / '))+historyText('比较维度',m?.dimensions?.join('、'))+historyText('选项',m?.options?.map(o=>o.id+'：'+o.text).join('\n'))+historyText('首次作答',data.responseKind==='unanswered'?null:data.firstAnswer)
+      +historyText('作答状态',data.responseKind==='unanswered'?'未作答，按不会记录':null)+historyText('记忆自评',({clear:'清楚',vague:'模糊',forgotten:'不记得'})[data.recall])+historyText('参考答案 / 要点',m?.reference)+historyText('评分量规 / 解析',m?.rubric)+historyText('正确选项',m?.correctOption)+historyClozeReferences(data)+historyText('耗时',data.durationMs?Math.round(data.durationMs/1000)+' 秒':'未记录')+historyText('说明',data.note)
       +(!data.referenceAvailable&&data.modeId!=='reading'?'<p class="ai-help">本轮尚未揭示参考答案；历史页面也不提前展示。</p>':'');entry.dataset.loaded='true';}
     host.querySelector('[data-history-older]')?.remove();
     for(const f of data.feedback.items)host.insertAdjacentHTML('beforeend',historyFeedbackHtml(f));

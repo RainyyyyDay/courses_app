@@ -37,3 +37,16 @@ test('missing service, response bounds and upstream errors have safe messages',a
  const large=await service(t,async()=>new Response('x'.repeat(70000)));r=await large();assert.equal(r.status,502);
  const failing=await service(t,async()=>new Response(JSON.stringify({error:'AI_AUTH_FAILED',detail:'synthetic-secret'}),{status:502}));r=await failing();assert.deepEqual(await r.json(),{error:'AI_AUTH_FAILED'});
 });
+const {test: outlineGatewayTest}=require('node:test');
+outlineGatewayTest('outline forwards the same 32 KB input bound as Python and rejects oversize without a call',async t=>{
+ let hits=0;const request=await service(t,async(url,init)=>{
+  hits++;assert.equal(JSON.parse(init.body).purpose,'outline_draft');
+  return new Response(JSON.stringify({provider:'deepseek',result:{outline:'- Writing',needs_review:true}}));
+ });
+ const body={api_key:'synthetic-only',purpose:'outline_draft',input:{title:'Writing',text:'字'.repeat(7000)}};
+ assert.equal((await request('/outline-polish',{},body)).status,200);
+ assert.equal(hits,1);
+ body.input.text='字'.repeat(11000);
+ assert.equal((await request('/outline-polish',{},body)).status,413);
+ assert.equal(hits,1);
+});

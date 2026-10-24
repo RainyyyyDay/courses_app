@@ -245,10 +245,11 @@ class UpstreamTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_large_invalid_and_truncated_output(self):
         import httpx
-        for content in [b"x" * 65537, b"{", json.dumps({"choices": [{"finish_reason": "length"}]}).encode()]:
+        for content, expected in [(b"x" * 65537, "AI_UNAVAILABLE"), (b"{", "AI_RESPONSE_FORMAT"),
+                                  (json.dumps({"choices": [{"finish_reason": "length"}]}).encode(), "AI_OUTPUT_LIMIT")]:
             with self.assertRaises(AIError) as error:
                 await self.invoke(lambda request: httpx.Response(200, content=content))
-            self.assertEqual(error.exception.code, "AI_UNAVAILABLE")
+            self.assertEqual(error.exception.code, expected)
 
     async def test_timeout_includes_stream_body_read(self):
         import httpx

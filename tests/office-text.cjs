@@ -41,7 +41,14 @@ test('Word/PPT real ZIP extraction and shared form workflow in desktop and mobil
  const ppt=file('ppt','课件.pptx');const all=await recognizeOfficeText(ppt);check(all.pages===4&&all.text.indexOf('第一页')<all.text.indexOf('第二页')&&all.text.indexOf('第二页')<all.text.indexOf('第三页'),'presentation relationship order');check(all.text.includes('表格内容')&&!all.text.includes('不提取备注'),'slide tables only');check(all.warnings.some(x=>x.includes('第 4 页')),'empty image-only slide warning');
  const selected=await recognizeOfficeText(ppt,null,{pages:'3, 1, 3'});check(selected.selectedPages.join(',')==='1,3'&&!selected.text.includes('第二页'),'ranges');
  await rejected(recognizeOfficeText(ppt,null,{pages:'4'}),/未找到可提取/);
- for(const name of ['old.doc','old.ppt'])await rejected(recognizeUploadedFile(new File(['old'],name)),/另存为/);
+ // Simulated missing converter response: legacy files now reach the conversion path.
+ const savedFetch=fetch;window.fetch=async()=>new Response(JSON.stringify({code:'CONVERTER_UNAVAILABLE'}),{status:503,headers:{'Content-Type':'application/json'}});
+ for(const name of ['old.doc','old.ppt'])await rejected(recognizeUploadedFile(new File(['old'],name)),/LibreOffice/);window.fetch=savedFetch;
+ // Simulated cancellation during server conversion releases the UI and the busy flag.
+ const legacyController=new AbortController();let conversionStarted=false;
+ window.fetch=(url,options)=>{conversionStarted=true;return new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new DOMException('已取消转换','AbortError')),{once:true}))};
+ const cancelledLegacy=recognizeOfficeText(new File(['legacy'],'old.ppt'),null,{interactive:true,signal:legacyController.signal});
+ await wait(()=>conversionStarted);legacyController.abort();await rejected(cancelledLegacy,/取消/);check(!OFFICE_TEXT.busy&&!document.querySelector('.pdf-ocr-dialog'),'legacy cancel releases dialog and lock');window.fetch=savedFetch;
  await rejected(recognizeOfficeText(file('invalidXml','损坏.docx')),/损坏/);await rejected(recognizeOfficeText(new File(['not zip'],'损坏.pptx')),/格式不正确/);await rejected(recognizeOfficeText(file('badSlide','external.pptx')),/页码关系/);await rejected(recognizeOfficeText(file('large','large.docx')),/过大/);
  await rejected(recognizeOfficeText(new File([new Uint8Array([208,207,17,224])],'encrypted.docx')),/加密/);
  // Real common resource caller: extraction never changes source body until explicitly adopted.
@@ -49,6 +56,7 @@ test('Word/PPT real ZIP extraction and shared form workflow in desktop and mobil
  pendingManual={content:'过期的初始正文'};tagPickerState={resourceType:'note',mode:'manual',saving:false,selected:new Set(),courseId:1};await confirmTagPicker();check(window.savedManual===el('tagPickerResourceContent').value,'manual mode saves the adopted current body');tagPickerState=null;
  pendingUploadFile=ppt;task=recognizePickerResourceFile();await wait(()=>document.querySelector('[data-pdf-start]')?.disabled===false);document.querySelector('input[value=range]').click();document.querySelector('[data-pdf-range]').value='2-3';document.querySelector('[data-pdf-start]').click();await task;check(el('tagPickerResourceOcrText').value.includes('第二页')&&!el('tagPickerResourceOcrText').value.includes('第一页'),'caller uses PPT range');
  const before=el('tagPickerResourceOcrText').value,body=el('tagPickerResourceContent').value;task=recognizePickerResourceFile();await wait(()=>document.querySelector('[data-pdf-start]')?.disabled===false);document.querySelector('[data-pdf-cancel]').click();await task;check(el('tagPickerResourceOcrText').value===before&&el('tagPickerResourceContent').value===body,'cancel preserves content');
+ window.fetch=async()=>new Response(JSON.stringify({code:'CONVERSION_FAILED'}),{status:422,headers:{'Content-Type':'application/json'}});pendingUploadFile=new File(['broken legacy'],'broken.doc');await recognizePickerResourceFile();check(el('tagPickerResourceOcrText').value===before&&el('tagPickerResourceContent').value===body,'legacy conversion failure preserves old draft and body');window.fetch=savedFetch;
  // Abort while worker is reading, then ensure the next job still succeeds.
  const controller=new AbortController(),originalWorker=Worker;window.Worker=function(...args){const w=new originalWorker(...args),post=w.postMessage.bind(w);w.postMessage=(...a)=>{post(...a);controller.abort()};return w};await recognizeOfficeText(ppt,null,{signal:controller.signal}).then(()=>{throw Error('cancel must reject')},e=>check(e.name==='AbortError','worker cancel'));window.Worker=originalWorker;check((await recognizeOfficeText(word)).text.includes('学习标题'),'read after abort');
  // Keep the final dialog visible for a layout screenshot.

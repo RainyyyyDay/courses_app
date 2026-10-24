@@ -1,5 +1,6 @@
 // Read existing immutable evidence; feedback is separate and never calls the grading engine.
 const {db}=require('./connection');
+const {hasReviewAnswer}=require('./reviewAnswers');
 const TABLES={material:'materials',note:'notes',mistake:'mistakes'};
 function fail(status,message){throw Object.assign(new Error(message),{status,code:status===409?'VERSION_CONFLICT':'INVALID_ARGUMENT'});}
 function scope(courseId,type,id){
@@ -44,24 +45,29 @@ function roundDetail(courseId,type,id,key){
   scope(courseId,type,id);if(typeof key!=='string'||key.length>150)fail(400,'轮次编号无效');
   const row=db.prepare(HISTORY+' SELECT * FROM rounds WHERE history_key=$key').get({...params(courseId,type,id),$key:key});
   if(!row)fail(404,'找不到本内容的复习轮次');
-  let material=null,firstAnswer=null,referenceAvailable=false,note='';
+  let material=null,firstAnswer=null,referenceAvailable=false,note='',responseKind=null,recall=null;
   if(row.engine==='workbench'){
     const attempt=db.prepare('SELECT * FROM review_mode_attempts WHERE id=?').get(row.local_id),visible=attempt.stage!=='question';
     material=JSON.parse(attempt.snapshot_json);delete material._sourceRevision;
     if(!visible){delete material.reference;delete material.rubric;material.blanks=material.blanks.map(b=>({id:b.id,hint:b.hint}));}
     firstAnswer=attempt.first_answer===null?null:JSON.parse(attempt.first_answer);referenceAvailable=visible;
+    if(visible&&row.mode_id!=='reading'&&!hasReviewAnswer(firstAnswer)){responseKind='unanswered';note='本轮主动留空提交，按不会记录；未提交文字作答，不提供 AI 批改。';}
   }else if(row.engine==='native'){
     const event=db.prepare('SELECT response_json FROM mistake_review_events WHERE id=?').get(Number(row.local_id)),p=JSON.parse(event.response_json);
     material={prompt:p.question?.content||p.question?.ocrText||'',options:p.choice?.options||[],reference:p.answer?.content||'',rubric:p.answer?.explanation||'',correctOption:p.choice?.correctOption??null};
     firstAnswer=p.firstAnswer??null;referenceAvailable=!!p.answerVisible;
+    recall=p.recall??null;
+    responseKind=hasReviewAnswer(firstAnswer) ? 'written_answer' : p.mistakeType==='knowledge' && p.mode?.id==='standard' && recall ? 'memory_self_report' : p.answerRevealed ? 'unanswered' : null;
     if(!referenceAvailable){delete material.reference;delete material.rubric;delete material.correctOption;}
     if(row.stage==='completed'&&row.grade===null)note='此旧轮次未关联原评分，不推算或补造评分。';
+    if(responseKind==='memory_self_report')note+=(note?' ':'')+'本轮仅记录记忆自评，未记录文字作答，不提供 AI 批改。';
+    if(responseKind==='unanswered')note+=(note?' ':'')+'本轮主动留空提交，按不会记录，不提供 AI 批改。';
   }else{
     const saved=db.prepare('SELECT snapshot_json FROM review_reading_history WHERE session_item_id=?').get(Number(row.local_id));
     material=saved?JSON.parse(saved.snapshot_json):null;
     note=saved?'原文阅读只记录曝光，不评掌握度。':'旧阅读记录没有当时正文快照，不用当前正文冒充历史内容。';
   }
-  return {...summary(row),material,firstAnswer,referenceAvailable,note};
+  return {...summary(row),material,firstAnswer,referenceAvailable,note,responseKind,recall};
 }
 function listFeedback(courseId,type,id,key,before){
   const cursor=before===undefined?Number.MAX_SAFE_INTEGER:Number(before);
@@ -88,7 +94,7 @@ function validateFeedback(raw,answer){
 function saveItemReviewFeedback(courseId,type,id,key,body){
   const round=roundDetail(courseId,type,id,key);
   if(!body||Object.keys(body).some(k=>!['requestId','provider','model','feedback'].includes(k))||typeof body.requestId!=='string'||!body.requestId.trim()||body.requestId.length>100)fail(400,'保存批改参数无效');
-  if(round.modeId==='reading'||round.firstAnswer===null||!round.referenceAvailable)fail(409,'请先提交本轮首次作答，阅读不使用批改');
+  if(round.modeId==='reading'||!hasReviewAnswer(round.firstAnswer)||!round.referenceAvailable)fail(409,'本轮没有实际作答或属于阅读记录，不提供 AI 批改');
   if(!['mock','deepseek','compatible'].includes(body.provider)||(body.provider==='mock'?body.model!=='':body.provider==='compatible'?(typeof body.model!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(body.model)):!['deepseek-flash','deepseek-v4-pro'].includes(body.model)))fail(400,'批改来源或模型无效');
   const answer=typeof round.firstAnswer==='string'?round.firstAnswer:JSON.stringify(round.firstAnswer),feedback=validateFeedback(body.feedback,answer),payload=JSON.stringify(feedback);
   db.exec('BEGIN');try{
