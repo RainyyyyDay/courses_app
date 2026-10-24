@@ -236,3 +236,10 @@ API 路径、五字段请求和 `{review_method, reason, needs_review:true}` 结
 默认 mock 只按现有明确错误类型确定返回：knowledge_gap→cloze，reasoning_gap→self_explain，careless→retry，其余或证据不足→unclassified。没有结构化题型/用途证据时，不擅自推荐选择复现、阅读等；其余模式可由用户人工选择。没有启用任何新复习引擎，也不修改排期、错题类型和复习状态。
 
 测试已更新：Python 29 项包含文档模式清单、Node/Python规则一致性、所有七种模式归一化、旧响应拒绝和真实 HTTP；前端另验证旧 localStorage 只提示重选、不自动迁移。宿主移植测试时需要同时提供上述文档fixture（与原 classification.json 一致性测试相同，运行模块不依赖文档）。
+
+## 大纲草稿与导图排版
+
+`register` 同时支持 `POST /api/ai/outline-polish` 的两种用途，均返回 JSON、不直接写数据库，沿用宿主鉴权。
+省略 `purpose` 或填写 `mindmap`：规范化 Markdown 标题、列表和编号为双空格缩进导图文本，最多六层。支持英文长节点；模型只需返回 `outline` 字符串，后端补齐标题与 `needs_review:true`。正文总长与行数限制与草稿一致，不静默截断或丢弃节点；层级异常与无法识别的节点行分别返回 `MINDMAP_HIERARCHY_INVALID` 和 `MINDMAP_FORMAT_INVALID`。
+填写 `purpose: "outline_draft"`：根据 `input.title` 和 `input.text` 生成可编辑学习大纲；模型只需返回字符串 `outline`，标题默认使用输入标题，`needs_review:true` 由服务器设置。允许 Markdown 标题、英文长节点和更多层级，不套用导图的三层限制。最多 12000 UTF-16 字符、160 行，不自动截断；空结果、缺少文本和过长结果分别返回 `OUTLINE_EMPTY`、`OUTLINE_FORMAT_INVALID`、`OUTLINE_TOO_LONG`。不重试、不自动保存。
+两种用途请求体均最多 32 KB、输入正文最多 20000 UTF-16 字符，较小限制优先。依赖不变。

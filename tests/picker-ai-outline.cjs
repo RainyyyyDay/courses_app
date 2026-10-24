@@ -53,6 +53,31 @@ test('AI outline uses editable body, preserves edits and saves only on confirmat
      closeTagPicker();pendingManual={content:'旧正文',title:'手动笔记'};await openTagPicker('manual','note',null);body.value='手动编辑最新正文';outline.value='';await generatePickerOutline();check(requests.at(-1).input.text===body.value,'manual uses current body');
      closeTagPicker();await openCourse(${ids.courseId},'测试','materials');await loadMaterials();await openTagPicker('edit','material',${row.id});body.value='原始正文';outline.value='';await generatePickerOutline();await confirmTagPicker();
      const final=await (await realFetch(${JSON.stringify(base+'/materials/'+row.id)})).json();check(final.outline==='- 核心内容\\n  - 重点','confirmation persists generated outline');
+     for(const kind of ['material','note']){
+      for(const mode of ['manual','upload']){
+       const title='保存回显-'+kind+'-'+mode;
+       pendingManual={type:kind,title,content:'测试正文'};
+       await openTagPicker(mode,kind,null);
+       el('tagPickerName').value=title;body.value='测试正文';outline.value='- 保存的大纲';
+       pendingMindmapJson=JSON.stringify(outlineToMindmap(outline.value,title));
+       await confirmTagPicker();
+       check(!tagPickerState,'creation closes only after saving');
+       let rows=kind==='note'?currentNotes:currentMaterials;
+       let created=rows.find(r=>r.title===title);check(created,'created record');
+       const id=created.id;
+       await openTagPicker('edit',kind,id);
+       check(outline.value==='- 保存的大纲'&&JSON.parse(pendingMindmapJson).nodes.length,'creation reopens with outline and map');
+       outline.value='- 编辑后的大纲';pendingMindmapJson=JSON.stringify(outlineToMindmap(outline.value,'新的中心主题'));
+       await confirmTagPicker();
+       await openTagPicker('edit',kind,id);
+       check(outline.value==='- 编辑后的大纲'&&JSON.parse(pendingMindmapJson).title==='新的中心主题','immediate reopen sees new outline and map');
+       closeTagPicker();
+       if(kind==='note')await loadNotes();else await loadMaterials();
+       await openTagPicker('edit',kind,id);
+       check(outline.value==='- 编辑后的大纲'&&JSON.parse(pendingMindmapJson).title==='新的中心主题','server reload preserves outline and map');
+       closeTagPicker();
+      }
+     }
      out.dataset.result='passed';
     }catch(e){out.dataset.result='failed';out.textContent=e.stack;}document.body.append(out);
    });`;

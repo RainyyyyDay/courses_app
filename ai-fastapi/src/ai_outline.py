@@ -23,45 +23,39 @@ def parse_input(value):
 
 
 def normalize(value, title=''):
-    if not isinstance(value, dict) or set(value) != {'title', 'outline', 'needs_review'}:
-        return None
-    result_title, outline = value.get('title'), value.get('outline')
-    if (not isinstance(result_title, str) or not isinstance(outline, str)
-            or _length(result_title) > 200 or value.get('needs_review') is not True):
-        return None
-    result_title = _trim(result_title) or title
-    lines = [line.rstrip() for line in outline.splitlines() if line.strip()]
-    if not lines or len(lines) > 60:
-        return None
-    # Normalize equivalent Markdown bullets and indentation without dropping nodes.
+    # Metadata is owned by the server; the model only supplies editable outline text.
+    draft = normalize_draft(value, title)
+    lines = [line.rstrip() for line in value['outline'].splitlines() if line.strip()]
     parsed = []
     for line in lines:
-        match = re.fullmatch(r'( *)(?:[-*+•]) +(.+)', line.expandtabs(2))
+        expanded = line.expandtabs(2)
+        heading = re.fullmatch(r' *(#{1,6}) +(.+)', expanded)
+        if heading:
+            parsed.append(('heading', len(heading.group(1)) - 1, heading.group(2).strip()))
+            continue
+        match = re.fullmatch(r'( *)(?:[-*+•]|[0-9]+[.)、]) +(.+)', expanded)
         if not match:
-            return None
-        indent, node = len(match.group(1)), match.group(2).strip()
-        if not node or _length(node) > 80:
-            return None
-        parsed.append((indent, node))
-    indents = [indent for indent, _ in parsed if indent]
+            raise AIError(502, 'MINDMAP_FORMAT_INVALID')
+        parsed.append(('list', len(match.group(1)), match.group(2).strip()))
+    indents = [indent for kind, indent, _ in parsed if kind == 'list' and indent]
     unit = 4 if indents and all(indent % 4 == 0 for indent in indents) else 2
-    previous_depth = -1
+    previous_depth, heading_depth = -1, None
     normalized_lines = []
-    for index, (indent, node) in enumerate(parsed):
-        if indent % unit:
-            return None
-        depth = indent // unit
-        if depth > 2 or index == 0 and depth != 0:
-            return None
-        if index and depth > previous_depth + 1:
-            return None
+    for index, (kind, indent, node) in enumerate(parsed):
+        if kind == 'heading':
+            depth = indent
+            heading_depth = depth
+        else:
+            if indent % unit:
+                raise AIError(502, 'MINDMAP_HIERARCHY_INVALID')
+            depth = indent // unit + (heading_depth + 1 if heading_depth is not None else 0)
+        if not node:
+            raise AIError(502, 'MINDMAP_FORMAT_INVALID')
+        if depth > 5 or index == 0 and depth != 0 or index and depth > previous_depth + 1:
+            raise AIError(502, 'MINDMAP_HIERARCHY_INVALID')
         previous_depth = depth
         normalized_lines.append('  ' * depth + '- ' + node)
-    return {
-        'title': result_title or '思维导图',
-        'outline': '\n'.join(normalized_lines),
-        'needs_review': True,
-    }
+    return {**draft, 'outline': '\n'.join(normalized_lines)}
 
 
 def normalize_draft(value, title=''):
@@ -102,9 +96,9 @@ class OutlineProvider(DeepSeekProvider):
             '优先控制在 30 个节点以内，每个节点尽量不超过 40 字；保留术语和并列关系。'
             '把过长的句子按语义拆成短节点；删除多余的编号、Markdown、'
             '代码围栏、解释和重复内容。已有明确层级时优先保留。'
-            '输出必须是严格 JSON：{"title":"主题","outline":"- 根节点\\n  - 子节点","needs_review":true}。'
+            '只返回严格 JSON 对象，包含 outline 字符串字段，例如 {"outline":"- 根节点\\n  - 子节点"}。'
             'outline 只能使用“- ”开头的纯文本行，层级用每级两个空格缩进；'
-            '至少一个根节点，最多 3 层、60 个节点，每个节点不超过 60 个中文字符。'
+            '至少一个根节点，尽量控制在 3 层、30 个节点；必要时可保留至 6 层。英文术语不应强行截断。'
             '首行必须没有缩进，层级不能跳级。不要输出 JSON 以外的任何文字。'
         )
 

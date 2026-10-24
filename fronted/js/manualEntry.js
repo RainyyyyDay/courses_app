@@ -68,6 +68,14 @@ async function doCreateManual(nodeIds) {
   const fd = new FormData();
   fd.append('title', pending.title);
   fd.append('content', pending.content);
+  if (pending.type === 'material' || pending.type === 'note') {
+    const title = (document.getElementById('tagPickerName')?.value || '').trim();
+    if (title) fd.set('title', title);
+    fd.append('outline', document.getElementById('tagPickerOutline')?.value || '');
+    fd.append('mindmapJson', pendingMindmapJson || '');
+    if (pendingMindmapImage) fd.append('mindmapImage', pendingMindmapImage);
+  }
+
   if (pending.type === 'mistake') {
     for (const [key, value] of Object.entries(mistakeCreationFields())) {
       fd.append(key, key === 'options' || (key === 'correctOption' && Array.isArray(value))

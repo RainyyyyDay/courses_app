@@ -53,12 +53,12 @@ test('mind-map generation separates always-available basic splitting from real-A
         coursesAiSettings.configure({provider:'deepseek',preset:'deepseek',model:'deepseek-flash',
           apiKey:'synthetic-outline-key',consent:true,retain:true,auto:false,baseUrl:''});
         check(!ai.disabled,'AI enabled after real API settings');
-        const nativeFetch=fetch;let aiRequest=null;
+        const nativeFetch=fetch;let aiRequest=null,polishedOutline=null;
         fetch=(url,options={})=>{
           if(String(url).endsWith('/api/ai/outline-polish')){
             aiRequest=JSON.parse(options.body);
             return Promise.resolve(new Response(JSON.stringify({provider:'deepseek',result:{
-              title:'函数复习',outline:'- 函数核心\\n  - 极限\\n    - 定义\\n  - 连续',needs_review:true,
+              title:'函数复习',outline:polishedOutline||'- 函数核心\\n  - 极限\\n    - 定义\\n  - 连续',needs_review:true,
             }}),{status:200,headers:{'Content-Type':'application/json'}}));
           }
           return nativeFetch(url,options);
@@ -89,6 +89,21 @@ test('mind-map generation separates always-available basic splitting from real-A
             check(glyph.right<=box.right+1&&glyph.bottom<=box.bottom+1,'preview text stays inside its node');
           }
         }
+        const englishNode='An important English writing term '.repeat(4).trim();
+        polishedOutline='- Writing\\n  - '+englishNode+'\\n    - Process\\n      - Example';
+        await generatePickerMindmap('ai');
+        check(aiRequest.input.text.startsWith('- 第一章 函数'),'AI receives latest editable outline');
+        const aiMap=JSON.parse(pendingMindmapJson);
+        check(aiMap.nodes[0].children[0].children[0].text===englishNode,'long English node survives map conversion');
+        check(aiMap.nodes[0].children[0].children[0].children[0].children[0].text==='Example','deeper hierarchy survives conversion');
+        check(document.getElementById('tagPickerMindmapStatus').textContent.includes('草稿已生成'),'persistent map success status');
+        const priorMap=pendingMindmapJson,priorOutline=document.getElementById('tagPickerOutline').value;
+        fetch=(url,options)=>String(url).endsWith('/api/ai/outline-polish')
+          ?Promise.resolve(new Response(JSON.stringify({error:'MINDMAP_HIERARCHY_INVALID'}),{status:502}))
+          :nativeFetch(url,options);
+        await generatePickerMindmap('ai');
+        check(pendingMindmapJson===priorMap&&document.getElementById('tagPickerOutline').value===priorOutline,'failure preserves map and outline');
+        check(document.getElementById('tagPickerMindmapStatus').textContent.includes('层级'),'persistent specific failure status');
         closeTagPicker();
         out.dataset.result='passed';
       }catch(error){

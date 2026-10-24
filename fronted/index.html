@@ -812,6 +812,7 @@
               <button type="button" class="edit-btn edit-btn-danger" id="tagPickerMindmapClear" style="display:none;" onclick="clearPickerMindmap()">删除导图</button>
             </div>
             <p id="tagPickerMindmapAiNote" class="mindmap-generation-note" role="status"></p>
+            <p id="tagPickerMindmapStatus" class="mindmap-generation-note" role="status" aria-live="polite"></p>
             <label class="mistake-create-field" style="margin-top:8px;">中心主题
               <input id="tagPickerMindmapTitle" maxlength="40" placeholder="默认使用资料名称" oninput="updatePickerMindmapTitle()" />
             </label>
@@ -1138,7 +1139,7 @@
   <script src="js/config.js"></script>
   <script src="js/state.js"></script>
   <script src="js/utils.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/ai.js?v=20261024-outline-draft-37"></script>
+  <script src="js/ai.js?v=20261024-mindmap-ai-38"></script>
   <script src="js/aiSettings.js?v=20261024-ai-outline-34"></script>
 
   <script src="js/attachmentPreview.js?v=20261024-attachment-preview-24"></script>
@@ -1159,8 +1160,8 @@
   <script src="js/mistakes.js?v=20261024-merged-attachment-review-31"></script>
 
   <!-- 录入流程：手动输入 + 选标签 -->
-  <script src="js/manualEntry.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/tagPicker.js?v=20261024-outline-draft-37"></script>
+  <script src="js/manualEntry.js?v=20261024-outline-save-39"></script>
+  <script src="js/tagPicker.js?v=20261024-outline-save-39"></script>
   <script src="js/tagPickerView.js?v=20261024-tree-root-collapse-34"></script>
 
   <!-- 详情页 -->

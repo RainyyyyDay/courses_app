@@ -25,6 +25,8 @@ function currentResourceNodes(resourceType, resourceId) {
 //   resourceId   = edit 时的资源 id，upload 传 null
 async function openTagPicker(mode, resourceType, resourceId) {
   cancelPickerOutline();
+  const mapStatus = document.getElementById('tagPickerMindmapStatus');
+  if (mapStatus) mapStatus.textContent = '';
   const outlineStatus = document.getElementById('tagPickerOutlineStatus');
   if (outlineStatus) outlineStatus.textContent = '使用共用 AI 设置，根据正文生成；可能计费，生成后可修改。';
   // 脚本加载顺序可能让这个函数晚到，缺失时跳过即可
@@ -429,19 +431,29 @@ async function generatePickerMindmap(mode = 'basic') {
   if (button) button.textContent = mode === 'ai' ? 'AI 润色中…' : '切分中…';
   setMindmapGenerationBusy(true);
   const state = tagPickerState;
+  const status = document.getElementById('tagPickerMindmapStatus');
+  if (status) status.textContent = mode === 'ai' ? 'AI 正在润色并生成导图，请稍候…' : '正在生成导图…';
   try {
     const generated = await generateMindmapOutline(outline, title, mode);
     if (tagPickerState !== state) return;
     const outlineInput = document.getElementById('tagPickerOutline');
-    if (outlineInput) outlineInput.value = generated.outline;
+    if (outlineInput && outlineInput.value.trim() !== outline) {
+      if (status) status.textContent = '大纲已修改，本次结果未填入，请按最新大纲重新生成。';
+      return;
+    }
     title = (document.getElementById('tagPickerMindmapTitle')?.value || '').trim() || generated.title || title;
     const map = outlineToMindmap(generated.outline, title);
-    pendingMindmapJson = JSON.stringify(map);
+    const mapJson = JSON.stringify(map);
+    if (outlineInput) outlineInput.value = generated.outline;
+    pendingMindmapJson = mapJson;
     pendingMindmapImage = '';
     pendingMindmapSource = mode === 'ai' ? 'AI 润色' : '基础规则切分';
     renderPickerMindmapSummary();
+    if (status) status.textContent = '导图草稿已生成，可预览和修改；确认保存后生效。';
     showToast(`${mode === 'ai' ? 'AI 已润色' : '已按基础规则切分'}，共 ${countMindmapNodes(map)} 个节点，可继续修改`);
   } catch (err) {
+    if (tagPickerState !== state) return;
+    if (status) status.textContent = '导图未生成：' + err.message;
     showToast(err.message);
   } finally {
     if (button) button.textContent = original;
@@ -782,6 +794,9 @@ async function confirmTagPicker() {
             body: JSON.stringify(payload),
           });
         }
+        // Refresh only after the outline and map writes have completed.
+        if (resourceType === 'note') await loadNotes();
+        else await loadMaterials();
       }
     }
     if (saved && tagPickerState === state && currentCourseId === state.courseId) {
@@ -797,7 +812,8 @@ async function confirmTagPicker() {
       const methodPersisted = typeof persistReviewMethodEditor==='function'
         ? persistReviewMethodEditor('tagPicker',resourceType,savedId) : true;
       if (!methodPersisted) showToast('内容已保存，但复习方式未能保存到本浏览器，请在编辑页重试。');
-      else if (reviewMethodWasDefault) showToast('未手动选择复习方式，已按标准复习保存。');
+      else if (reviewMethodWasDefault) showToast('内容已保存（含大纲和导图），复习方式按标准复习保存。');
+      else if (resourceType === 'material' || resourceType === 'note') showToast('内容、大纲和导图已保存。', 4000, 'success');
       if(methodPersisted&&readReviewMethodEditor('tagPicker')==='cloze'
         &&typeof persistPendingCreationCloze==='function'){
         const clozeResult=await persistPendingCreationCloze('tagPicker',resourceType,savedId);
@@ -837,7 +853,7 @@ async function saveResourceTags(resourceType, resourceId, nodeIds, title) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-    showToast('已保存');
+    if (resourceType === 'mistake') showToast('已保存');
     await cfg.reload();
     if (resourceType === 'mistake' && currentView.type === 'mistake' && currentView.id === resourceId) {
       await renderMistakeDetailPage(resourceId, !!currentView.review);

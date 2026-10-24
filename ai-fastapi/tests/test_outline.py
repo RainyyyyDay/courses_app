@@ -91,6 +91,27 @@ class OutlineTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.status_code, 502)
 
 
+    async def test_mindmap_accepts_english_nodes_deeper_hierarchy_and_server_metadata(self):
+        cases = [
+            ('- Writing\n  - ' + 'An important English writing term ' * 4 +
+             '\n    - Description\n      - Example', None),
+            ('# Writing\n## Process\n1. Select a topic\n  * Gather evidence',
+             '- Writing\n  - Process\n    - Select a topic\n      - Gather evidence'),
+            ('- Writing\n' + '  - Term\n' * 65, None),
+        ]
+        for outline, expected in cases:
+            def handler(request):
+                return httpx.Response(200, json={'choices': [{'finish_reason': 'stop',
+                    'message': {'content': json.dumps({'outline': outline})}}]})
+            with patch('src.ai_outline.OutlineProvider', side_effect=lambda config:
+                       OutlineProvider(config, transport=httpx.MockTransport(handler))):
+                response = await self.request(self.body)
+            self.assertEqual(response.status_code, 200, response.text)
+            result = response.json()['result']
+            self.assertEqual(result['outline'], expected or '\n'.join(line.rstrip() for line in outline.splitlines()))
+            self.assertTrue(result['needs_review'])
+            self.assertEqual(result['title'], self.body['input']['title'])
+
     async def test_draft_does_not_require_mindmap_schema_or_layout(self):
         # English source often needs longer nodes and more than three levels.
         outline = '# Writing\n- ' + 'Important source term ' * 6 + '\n  - Step\n    - Detail\n      - Example'
@@ -137,7 +158,7 @@ class OutlineTests(unittest.IsolatedAsyncioTestCase):
                    side_effect=lambda config: OutlineProvider(config, transport=httpx.MockTransport(handler))):
             response = await self.request(self.body)
         self.assertEqual(response.status_code, 502)
-        self.assertEqual(response.json()['error'], 'INVALID_RESPONSE')
+        self.assertEqual(response.json()['error'], 'MINDMAP_HIERARCHY_INVALID')
 
 
 if __name__ == '__main__':

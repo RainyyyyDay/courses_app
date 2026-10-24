@@ -52,6 +52,8 @@ function mistakeAiError(code, status = 0) {
     AI_ENDPOINT_NOT_FOUND: '服务商接口不存在或已下线，请核对 API 基础地址。',
     AI_REQUEST_REJECTED: '服务商拒绝了请求参数，请根据上游业务错误码排查。',
     AI_CONTENT_REJECTED: '服务商内容检查拒绝了本次请求。',
+    MINDMAP_FORMAT_INVALID: 'AI 已返回内容，但导图中有无法识别的节点行；原大纲和导图已保留。',
+    MINDMAP_HIERARCHY_INVALID: 'AI 返回的导图层级跳级或超过六层；原大纲和导图已保留。',
     OUTLINE_FORMAT_INVALID: '模型回复中缺少可读取的大纲文字，本次未填入。',
     OUTLINE_EMPTY: '模型返回的大纲为空，本次未填入。',
     OUTLINE_TOO_LONG: '模型返回的大纲超过 12000 字或 160 行，请分段生成。',
