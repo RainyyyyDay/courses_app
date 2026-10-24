@@ -71,6 +71,7 @@ function mistakeAiError(code, status = 0) {
     NETWORK_ERROR: '无法连接 AI 服务，请检查网络后重试。',
     INVALID_API_URL: 'API 地址不可用：仅支持公网 HTTPS，禁止内网、特殊地址和重定向。',
     INVALID_API_KEY: '请填写有效的本次 AI Key，不要包含空格或换行。',
+    PLATFORM_AI_UNAVAILABLE: '平台 AI 尚未配置或暂不可用，请联系平台负责人，或手动选择自己的 API。',
     COST_CONFIRMATION_REQUIRED: '请先勾选本次 AI 请求和费用确认。',
     AI_AUTH_FAILED: 'API Key 无效或已失效，请检查服务商控制台；不会回退 Mock。',
     AI_BALANCE_UNAVAILABLE: 'AI 服务账户余额不足或不可用，请检查服务商账户。',
@@ -108,10 +109,10 @@ async function classifyMistakeWithAi(input, { signal, timeoutMs = 100000, deepse
     try { url=new URL(`${base}/ai/test`,globalThis.location?.href); } catch { throw mistakeAiError('AI_TEMP_KEY_ORIGIN'); }
     const localHttp=url.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(url.hostname);
     if(url.origin!==globalThis.location?.origin||(!localHttp&&url.protocol!=='https:')||url.username||url.password)throw mistakeAiError('AI_TEMP_KEY_ORIGIN');
-    if(typeof deepseek.apiKey!=='string'||! /^[\x21-\x7e]{1,512}$/.test(deepseek.apiKey))throw mistakeAiError('INVALID_API_KEY');
+    if(deepseek.provider!=='platform'&&(typeof deepseek.apiKey!=='string'||! /^[\x21-\x7e]{1,512}$/.test(deepseek.apiKey)))throw mistakeAiError('INVALID_API_KEY');
     if(deepseek.confirmCost!==true)throw mistakeAiError('COST_CONFIRMATION_REQUIRED');
-    if(deepseek.provider==='compatible'?!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(deepseek.model):!['deepseek-flash','deepseek-v4-pro'].includes(deepseek.model))throw mistakeAiError('INVALID_INPUT');
-    endpoint=url.href;payload={api_key:deepseek.apiKey,model:deepseek.model,action:'classify',confirm_cost:true,input,...(deepseek.provider==='compatible'?{provider:'compatible',base_url:deepseek.baseUrl,...(deepseek.workspaceId?{workspace_id:deepseek.workspaceId}:{})}:{})};
+    if(['compatible','platform'].includes(deepseek.provider)?!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(deepseek.model):!['deepseek-flash','deepseek-v4-pro'].includes(deepseek.model))throw mistakeAiError('INVALID_INPUT');
+    endpoint=url.href;payload={...(deepseek.provider==='platform'?{provider:'platform'}:{api_key:deepseek.apiKey}),model:deepseek.model,action:'classify',confirm_cost:true,input,...(deepseek.provider==='compatible'?{provider:'compatible',base_url:deepseek.baseUrl,...(deepseek.workspaceId?{workspace_id:deepseek.workspaceId}:{})}:{})};
   }
   let body = JSON.stringify(payload);payload=null;
   if (new TextEncoder().encode(body).length > 16384) throw mistakeAiError('BODY_TOO_LARGE');

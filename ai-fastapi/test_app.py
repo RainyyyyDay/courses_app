@@ -35,6 +35,8 @@ register_material_draft(app, dependencies=[Depends(local_only)])
 register_review_feedback(app, dependencies=[Depends(local_only)])
 register_outline(app, dependencies=[Depends(local_only)])
 register_assessment_chart(app, dependencies=[Depends(local_only)])
+from src.ai_platform import register as register_platform
+register_platform(app, dependencies=[Depends(local_only)])
 
 # Serve only public frontend assets, never the repository, .env or database.
 FRONTEND = Path(__file__).resolve().parents[1] / "fronted"

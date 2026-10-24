@@ -21,10 +21,11 @@ def validate(body):
     if body.get('confirm_cost') is not True:
         raise AIError(400, 'COST_CONFIRMATION_REQUIRED')
     key = body.get('api_key')
-    if not isinstance(key, str) or not 1 <= len(key) <= 512 or not all(33 <= ord(c) <= 126 for c in key):
+    if body.get('provider')!='platform' and (not isinstance(key, str) or not 1 <= len(key) <= 512 or not all(33 <= ord(c) <= 126 for c in key)):
         raise AIError(400, 'INVALID_API_KEY')
     model, action = body.get('model'), body.get('action')
-    request_config(body)
+    config=request_config(body)
+    model=config.model
     if action not in ('connection', 'classify'):
         raise AIError(400, 'INVALID_INPUT')
     data = SAMPLE.copy() if action == 'connection' else parse_input(body.get('input'))
@@ -89,7 +90,7 @@ def register(app, *, dependencies=None):
             # A structurally invalid model answer is not a successful test.
             if source != 'provider':
                 raise AIError(502, 'INVALID_RESPONSE')
-            return JSONResponse({'ok': True, 'provider': config.provider, 'model': model,
+            return JSONResponse({'ok': True, 'provider': 'platform' if body.get('provider')=='platform' else config.provider, 'model': model,
                                  'action': action, 'elapsed_ms': round((time.monotonic()-started)*1000),
                                  **({'result': result} if action == 'classify' else {})}, headers=headers)
         except Exception as exc:

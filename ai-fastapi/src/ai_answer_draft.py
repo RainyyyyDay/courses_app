@@ -96,7 +96,7 @@ def register(app, *, dependencies=None):
         try:
             gate.check_rate()
             body=await _read_body(request)
-            if not isinstance(body,dict) or set(body)-{'provider','api_key','model','confirm_cost','base_url','workspace_id','input'} or body.get('provider') not in ('mock','deepseek','compatible'):
+            if not isinstance(body,dict) or set(body)-{'provider','api_key','model','confirm_cost','base_url','workspace_id','input'} or body.get('provider') not in ('mock','deepseek','compatible','platform'):
                 raise AIError(400,'INVALID_INPUT')
             data=parse_question(body.get('input'))
             if body['provider']!='mock':

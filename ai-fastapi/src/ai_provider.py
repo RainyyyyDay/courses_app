@@ -50,6 +50,14 @@ async def public_target(value):
 def request_config(body, *, default_provider='deepseek', config_factory=None):
     from .ai_mistake import AIError, Config
     provider=body.get('provider',default_provider)
+    if provider=='platform':
+        from .ai_platform import platform_config
+        if body.get('confirm_cost') is not True:raise AIError(400,'COST_CONFIRMATION_REQUIRED')
+        if any(name in body for name in ('api_key','base_url','workspace_id')):
+            raise AIError(400,'INVALID_INPUT')
+        config=platform_config()
+        if body.get('model') not in (None,config.model):raise AIError(400,'INVALID_INPUT')
+        return config
     if provider not in ('deepseek','compatible'):raise AIError(400,'INVALID_INPUT')
     key=body.get('api_key')
     if not isinstance(key,str) or not re.fullmatch(r'[\x21-\x7e]{1,512}',key):raise AIError(400,'INVALID_API_KEY')

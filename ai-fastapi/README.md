@@ -1,5 +1,9 @@
 # AI 错题分类 FastAPI 移植模块
 
+## 当前交接入口（2026-10-24）
+
+新增“平台 AI / 用户自带 API”双模式。正式接口、环境变量、鉴权挂载、完整文件清单及责任边界以 [Python AI 交接说明](../docs/ai-python-handoff.md) 为准；测试结果及未解决的历史失败见 [本轮验收记录](../docs/ai-platform-acceptance.md)。统一入口为 `src.ai_routes.register`，各功能仍可独立注册。下文按时间保留的临时 Key、Mock 页面入口和历史测试数量不代表当前部署合同。
+
 ## 可选作答批改（2026-10-22）
 
 新增 `src/ai_review_feedback.py`，以 `register(app, dependencies=[Depends(宿主真实权限依赖)])` 挂载 `POST /api/ai/review-feedback`。复用现有 Provider 与共用 AI 设置，不新增依赖、不操作数据库。正常复习页提交后按需请求，返回判断、错误解释、参考解答及改进建议；不替换客观判分、自评或排期。Mock 明确不实际批改。接口合同及网页验证见 [作答批改说明](../docs/review-ai-feedback.md)。本地使用前重启3002。

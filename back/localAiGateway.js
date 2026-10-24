@@ -6,7 +6,8 @@ const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 function createLocalAiGateway({ fetchImpl = fetch, timeoutMs = 95000 } = {}) {
   const router = express.Router();
   router.use(async (req, res, next) => {
-    if (req.method !== 'POST' || !PATHS.has(req.path)) return next();
+    const statusRequest=req.method==='GET'&&req.path==='/platform-status';
+    if (!statusRequest&&(req.method !== 'POST' || !PATHS.has(req.path))) return next();
     const fail = (status, error) => res.status(status).json({ error });
     res.set('Cache-Control', 'no-store');
     const host = req.headers.host || '';
@@ -14,17 +15,17 @@ function createLocalAiGateway({ fetchImpl = fetch, timeoutMs = 95000 } = {}) {
       || req.headers['x-forwarded-for'] || req.headers.forwarded
       || req.headers.origin && req.headers.origin !== `http://${host}`
       || req.headers['sec-fetch-site'] === 'cross-site') return fail(403, 'AI_LOCAL_ONLY');
-    let body = JSON.stringify(req.body);
-    if (!body || !req.is('application/json')) return fail(400, 'INVALID_INPUT');
+    let body = statusRequest?undefined:JSON.stringify(req.body);
+    if (!statusRequest&&(!body || !req.is('application/json'))) return fail(400, 'INVALID_INPUT');
     const maxBytes=['/review-mode-advice', '/outline-polish', '/assessment-chart'].includes(req.path)?32768:16384;
-    if (Buffer.byteLength(body) > maxBytes) return fail(413, 'BODY_TOO_LARGE');
+    if (!statusRequest&&Buffer.byteLength(body) > maxBytes) return fail(413, 'BODY_TOO_LARGE');
     const controller = new AbortController();
     const cancel = () => { if (!res.writableEnded) controller.abort(); };
     res.on('close', cancel);
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetchImpl(`http://127.0.0.1:3002/api/ai${req.path}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://127.0.0.1:3002' },
+        method: statusRequest?'GET':'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://127.0.0.1:3002' },
         body, redirect: 'error', signal: controller.signal
       });
       let text = '', size = 0;

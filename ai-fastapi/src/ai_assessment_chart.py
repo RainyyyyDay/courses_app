@@ -146,7 +146,7 @@ def register(app, *, dependencies=None):
             if (not isinstance(body, dict)
                     or set(body) - {'provider', 'api_key', 'model', 'confirm_cost',
                                     'base_url', 'workspace_id', 'input'}
-                    or body.get('provider') not in ('deepseek', 'compatible')):
+                    or body.get('provider') not in ('deepseek', 'compatible', 'platform')):
                 raise AIError(400, 'INVALID_INPUT')
             data = parse_input(body.get('input'))
             config = request_config(body)

@@ -104,16 +104,18 @@ def register(app, *, dependencies=None):
             if (not isinstance(body, dict)
                     or set(body) - {'provider', 'input', 'api_key', 'model', 'confirm_cost',
                                     'base_url', 'workspace_id'}
-                    or body.get('provider') not in ('mock', 'deepseek', 'compatible')):
+                    or body.get('provider') not in ('mock', 'deepseek', 'compatible', 'platform')):
                 raise AIError(400, 'INVALID_INPUT')
             data = parse_input(body.get('input'))
             if body['provider'] != 'mock':
-                provider = CreationReviewProvider(request_config(body))
+                config = request_config(body)
+                provider = CreationReviewProvider(config)
             else:
                 if body.get('api_key'):
                     raise AIError(400, 'INVALID_INPUT')
                 provider = MockCreationReviewProvider()
-            runner = CreationReviewRunner(Config(), provider=provider)
+                config = Config()
+            runner = CreationReviewRunner(config, provider=provider)
             runner.tasks = gate.tasks
             result, source = await _with_disconnect(request, runner, data)
             if source != 'provider':
