@@ -16,7 +16,7 @@ test('P0/P1/P2 real HTTP: evidence, exposure, manual materials, snapshots, alias
   const row=await api('POST',prefix+'/mistakes',{title:'首次作答',content:'2+2=?',answerContent:'4',mistakeType:'execution',questionFormat:'open'},201);
   const review=prefix+'/mistakes/'+row.id+'/review';let p=await api('GET',review);
   p=await api('POST',review,{action:'start',requestId:key(),expectedVersion:p.version});assert.equal(p.answer,null);
-  await api('POST',review+'/events',{action:'reveal_answer',requestId:key(),expectedVersion:p.version},400);
+  await api('POST',review+'/events',{action:'reveal_answer',firstAnswer:42,requestId:key(),expectedVersion:p.version},400);
   p=await api('POST',review+'/events',{action:'reveal_answer',firstAnswer:'我独立作答为 4',requestId:key(),expectedVersion:p.version,durationMs:1234});
   assert.equal(p.firstAnswer,'我独立作答为 4');assert.equal(p.answerRevealed,true);
   const judge={action:'judge',correct:true,requestId:key(),expectedVersion:p.version,durationMs:2345};

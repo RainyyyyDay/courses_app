@@ -1,5 +1,13 @@
 /* Optional feedback on immutable answers; separate history writes never change grades. */
 let reviewFeedbackState=null;
+function reviewFeedbackHasAnswer(value){
+  if(typeof value==='string'){
+    if(!value.trim())return false;
+    try{const parsed=JSON.parse(value);if(parsed?.kind==='contrast-v1')return reviewFeedbackHasAnswer(parsed.fields);}catch{}
+    return true;
+  }
+  return !!value&&typeof value==='object'&&Object.values(value).some(v=>typeof v==='string'&&v.trim());
+}
 function resetReviewFeedback(owner){const s=reviewFeedbackState;if(owner&&s?.owner!==owner)return;s?.controller?.abort();reviewFeedbackState=null;}
 function mountReviewFeedback(host,owner,key,input){
   if(!input){resetReviewFeedback();return;}
@@ -80,14 +88,14 @@ function bindReviewFeedbackHistory(owner,key,type,id){
 }
 function mountWorkbenchFeedback(s){
   const p=s.attempt,m=p.material;
-  if(p.stage==='question'||p.modeId==='reading'){mountReviewFeedback(wb('Attempt'),s,null,null);return;}
+  if(p.stage==='question'||p.modeId==='reading'||!reviewFeedbackHasAnswer(p.firstAnswer)){mountReviewFeedback(wb('Attempt'),s,null,null);return;}
   const input={mode_id:p.modeId,question:m.prompt+(p.modeId==='contrast'?'\n比较对象：'+m.objects.join(' / ')+'\n比较维度：'+m.dimensions.join('、'):''),student_answer:typeof p.firstAnswer==='string'?p.firstAnswer:JSON.stringify(p.firstAnswer),reference:p.modeId==='cloze'?JSON.stringify(m.blanks):m.reference||'',rubric:m.rubric||'',objective_result:p.modeId==='cloze'?(p.grade===3?'correct':'incorrect'):''};
   mountReviewFeedback(wb('Attempt'),s,'workbench:'+s.courseId+':'+p.id,input);
   bindReviewFeedbackHistory(s,'w:'+p.id,s.type,s.id);
 }
 function mountMistakeFeedback(s,answerVisible=s.progress.answerVisible){
   const p=s.progress;
-  if(!['answer','completed'].includes(p.stage)||!p.firstAnswer||!answerVisible){mountReviewFeedback(document.getElementById('mistakeReviewPanel'),s,null,null);return;}
+  if(!['answer','completed'].includes(p.stage)||!reviewFeedbackHasAnswer(p.firstAnswer)||!answerVisible){mountReviewFeedback(document.getElementById('mistakeReviewPanel'),s,null,null);return;}
   const question=(p.question.content||p.question.ocrText||'')+(p.choice?'\n'+p.choice.options.map(o=>o.id+'：'+o.text).join('\n'):'');
   const input={mode_id:p.mode.id,question,student_answer:p.firstAnswer,reference:(p.answer?.content||'')+'\n'+(p.answer?.explanation||'')+(p.choice?'\n正确选项：'+JSON.stringify(p.choice.correctOption):''),rubric:'',objective_result:p.choice?(p.choice.correct?'correct':'incorrect'):''};
   mountReviewFeedback(document.getElementById('mistakeReviewPanel'),s,'mistake:'+s.courseId+':'+s.id+':'+p.reviewRevision+':'+p.round,input);

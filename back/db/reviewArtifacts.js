@@ -3,7 +3,7 @@ const {db}=require('./connection');
 const {recordGradeInTransaction}=require('./reviewItems');
 const {reviewSessionContext,assertSessionItemWritable,completeSessionItem}=require('./reviewSessions');
 const {reviewPlanContext,completePlanItem}=require('./reviewPlans');
-const {normalizeAnswer}=require('./reviewAnswers');
+const {normalizeAnswer,hasReviewAnswer}=require('./reviewAnswers');
 const MODES=['standard','cloze','self_explain','contrast','reading'];
 const TABLES={mistake:'mistakes',material:'materials',note:'notes'};
 function fail(status,message){throw Object.assign(new Error(message),{status,code:status===409?'VERSION_CONFLICT':'INVALID_ARGUMENT'});}
@@ -110,15 +110,19 @@ function applyReviewAttempt(courseId,type,id,attemptId,body){
       first=JSON.stringify(text(body.answer??'','阅读记录',{empty:true,max:12000}));stage='completed';result={exposureOnly:true};
     }else if(body.action==='submit'&&stage==='question'){
       if(row.mode_id==='cloze'){
-        if(!body.answer||typeof body.answer!=='object'||Array.isArray(body.answer)||Object.keys(body.answer).some(k=>!material.blanks.some(b=>b.id===k)))fail(400,'请按空位编号提交答案');
-        const answer=Object.fromEntries(material.blanks.map(b=>[b.id,text(body.answer[b.id],'作答',{empty:true,max:2000})]));
-        const results=material.blanks.map(b=>({id:b.id,correct:[b.answer,...b.aliases].some(a=>normalizeAnswer(a)===normalizeAnswer(answer[b.id]))}));
-        first=JSON.stringify(answer);grade=results.every(r=>r.correct)?3:1;stage='completed';result={results,judgedBeforeReveal:true};revealed=true;
+        const rawAnswer=body.answer===undefined?{}:body.answer;
+        if(!rawAnswer||typeof rawAnswer!=='object'||Array.isArray(rawAnswer)||Object.keys(rawAnswer).some(k=>!material.blanks.some(b=>b.id===k)))fail(400,'请按空位编号提交答案');
+        const answer=Object.fromEntries(material.blanks.map(b=>[b.id,text(rawAnswer[b.id]===undefined?'':rawAnswer[b.id],'作答',{empty:true,max:2000})]));
+        const results=material.blanks.map(b=>({id:b.id,unanswered:!answer[b.id].trim(),correct:!!answer[b.id].trim()&&[b.answer,...b.aliases].some(a=>normalizeAnswer(a)===normalizeAnswer(answer[b.id]))}));
+        first=JSON.stringify(answer);grade=results.every(r=>r.correct)?3:1;stage='completed';result={results,unanswered:!hasReviewAnswer(answer),judgedBeforeReveal:hasReviewAnswer(answer)};revealed=true;
       }else{
-        first=JSON.stringify(text(body.answer,'首次作答',{max:12000}));stage='answer';revealed=true;
+        const answer=text(body.answer===undefined?'':body.answer,'首次作答',{empty:true,max:12000});
+        first=JSON.stringify(answer);revealed=true;
+        if(!hasReviewAnswer(answer)){stage='completed';grade=1;result={unanswered:true,judgedBeforeReveal:false};}
+        else stage='answer';
       }
     }else if(body.action==='judge'&&stage==='answer'&&row.mode_id!=='cloze'){
-      integer(body.grade,'评分',1);if(body.grade>4)fail(400,'评分只能为 1 到 4');grade=Math.min(body.grade,revealed?2:4);stage='completed';result={selfGrade:body.grade,finalGrade:grade};
+      integer(body.grade,'评分',1);if(body.grade>4)fail(400,'评分只能为 1 到 4');grade=hasReviewAnswer(first===null?null:JSON.parse(first))?Math.min(body.grade,revealed?2:4):1;stage='completed';result={selfGrade:body.grade,finalGrade:grade};
     }else fail(400,'当前步骤不支持此操作');
     const duration=Math.max(1,Math.min(86400000,body.durationMs??(Date.now()-Date.parse(row.started_at))));
     if(stage==='completed'){

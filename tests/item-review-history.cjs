@@ -66,25 +66,25 @@ test('item history API keeps snapshots, immutable feedback versions, pagination 
  }
  const beforeRestart=snapshot();await restart();assert.deepEqual(snapshot(),beforeRestart);
  assert.equal(read(db=>db.prepare('SELECT count(*) n FROM review_ai_feedback').get().n),37);
- assert.equal(read(db=>db.prepare('PRAGMA user_version').get().user_version),24);
+ assert.equal(read(db=>db.prepare('PRAGMA user_version').get().user_version),25);
  const file=path.join(back,'data/app.db');
  // Local v23: feedback already exists, mindmap_image does not. Preserve all existing feedback rows.
  const historyBefore=read(db=>db.prepare('SELECT * FROM review_ai_feedback ORDER BY id').all());
  let tempDb=new DatabaseSync(file);
  tempDb.exec('ALTER TABLE materials DROP COLUMN mindmap_image; ALTER TABLE notes DROP COLUMN mindmap_image; PRAGMA user_version=23;');tempDb.close();
  await restart();assert.deepEqual(snapshot(),beforeRestart);assert.deepEqual(read(db=>db.prepare('SELECT * FROM review_ai_feedback ORDER BY id').all()),historyBefore);
- assert.equal(read(db=>db.prepare('PRAGMA user_version').get().user_version),24);
+ assert.equal(read(db=>db.prepare('PRAGMA user_version').get().user_version),25);
  for(const table of ['materials','notes'])assert.ok(read(db=>db.prepare('PRAGMA table_info('+table+')').all().some(c=>c.name==='mindmap_image')));
  // Upstream v23: images exist, feedback tables do not. Preserve image payloads and review evidence.
  tempDb=new DatabaseSync(file);
  tempDb.exec("UPDATE materials SET mindmap_image='synthetic-image-material'; UPDATE notes SET mindmap_image='synthetic-image-note'; DROP TABLE review_ai_feedback; DROP TABLE review_reading_history; DROP INDEX idx_review_attempt_history; DROP INDEX idx_native_review_history; PRAGMA user_version=23;");tempDb.close();
- await restart();assert.deepEqual(snapshot(),beforeRestart);assert.equal(read(db=>db.prepare('PRAGMA user_version').get().user_version),24);
+ await restart();assert.deepEqual(snapshot(),beforeRestart);assert.equal(read(db=>db.prepare('PRAGMA user_version').get().user_version),25);
  for(const table of ['materials','notes'])assert.ok(read(db=>db.prepare('SELECT mindmap_image FROM '+table).all().every(r=>r.mindmap_image==='synthetic-image-'+(table==='notes'?'note':'material'))));
  assert.equal(read(db=>db.prepare('SELECT count(*) n FROM review_ai_feedback').get().n),0);
  // v22: neither feature exists. Both migrations must apply, without touching old review evidence.
  tempDb=new DatabaseSync(file);
  tempDb.exec('ALTER TABLE materials DROP COLUMN mindmap_image; ALTER TABLE notes DROP COLUMN mindmap_image; DROP TABLE review_ai_feedback; DROP TABLE review_reading_history; DROP INDEX idx_review_attempt_history; DROP INDEX idx_native_review_history; PRAGMA user_version=22;');tempDb.close();
- await restart();assert.deepEqual(snapshot(),beforeRestart);assert.equal(read(db=>db.prepare('PRAGMA user_version').get().user_version),24);
+ await restart();assert.deepEqual(snapshot(),beforeRestart);assert.equal(read(db=>db.prepare('PRAGMA user_version').get().user_version),25);
  await restart();assert.deepEqual(snapshot(),beforeRestart,'v24 restart must not repeat migration writes');
 },{legacy:false}));
 

@@ -831,13 +831,14 @@ function mistakeChoiceHtml(p) {
   }).join('');
   const correctText = Array.isArray(choice.correctOption) ? choice.correctOption.join('、') : choice.correctOption || '';
   const result = completed && choice.correct !== null
-    ? `<p class="mistake-choice-result ${choice.correct ? 'is-correct' : 'is-wrong'}">${choice.correct ? '回答正确' : '回答错误'}${correctText ? ` · 正确答案 ${escapeHtml(correctText)}` : ''}</p>`
+    ? `<p class="mistake-choice-result ${choice.correct ? 'is-correct' : 'is-wrong'}">${p.responseKind==='unanswered'?'未作答，按不会记录':choice.correct ? '回答正确' : '回答错误'}${correctText ? ` · 正确答案 ${escapeHtml(correctText)}` : ''}</p>`
     : '';
   return `<div class="mistake-choice-options" role="${multiple ? 'group' : 'radiogroup'}" aria-label="选择答案">${options}</div>${result}`;
 }
 
 function renderMistakeReview(state) {
   const p = state.progress;
+  const memorySelfReview = p.mistakeType === 'knowledge' && p.mode?.id === 'standard';
   const roundKey=p.round+':'+p.mode?.id;
   if(state.renderedRoundKey!==roundKey){state.firstAnswerDraft='';document.getElementById('mistakeFirstAnswer')?.remove();state.renderedRoundKey=roundKey;}
   const typedAnswer=document.getElementById('mistakeFirstAnswer')?.value || state.firstAnswerDraft || '';
@@ -863,6 +864,7 @@ function renderMistakeReview(state) {
   } else if (isChoice && p.stage === 'question') {
     message = '遮住答案，重新选择一次。';
     state.choiceStartedAt ||= Date.now();
+    message += ' 可以直接留空提交，按不会记录。';
     actions = '<button type="button" data-review-action="choose" onclick="submitMistakeChoice()">提交答案</button>';
   } else if (p.stage === 'question' && p.mistakeType === 'knowledge') {
     message = '你对这道题的记忆程度是？';
@@ -870,20 +872,24 @@ function renderMistakeReview(state) {
   } else if (p.stage === 'question') {
     message = p.mistakeType === 'unclassified' ? '请先自行回忆或重新解题，再查看答案。'
       : usesMastered ? '请先重新思考或解题，再对照答案。' : '请先重新做题，再对照答案和错误原因。';
-    actions = button('查看答案和解析', 'reveal_answer');
+    message += ' 留空提交按不会记录，不提供 AI 批改。';
+    actions = button('提交作答，查看参考', 'reveal_answer')+'<button type="button" data-review-action="reveal_answer" onclick="submitMistakeReview(\'reveal_answer\',null,null,{firstAnswer:\'\'})">不会，查看参考</button>';
   } else if (p.stage === 'answer') {
     if (usesMastered) {
       message = '对照答案后，是否已经掌握？';
       actions = button('已掌握', 'judge', 'mastered', true) + button('仍需复习', 'judge', 'mastered', false);
     } else {
-      message = '对照答案后，你的判断是？';
-      actions = button('正确', 'judge', 'correct', true) + button('错误', 'judge', 'correct', false);
+      message = memorySelfReview && !p.firstAnswer ? '对照答案后，你的回忆是否基本一致？本轮仅记录记忆自评。' : '对照答案后，你的判断是？';
+      actions = button(memorySelfReview && !p.firstAnswer ? '基本记得' : '正确', 'judge', 'correct', true)
+        + button(memorySelfReview && !p.firstAnswer ? '仍需复习' : '错误', 'judge', 'correct', false);
     }
   } else {
-    if (isChoice && p.choice) {
+    if (p.responseKind==='unanswered') {
+      message='本轮未作答，已按不会记录，仍需复习；可以查看参考后再试一次。';
+    } else if (isChoice && p.choice) {
       message = p.choice.correct ? '回答正确，本轮完成。' : '回答错误，本题仍为未复习。';
     } else {
-      message = p.recall === 'forgotten' ? '已记录“不记得”，这道题仍为未复习。' : `本轮已保存：${mistakeStatusText(p.reviewStatus)}。`;
+      message = p.recall === 'forgotten' && p.reviewStatus !== 'reviewed' ? '已记录“不记得”，这道题仍为未复习。' : `本轮已保存：${mistakeStatusText(p.reviewStatus)}。`;
     }
     actions = typeof mistakeQueueCurrent === 'function' && mistakeQueueCurrent(state) && p.round === mistakeQueue.rounds[state.id]
       ? '' : button('再次复习', 'start');
@@ -901,8 +907,9 @@ function renderMistakeReview(state) {
     ? `<label class="mistake-mode-switch"><span>复习模式</span><select onchange="changeMistakeReviewMode(this.value)" ${mistakeReviewBusy ? 'disabled' : ''}>${p.mode.availableModes.map(mode =>
       `<option value="${escapeHtml(mode.id)}" ${mode.id === p.mode.id ? 'selected' : ''}>${escapeHtml(mode.name)}</option>`).join('')}</select></label>`
     : '';
+  const answerEditor = `<label>${memorySelfReview ? '回忆内容（选填；记录后可用于 AI 批改）' : '首次作答（可留空；留空提交按不会记录）'}<textarea id="mistakeFirstAnswer" rows="4" oninput="mistakeDetailState.firstAnswerDraft=this.value">${escapeHtml(typedAnswer)}</textarea></label>`;
   const firstAnswerInput=!isChoice && p.stage==='question'
-    ? `<label>首次作答（不会被看答案后的修改覆盖）<textarea id="mistakeFirstAnswer" rows="4" oninput="mistakeDetailState.firstAnswerDraft=this.value">${escapeHtml(typedAnswer)}</textarea></label>`
+    ? memorySelfReview ? `<details data-memory-answer${typedAnswer ? ' open' : ''}><summary>记录我的回忆（选填）</summary><p class="ai-help">可先在心里回忆、口头背诵或在纸上作答，再直接选择记忆程度。需要 AI 批改时，请在这里记录实际回忆。</p>${answerEditor}</details>` : answerEditor
     : p.firstAnswer ? `<p>首次作答：${escapeHtml(p.firstAnswer)}${p.answerRevealed && !isChoice ? ' · 已看答案，本轮最高评为“基本掌握”' : ''}</p>` : '';
   panel.innerHTML = `${modeSwitch}<p>${escapeHtml(message)}</p>${firstAnswerInput}${isChoice && p.choice ? mistakeChoiceHtml(p) : ''}${answerBlock}
     <div class="mistake-review-actions">${pending ? '<span>有一次操作待确认，请先重试。</span><button onclick="retryMistakeReview()">重试上次操作</button>' : actions}</div>
@@ -935,7 +942,6 @@ async function submitMistakeReview(action, key, value, extra = {}) {
   if (key) body[key] = value;
   if (['recall','reveal_answer'].includes(action)) {
     body.firstAnswer=(document.getElementById('mistakeFirstAnswer')?.value || state.firstAnswerDraft || '').trim();
-    if (!body.firstAnswer) {showToast('请先填写首次作答；不会可填写“不记得”');return;}
   }
   if (['start','restart'].includes(action)) state.firstAnswerDraft='';
   if (state.progress.startedAt) body.durationMs=Math.max(1,Math.min(86400000,Date.now()-Date.parse(state.progress.startedAt)));
@@ -949,10 +955,9 @@ function submitMistakeChoice() {
   const state = mistakeDetailState;
   if (!state?.progress || mistakeReviewBusy || state.progress.stage !== 'question') return;
   const selected = [...document.querySelectorAll('input[name="mistakeChoiceOption"]:checked')].map(input => input.value);
-  if (!selected.length) { showToast('请先选择一个选项'); return; }
   const durationMs = Math.max(0, Math.min(86400000, Date.now() - (state.choiceStartedAt || Date.now())));
   return submitMistakeReview('choose', 'selectedOption',
-    state.progress.choice?.type === 'multiple' ? selected : selected[0], { durationMs });
+    state.progress.choice?.type === 'multiple' ? selected : (selected[0]||''), { durationMs });
 }
 async function changeMistakeReviewMode(modeId) {
   const state = mistakeDetailState;
