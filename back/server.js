@@ -247,6 +247,10 @@ app.get('/api/courses/:courseId/review-plans/:planId/items', mistakeApi((req,res
   if (Object.keys(req.query).some(key=>!['scheduledDate','status'].includes(key))) mistakeError(400,'INVALID_ARGUMENT','不支持的任务筛选参数');
   res.json(db.listPlanItems(mistakeCourse(req.params.courseId),positiveId(req.params.planId),req.query));
 }));
+app.get('/api/courses/:courseId/review-plans/:planId/days/:date/answers',mistakeApi((req,res)=>{
+  res.set('Cache-Control','no-store');
+  res.json(db.getPlanDayAnswers(mistakeCourse(req.params.courseId),positiveId(req.params.planId),req.params.date));
+}));
 // 排期预览：按记忆状态生成「今天到考前」的出现安排，只读不落库。
 app.get('/api/courses/:courseId/review-plans/:planId/schedule', mistakeApi((req,res) => {
   res.json(db.getReviewPlanSchedule(mistakeCourse(req.params.courseId),positiveId(req.params.planId)));
@@ -290,6 +294,11 @@ app.post('/api/courses/:courseId/review-sessions', mistakeApi((req,res)=>{
 }));
 app.get('/api/courses/:courseId/review-sessions/:sessionId', mistakeApi((req,res)=>{
   res.json(db.getReviewSession(mistakeCourse(req.params.courseId),positiveId(req.params.sessionId)));
+}));
+app.get('/api/courses/:courseId/review-sessions/:sessionId/answers',mistakeApi((req,res)=>{
+  res.set('Cache-Control','no-store');
+  const itemType=req.query.itemType===undefined?null:req.query.itemType;
+  res.json(db.getReviewSessionAnswers(mistakeCourse(req.params.courseId),positiveId(req.params.sessionId),itemType));
 }));
 for(const action of ['resume','pause','finish','position']) {
   app.post(`/api/courses/:courseId/review-sessions/:sessionId/${action}`,mistakeApi((req,res)=>{

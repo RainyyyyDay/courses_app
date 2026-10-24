@@ -1,7 +1,7 @@
 // 单次复习的固定范围与执行记录。实际阅读/错题判断仍由原复习模块负责。
 const {db} = require('./connection');
 const {planError,dateNumber,planToday} = require('./reviewPlanSchedule');
-const {reviewPlanContext,completePlanItem} = require('./reviewPlans');
+const {reviewPlanContext,completePlanItem,listPlanItems} = require('./reviewPlans');
 const {recordGradeInTransaction} = require('./reviewItems');
 const TYPES = {material:'materials',note:'notes',mistake:'mistakes'};
 const SOURCES = ['plan','total',...Object.keys(TYPES)];
@@ -235,5 +235,121 @@ function listSessionCandidates(courseId) {
   const {listMaterials}=require('./materials'),{listNotes}=require('./notes'),{listMistakes}=require('./mistakes');
   return [['material',listMaterials(courseId)],['note',listNotes(courseId)],['mistake',listMistakes(courseId)]].flatMap(([type,rows])=>rows.map(row=>({...row,type,nodes:row.nodes || row.knowledge || [],reviewable:canReview(type,row) ? 1 : 0})));
 }
-module.exports={listReviewSessions,getReviewSession,renameReviewSession,createReviewSession,repeatReviewSession,reviewSessionContext,assertSessionItemWritable,
+function previewJson(value,fallback=null){
+  if(value===null||value===undefined||value==='')return fallback;
+  try{return JSON.parse(value);}catch{return value;}
+}
+function sessionAnswerPreview(courseId,id,itemType=null){
+  const base=getReviewSession(courseId,id);
+  if(itemType!==null&&!Object.hasOwn(TYPES,itemType))planError(400,'INVALID_ARGUMENT','作答预览类型不合法');
+  const previewItems=base.items.filter(item=>!item.source_deleted&&(itemType===null||item.item_type===itemType));
+  if(itemType===null){
+    if(base.status!=='completed'||base.skipped>0||base.total<1)planError(409,'SESSION_NOT_PREVIEWABLE','只有全部处理且没有跳过的复习才能查看作答预览');
+  }else if(!previewItems.length||previewItems.some(item=>item.status!=='completed'||item.result!=='passed')){
+    planError(409,'SESSION_ITEMS_NOT_PREVIEWABLE','该类型还有未成功复习的内容');
+  }
+  const eventStatement=db.prepare(`SELECT grade,duration_ms,mode_id,first_answer,answer_revealed
+    FROM review_item_events WHERE session_item_id=? ORDER BY id DESC LIMIT 1`);
+  const attemptStatement=db.prepare('SELECT * FROM review_mode_attempts WHERE session_item_id=? ORDER BY started_at DESC,id DESC LIMIT 1');
+  const modeStatement=db.prepare('SELECT mode_id FROM review_item_modes WHERE course_id=? AND item_type=? AND item_id=?');
+  const readingStatement=db.prepare('SELECT snapshot_json FROM review_reading_history WHERE session_item_id=?');
+  const items=previewItems.map(item=>{
+    const source=sourceRow(item.item_type,item.item_id),attempt=attemptStatement.get(item.id),event=eventStatement.get(item.id);
+    let modeId=attempt?.mode_id||event?.mode_id||modeStatement.get(courseId,item.item_type,item.item_id)?.mode_id
+      ||(item.item_type==='mistake'&&source?.question_format==='choice'?'choice_reproduction':'standard');
+    let material={prompt:'',reference:'',rubric:'',objects:[],dimensions:[],blanks:[],options:[],correctOption:null,fileUrl:''};
+    let firstAnswer=null,grade=event?.grade??null,result=null,sourceKind='current';
+    const reading=readingStatement.get(item.id);
+    if(attempt){
+      const snapshot=previewJson(attempt.snapshot_json,{});
+      material={...material,...snapshot};delete material._sourceRevision;
+      firstAnswer=previewJson(attempt.first_answer,null);
+      grade=attempt.grade;
+      result=previewJson(attempt.result_json,null);
+      sourceKind='attempt';
+    }else if((item.exposure_only||modeId==='reading')&&reading){
+      const snapshot=previewJson(reading.snapshot_json,{});
+      material={...material,prompt:snapshot.prompt||'',fileUrl:snapshot.fileUrl||''};
+      sourceKind='reading';
+      modeId='reading';
+    }else if(source){
+      let options=[];try{options=Array.isArray(source.options_json)?source.options_json:JSON.parse(source.options_json||'[]');}catch{}
+      material={
+        ...material,
+        prompt:source.content||source.ocr_text||'',
+        reference:source.answer_content||(source.question_format==='choice'&&source.correct_option?`正确答案：${source.correct_option}`:''),
+        rubric:source.explanation||'',
+        options,
+        correctOption:source.correct_option??null,
+        fileUrl:source.file_url||'',
+      };
+      firstAnswer=event?.first_answer??null;
+    }else{
+      if(reading){
+        const snapshot=previewJson(reading.snapshot_json,{});
+        material={...material,prompt:snapshot.prompt||'',fileUrl:snapshot.fileUrl||''};
+        sourceKind='reading';
+      }else{
+        sourceKind='deleted';
+      }
+    }
+    return {
+      id:item.id,item_type:item.item_type,title:item.title_snapshot,status:item.status,result:item.result,
+      exposureOnly:!!item.exposure_only,sourceDeleted:!!item.source_deleted,modeId,grade,
+      durationMs:attempt?.duration_ms??event?.duration_ms??0,sourceKind,material,firstAnswer,
+      answerRevealed:!!attempt?.answer_revealed||!!event?.answer_revealed,resultDetail:result,
+    };
+  });
+  if(itemType===null)return {...base,items};
+  return {
+    ...base,items,total:items.length,
+    completed:items.filter(item=>item.status==='completed').length,
+    pending:0,skipped:0,passed:items.length,failed:0,exposed:0,deleted:0,
+    progress:100,passRate:100,types:[itemType],
+  };
+}
+function planDayAnswerPreview(courseId,planId,date){
+  dateNumber(date);
+  if(!db.prepare('SELECT 1 FROM review_plans WHERE id=? AND course_id=?').get(planId,courseId))
+    planError(404,'PLAN_NOT_FOUND','找不到当前课程的复习计划');
+  const planItems=listPlanItems(courseId,planId,{scheduledDate:date});
+  if(!planItems.length)planError(409,'NO_PLAN_DAY_ITEMS','当天没有有效复习任务');
+  const sessions=db.prepare(`SELECT id,status FROM review_sessions
+    WHERE course_id=? AND source_type='plan' AND source_id=? AND source_date=?
+    ORDER BY created_at,id`).all(courseId,planId,date);
+  const latest=new Map();
+  for(const session of sessions){
+    for(const item of db.prepare('SELECT * FROM review_session_items WHERE session_id=? ORDER BY position').all(session.id)){
+      latest.set(item.item_type+':'+item.item_id,item);
+    }
+  }
+  for(const item of planItems){
+    const result=latest.get(item.item_type+':'+item.item_id);
+    if(!result||result.status!=='completed'||result.source_deleted)planError(409,'PLAN_DAY_NOT_PREVIEWABLE','当天还有未处理或已跳过的任务');
+  }
+  const detailByKey=new Map();
+  for(const session of sessions){
+    let preview=null;
+    try{preview=sessionAnswerPreview(courseId,session.id);}catch{}
+    for(const item of preview?.items||[])detailByKey.set(item.item_type+':'+item.id,item);
+  }
+  const items=planItems.map(planItem=>{
+    const key=planItem.item_type+':'+planItem.item_id,detail=detailByKey.get(key);
+    return detail?{...detail,title:planItem.title_snapshot,item_type:planItem.item_type}:{
+      id:null,item_type:planItem.item_type,title:planItem.title_snapshot,status:planItem.status,
+      result:planItem.status==='completed'?'passed':null,exposureOnly:false,sourceDeleted:false,
+      modeId:'standard',grade:null,durationMs:0,sourceKind:'current',firstAnswer:null,
+      material:{prompt:'',reference:'',rubric:'',objects:[],dimensions:[],blanks:[],options:[],correctOption:null,fileUrl:''},
+      answerRevealed:false,resultDetail:null,
+    };
+  });
+  return {
+    courseId,course_id:courseId,planId,date,total:items.length,completed:items.filter(item=>item.status==='completed').length,
+    passed:items.filter(item=>item.status==='completed'&&item.result==='passed').length,
+    failed:items.filter(item=>item.status==='completed'&&item.result==='failed').length,
+    exposed:items.filter(item=>item.exposureOnly).length,pending:0,skipped:0,deleted:0,
+    items,types:[...new Set(items.map(item=>item.item_type))],
+  };
+}
+module.exports={listReviewSessions,getReviewSession,getReviewSessionAnswers:sessionAnswerPreview,getPlanDayAnswers:planDayAnswerPreview,renameReviewSession,createReviewSession,repeatReviewSession,reviewSessionContext,assertSessionItemWritable,
   completeSessionItem,touchReviewSession,saveSessionReadingReview,saveSessionRecallReview,changeReviewSession,skipReviewSessionItem,listSessionCandidates};

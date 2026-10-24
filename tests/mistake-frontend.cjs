@@ -311,7 +311,7 @@ function mistakeBrowserScenario(data) {
       check(!document.getElementById('mistakeQueueNext'), 'last question has no manual finish button ' + type);
       await submitMistakeReview('reveal_answer');
       await submitMistakeReview('judge', key, true);
-      check(currentView.type === 'mistakeQueueComplete', 'last judgment auto-completes the queue ' + type);
+      await waitUntil(() => currentView.type === 'mistakeQueueComplete', 'last judgment auto-completes the queue ' + type);
       check(document.getElementById('mistakeCompleteModal').classList.contains('show')
         && document.getElementById('mistakeCompleteTitle').textContent.includes('恭喜')
         && mistakeConfettiLayerState() !== 'none', 'perfect round celebrates ' + type);
@@ -320,7 +320,7 @@ function mistakeBrowserScenario(data) {
       check(mistakeDetailState.progress.stage === 'question' && mistakeDetailState.progress.reviewStatus === 'reviewed', 'reviewed allowed new round ' + type);
       await submitMistakeReview('reveal_answer'); await submitMistakeReview('judge', key, false);
       check(mistakeDetailState.progress.reviewStatus === 'unreviewed', 'repeat wrong updates state ' + type);
-      check(currentView.type === 'mistakeQueueComplete', 'wrong last judgment still auto-completes ' + type);
+      await waitUntil(() => currentView.type === 'mistakeQueueComplete', 'wrong last judgment still auto-completes ' + type);
       check(document.getElementById('mistakeCompleteModal').classList.contains('show')
         && !document.getElementById('mistakeCompleteTitle').textContent.includes('恭喜')
         && mistakeConfettiLayerState() === 'none', 'imperfect round shows plain completion ' + type);
@@ -373,7 +373,7 @@ function mistakeBrowserScenario(data) {
     }
     check(currentView.type === 'mistakeQueueComplete', 'mixed queue completion');
     await backFromDetail();
-    // 完成弹窗的三个去向：再来一遍 / 开始新复习 / 取消。
+    // 完成弹窗：取消 / 再来一遍 / 查看作答预览 / 开始新复习。
     const completeButtons = () => [...document.querySelectorAll('#mistakeCompleteModal .modal-actions button')];
     // 用思维类（揭示答案 + 已掌握）跑单题轮，避免动到后面几步依赖的知识类状态。
     const finishSingleRound = async () => {
@@ -383,14 +383,14 @@ function mistakeBrowserScenario(data) {
       await waitUntil(() => document.getElementById('mistakeCompleteModal').classList.contains('show'), 'completion modal after single round');
     };
     await finishSingleRound();
-    check(completeButtons().map(b => b.textContent.trim()).join('|') === '取消|再来一遍|开始新复习', 'three completion choices');
+    check(completeButtons().map(b => b.textContent.trim()).join('|') === '取消|再来一遍|查看作答预览|开始新复习', 'completion choices include read-only preview');
     completeButtons()[1].click();
     await waitUntil(() => currentView.type === 'mistake' && currentView.id === thinking.id && mistakeDetailState?.progress?.stage === 'question' && !mistakeReviewBusy && !mistakeQueueLoading && !document.getElementById('mistakeCompleteModal').classList.contains('show'), 'replay restarts the same queue');
     check(mistakeQueue.index === 0 && !mistakeQueue.finished, 'replay resets queue progress');
     await submitMistakeReview('reveal_answer');
     await submitMistakeReview('judge', 'mastered', true);
     await waitUntil(() => document.getElementById('mistakeCompleteModal').classList.contains('show') && !mistakeReviewBusy && !mistakeQueueLoading, 'replayed round completion ready');
-    completeButtons()[2].click();
+    completeButtons().find(b => b.textContent.includes('开始新复习')).click();
     await waitUntil(() => mistakeReviewPicker && document.getElementById('mistakeReviewPicker').classList.contains('show'), 'start new review opens the picker');
     check(!document.getElementById('mistakeCompleteModal').classList.contains('show') && !mistakeQueue, 'new review drops the finished queue');
     await cancelMistakeSelection();

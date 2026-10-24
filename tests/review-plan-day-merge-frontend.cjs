@@ -66,8 +66,8 @@ function reviewPlanDayMergeBrowserScenario() {
       check(cell.querySelector('.plan-calendar-count').textContent.trim() === '3 项', 'partial session keeps the full day count');
       cell.click();
       await waitUntil(() => document.getElementById('reviewPlanDayModal').classList.contains('show'), 'merged day popup opens');
-      check(document.querySelectorAll('#reviewPlanDayBody .review-day-card').length === 2, 'both types remain visible after one early review');
-      check(document.getElementById('reviewPlanDayBody').textContent.includes('资料') && document.getElementById('reviewPlanDayBody').textContent.includes('错题'), 'materials and mistake both remain');
+      check(document.querySelectorAll('#reviewPlanDayBody .review-day-card').length === 1, 'the whole day remains one combined task card');
+      check(document.getElementById('reviewPlanDayBody').textContent.includes('份资料') && document.getElementById('reviewPlanDayBody').textContent.includes('道错题'), 'combined day card lists populated categories and counts');
       check(document.getElementById('reviewPlanDayBody').textContent.includes('成功复习 1 / 3'), 'day stats use the full valid day total');
       closePlanScheduleDay();
     }

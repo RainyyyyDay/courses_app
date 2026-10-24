@@ -143,6 +143,7 @@ async function testReviewPlanApi({base,temp}) {
     items=await api('GET',url+'/items?status=skipped');assert.equal(items.length,0,'deleted tasks leave the effective plan queue');
     const deletedSchedule=await api('GET',url+'/schedule');
     assert.ok(deletedSchedule.days.every(day=>day.items.every(item=>item.type!=='note')),'deleted source disappears from the live schedule without applying a new one');
+    assert.equal(deletedSchedule.hasNewSchedule,true,'deleting an upcoming task requests a new schedule');
     // 提前复习：计划内容在“当天没有任务”的预估日期也能开计划会话，并挂回日历那一天。
     const spanExam=new Date(Date.parse(today+'T00:00:00Z')+86400000*5).toISOString().slice(0,10);
     const span=await api('POST',prefix,{...body,name:'span',examDate:spanExam,selectedItems:[{type:'material',id:m.id}]},201);
@@ -158,13 +159,11 @@ async function testReviewPlanApi({base,temp}) {
     const snapPlan=await api('POST',prefix,{...body,name:'snapshot',examDate:spanExam,selectedItems:[{type:'material',id:m.id}]},201);
     const firstSchedule=await api('GET',prefix+'/'+snapPlan.id+'/schedule');
     assert.equal(firstSchedule.hasNewSchedule,false,'initial snapshot matches the computed schedule');
-    d.prepare(`INSERT INTO review_item_states(course_id,item_type,item_id,stability,difficulty,reps,lapses,state,last_grade,last_review_date,due_date,elapsed_days,scheduled_days,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(course_id,item_type,item_id) DO UPDATE SET
-      stability=excluded.stability,difficulty=excluded.difficulty,reps=excluded.reps,state=excluded.state,
-      last_grade=excluded.last_grade,last_review_date=excluded.last_review_date,due_date=excluded.due_date,updated_at=excluded.updated_at`)
-      .run(course.id,'material',m.id,60,5,3,0,'review',3,today,spanExam,0,20,new Date().toISOString());
+    const snapFutureTask=(await api('GET',prefix+'/'+snapPlan.id+'/items')).find(item=>item.scheduled_date>today);
+    assert.ok(snapFutureTask,'snapshot fixture has a future task');
+    await api('PATCH',`${c}/materials/${m.id}/review?planItemId=${snapFutureTask.id}`,{reviewStatus:'reviewed'});
     const changedSchedule=await api('GET',prefix+'/'+snapPlan.id+'/schedule');
-    assert.equal(changedSchedule.hasNewSchedule,true,'recomputed schedule is flagged for approval');
+    assert.equal(changedSchedule.hasNewSchedule,true,'successfully reviewing a future item early is flagged for approval');
     assert.deepEqual(changedSchedule.days.map(day=>day.date),firstSchedule.days.map(day=>day.date),'old schedule stays until applied');
     const applied=await api('POST',prefix+'/'+snapPlan.id+'/schedule/apply',undefined,200);
     assert.equal(applied.hasNewSchedule,false,'applying clears the pending flag');

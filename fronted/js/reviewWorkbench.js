@@ -214,6 +214,7 @@ function saveWorkbenchAnswerDraft(){
 }
 function closeReviewWorkbench(refresh=true){
   if(reviewWorkbench?.busy)return;
+  clearWorkbenchAutoAdvance(reviewWorkbench);
   if(reviewWorkbench&&typeof resetReviewFeedback==='function')resetReviewFeedback(reviewWorkbench);
   if(!reviewWorkbench?.pendingCreation){
     saveWorkbenchAnswerDraft();
@@ -371,13 +372,42 @@ async function startWorkbenchAttempt(){
   }catch(err){if(reviewWorkbench===s)wb('Error').textContent=err.message;}
   finally{if(reviewWorkbench===s)s.busy=false;}
 }
+const REVIEW_ANSWER_IGNORED=/[\s\u3000，。；：、,.!?！？；：""''（）()\[\]【】]/;
+function reviewAnswerTokens(value){
+  return Array.from(String(value??'').toLowerCase()).filter(char=>!REVIEW_ANSWER_IGNORED.test(char));
+}
+function reviewAnswerMatchMask(answer,input){
+  const chars=Array.from(String(answer??'')),tokens=chars.map((char,index)=>({char,index})).filter(item=>!REVIEW_ANSWER_IGNORED.test(item.char));
+  const expected=tokens.map(item=>item.char.toLowerCase()),actual=reviewAnswerTokens(input),rows=expected.length+1,cols=actual.length+1;
+  const table=Array.from({length:rows},()=>new Uint16Array(cols));
+  for(let i=1;i<rows;i++)for(let j=1;j<cols;j++){
+    table[i][j]=expected[i-1]===actual[j-1]?table[i-1][j-1]+1:Math.max(table[i-1][j],table[i][j-1]);
+  }
+  const matched=new Set();let i=expected.length,j=actual.length;
+  while(i>0&&j>0){
+    if(expected[i-1]===actual[j-1]){matched.add(tokens[i-1].index);i--;j--;}
+    else if(table[i-1][j]>=table[i][j-1])i--;
+    else j--;
+  }
+  return matched;
+}
+function reviewAnswerDiffHtml(answer,input,correct){
+  const value=String(answer||'');
+  if(correct)return `<span class="review-answer-all-correct">${escapeHtml(value)}</span>`;
+  const matched=reviewAnswerMatchMask(value,input);
+  return Array.from(value).map((char,index)=>{
+    if(REVIEW_ANSWER_IGNORED.test(char)||matched.has(index))return `<span class="review-answer-hit">${escapeHtml(char)}</span>`;
+    return `<span class="review-answer-miss">${escapeHtml(char)}</span>`;
+  }).join('');
+}
 function workbenchClozeHtml(p,pending){
   const m=p.material;
   return '<div class="review-cloze-text" data-cloze-prompt>'+m.prompt.split(/(【[A-Za-z][A-Za-z0-9_]*】)/g).map(part=>{
     const b=m.blanks.find(b=>part==='【'+b.id+'】');if(!b)return escapeHtml(part);
     if(p.stage==='question')return `<label class="review-inline-blank"><span class="sr-only">${escapeHtml(b.id)} ${escapeHtml(b.hint)}</span><input data-review-blank="${escapeHtml(b.id)}" aria-label="${escapeHtml(b.id+' '+b.hint)}" placeholder="${escapeHtml(b.hint||b.id)}" value="${escapeHtml(pending?.answer?.[b.id]||'')}" autocomplete="off" maxlength="2000"></label>`;
     const correct=p.result?.results.some(r=>r.id===b.id&&r.correct);
-    return `<span class="review-blank-result" data-blank-result="${escapeHtml(b.id)}">${escapeHtml(p.firstAnswer?.[b.id]||'（未填）')} · ${correct?'正确':'错误'}（答案：${escapeHtml(b.answer)}${b.aliases.length?'；别名：'+escapeHtml(b.aliases.join('、')):''}）</span>`;
+    const submitted=String(p.firstAnswer?.[b.id]||'');
+    return `<span class="review-blank-result ${correct?'is-correct':'is-wrong'}" data-blank-result="${escapeHtml(b.id)}"><span class="review-blank-submitted">${escapeHtml(submitted||'（未填）')}</span> · <strong class="review-result-status">${correct?'正确':'错误'}</strong>（答案：<span class="review-answer-diff">${reviewAnswerDiffHtml(b.answer,submitted,correct)}</span>${b.aliases.length?'；别名：'+escapeHtml(b.aliases.join('、')):''}）</span>`;
   }).join('')+'</div>';
 }
 function workbenchContrastHtml(m,answer='',readonly=false){
@@ -392,6 +422,7 @@ function workbenchCheckpoints(p){
 }
 function saveWorkbenchCheckpoints(){const s=reviewWorkbench;if(s?.attempt)mistakeStorageSet(reviewWorkbenchKey(s)+':checkpoints:'+s.attempt.id,[...wb('Attempt').querySelectorAll('[data-review-checkpoint]:checked')].map(n=>Number(n.dataset.reviewCheckpoint)));}
 function renderWorkbenchAttempt(){
+  clearWorkbenchAutoAdvance(reviewWorkbench);
   renderWorkbenchReadiness('active','当前执行已确认材料的复习轮次；评分仍使用原有规则');
   const s=reviewWorkbench,p=s.attempt,m=p.material;wb('Editor').innerHTML='';
   let pending=mistakeStorageGet(reviewWorkbenchKey(s)+':pending')||s.pending;
@@ -410,11 +441,27 @@ function renderWorkbenchAttempt(){
     if(p.modeId==='contrast')content+=workbenchContrastHtml(m,p.firstAnswer,true);
     else if(p.modeId!=='cloze')content+=`<h4>${p.modeId==='reading'?'阅读记录':'不可改写的首次作答'}</h4><div class="detail-content">${escapeHtml(p.firstAnswer||'（无）')}</div>`;
     if(!['cloze','reading'].includes(p.modeId))content+=`<h4>参考解释 / 知识要点</h4><div class="detail-content" data-review-reference>${escapeHtml(m.reference||'')}</div><h4>评分量规</h4><div class="detail-content">${escapeHtml(m.rubric||'未另设量规，请核对参考要点')}</div>`+(['self_explain','contrast'].includes(p.modeId)?workbenchCheckpoints(p):'');
-    wb('Actions').innerHTML=p.stage==='answer'?'<p>本轮已查看参考答案，自评可选“未掌握”或“基本掌握”。</p><button onclick="submitWorkbenchAttempt(\'judge\',1)">未掌握</button><button onclick="submitWorkbenchAttempt(\'judge\',2)">基本掌握</button>':'<button onclick="finishWorkbenchAttempt()">返回复习队列</button>';
-    if(p.stage==='completed')content+=`<p>${p.grade===null?'已记录曝光，未产生评分':`已保存评分：${['','未掌握','基本掌握','已掌握','熟练掌握'][p.grade]}`} · ${p.durationMs} ms</p>`;
+    wb('Actions').innerHTML=p.stage==='answer'?'<p>本轮已查看参考答案，自评可选“未掌握”或“基本掌握”。</p><button onclick="submitWorkbenchAttempt(\'judge\',1)">未掌握</button><button onclick="submitWorkbenchAttempt(\'judge\',2)">基本掌握</button>':'';
+    if(p.stage==='completed'){
+      const gradeClass=p.grade===null?'is-neutral':p.grade>=2?'is-correct':'is-wrong';
+      content+=`<p class="review-saved-result ${gradeClass}">${p.grade===null?'已记录曝光，未产生评分':`已保存评分：${['','未掌握','基本掌握','已掌握','熟练掌握'][p.grade]}`} · ${p.durationMs} ms</p>`;
+    }
   }
   wb('Attempt').innerHTML=content;
   if(typeof mountWorkbenchFeedback==='function')mountWorkbenchFeedback(s);
+  if(p.stage==='completed'&&scheduleWorkbenchAutoAdvance(s))wb('Actions').innerHTML='<p class="review-auto-next" role="status" aria-live="polite">结果已保存，正在进入下一项…</p>';
+}
+function clearWorkbenchAutoAdvance(s=reviewWorkbench){
+  if(s?.autoAdvanceTimer){clearTimeout(s.autoAdvanceTimer);s.autoAdvanceTimer=null;}
+}
+function scheduleWorkbenchAutoAdvance(s){
+  if(!s?.sessionId||!s.sessionItemId||typeof centerReview==='undefined'||!centerReview||centerReview.session.id!==s.sessionId)return false;
+  clearWorkbenchAutoAdvance(s);
+  s.autoAdvanceTimer=setTimeout(()=>{
+    s.autoAdvanceTimer=null;
+    if(reviewWorkbench===s&&s.attempt?.stage==='completed'&&!s.busy)void finishWorkbenchAttempt();
+  },1800);
+  return true;
 }
 async function submitWorkbenchAttempt(action,grade){
   const s=reviewWorkbench;if(!s?.attempt||s.busy)return;
@@ -442,6 +489,7 @@ async function submitWorkbenchAttempt(action,grade){
 }
 async function finishWorkbenchAttempt(){
   const s=reviewWorkbench;if(!s||s.busy)return;s.busy=true;
+  clearWorkbenchAutoAdvance(s);
   try{
     if(s.sessionId){const session=await(await requestApi(`${API}/courses/${s.courseId}/review-sessions/${s.sessionId}`)).json();if(!session.pending)await recordedReviewAction(s.sessionId,'finish');}
     s.busy=false;closeReviewWorkbench();if(centerReview)await centerReviewItemFinished();

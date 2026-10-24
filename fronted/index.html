@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>课内</title>
-  <link rel="stylesheet" href="style.css?v=20261024-live-deleted-progress-35" />
+  <link rel="stylesheet" href="style.css?v=20261024-unified-task-flow-41" />
 </head>
 <body>
 
@@ -540,11 +540,21 @@
       <p id="mistakeCompleteText"></p>
       <div class="modal-actions">
         <button type="button" onclick="cancelReviewComplete()">取消</button>
-        <button type="button" onclick="replayReviewComplete()">再来一遍</button>
+        <button type="button" id="reviewCompleteReplay" onclick="replayReviewComplete()">再来一遍</button>
+        <button type="button" id="mistakeCompletePreview" onclick="openReviewCompletePreview()" hidden>查看作答预览</button>
         <button type="button" class="btn-primary" onclick="startNewReviewComplete()">开始新复习</button>
       </div>
     </div>
   </div>
+
+  <dialog id="reviewAnswersPreviewDialog" class="review-answers-preview" aria-labelledby="reviewAnswersPreviewTitle" oncancel="event.preventDefault();closeReviewAnswersPreview()">
+    <header>
+      <div><h2 id="reviewAnswersPreviewTitle" tabindex="-1">本轮作答预览</h2><p>只读展示本轮最新已保存结果。</p></div>
+      <button type="button" class="tag-sheet-close" onclick="closeReviewAnswersPreview()" aria-label="关闭作答预览">×</button>
+    </header>
+    <div id="reviewAnswersPreviewBody" class="review-answers-preview-body"></div>
+    <footer><button type="button" id="reviewAnswersPreviewRefresh" onclick="refreshReviewAnswersPreview()">刷新</button><button type="button" class="btn-primary" onclick="closeReviewAnswersPreview()">关闭</button></footer>
+  </dialog>
 
   <!-- 编辑错题弹窗：一块一块来 —— 名称与分类 / 标签 / 题目 / 答案 / 错因
        每块一张卡片，卡片之间留白；改过的块右上角亮起「已改」，一眼看得出改了哪儿。
@@ -1165,7 +1175,7 @@
   <script src="js/nodeDetail.js"></script>
   <script src="js/resourceDetail.js?v=20261024-split-outline-mindmap-33"></script>
   <script src="js/resourceText.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/materialReview.js?v=20261024-merged-attachment-review-31"></script>
+  <script src="js/materialReview.js?v=20261024-unified-task-flow-41"></script>
   <script src="js/noteReview.js"></script>
   <script src="js/mistakeDetail.js?v=20261024-tree-root-collapse-34"></script>
   <script src="js/mistakeAi.js?v=20261024-merged-attachment-review-31"></script>
@@ -1173,7 +1183,7 @@
   <script src="js/resourceAi.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/reviewMethodChoice.js?v=20261024-split-outline-mindmap-33"></script>
   <script src="js/clozeEditor.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/reviewWorkbench.js?v=20261024-merged-attachment-review-31"></script>
+  <script src="js/reviewWorkbench.js?v=20261024-result-colors-autonext-36"></script>
   <script src="js/reviewFeedback.js?v=20261023-select-cloze-14"></script>
   <script src="js/reviewMaterialAi.js?v=20261024-merged-attachment-review-31"></script>
   <dialog id="mistakeAiDialog" aria-labelledby="mistakeAiDialogTitle" oncancel="event.preventDefault();resetMistakeAi()" onclick="if(event.target===this)resetMistakeAi()">
@@ -1212,11 +1222,11 @@
       <div class="modal-actions"><button type="button" class="btn-cancel" onclick="closeCreationReviewSuggestion()">关闭</button><button type="button" id="creationModeAdviceRetry" onclick="retryCreationReviewSuggestion()" hidden>重新读取</button><button type="button" class="btn-primary" id="creationModeAdviceAnalyze" onclick="analyzeCreationReviewAdvice()" hidden>分析复习方式</button><button type="button" class="btn-primary" id="creationModeAdviceAdopt" onclick="adoptCreationReviewSuggestion()" hidden>采用建议</button></div>
     </footer>
   </dialog>
-  <script src="js/mistakeQueue.js?v=20261024-merged-attachment-review-31"></script>
+  <script src="js/mistakeQueue.js?v=20261024-unified-task-flow-41"></script>
   <script src="js/courseSearch.js"></script>
   <script src="js/reviewPicker.js?v=20261024-attachment-preview-24"></script>
-  <script src="js/reviewPlans.js?v=20261024-live-deleted-progress-35"></script>
-  <script src="js/reviewCenter.js?v=20261024-live-deleted-progress-35"></script>
+  <script src="js/reviewPlans.js?v=20261024-plan-finish-unified-45"></script>
+  <script src="js/reviewCenter.js?v=20261024-plan-finish-unified-45"></script>
 
   <!-- 知识框架 -->
   <script src="js/knowledgeTree.js"></script>

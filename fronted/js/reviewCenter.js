@@ -124,6 +124,107 @@ async function loadReviewHistory(append=false) {
   } catch(err) {if(courseId===currentCourseId && request===reviewCenterRequest)box.innerHTML=`<p class="material-review-error">${escapeHtml(err.message)}</p><button onclick="loadReviewHistory()">重试</button>`;}
   finally {document.getElementById('reviewHistoryMore').disabled=false;}
 }
+let reviewAnswersPreviewState=null;
+function reviewPreviewValue(value){
+  if(value===null||value===undefined||value==='')return '（未填写）';
+  if(typeof value==='string'){
+    try{const parsed=JSON.parse(value);if(parsed&&typeof parsed==='object')return JSON.stringify(parsed,null,2);}catch{}
+    return value;
+  }
+  return JSON.stringify(value,null,2);
+}
+function reviewPreviewStatus(item){
+  if(item.sourceDeleted)return {label:'内容已删除',className:'is-deleted'};
+  if(item.exposureOnly)return {label:'仅阅读曝光',className:'is-exposed'};
+  if(item.status==='completed'&&item.result==='failed')return {label:'未通过',className:'is-wrong'};
+  if(item.status==='completed'&&item.result==='passed')return {label:'通过',className:'is-correct'};
+  if(item.status==='skipped')return {label:'已跳过',className:'is-skipped'};
+  return {label:'待处理',className:'is-pending'};
+}
+function reviewPreviewAnswer(item){
+  const material=item.material||{},grade=Number.isInteger(item.grade)?['','未掌握','基本掌握','已掌握','熟练掌握'][item.grade]||'':null;
+  const fields=[];
+  fields.push(`<div class="review-answer-preview-field"><h4>题目 / 阅读内容</h4><pre>${escapeHtml(reviewPreviewValue(material.prompt))}</pre></div>`);
+  if(item.modeId==='cloze'){
+    const resultMap=new Map((item.resultDetail?.results||[]).map(row=>[row.id,!!row.correct]));
+    const blanks=(material.blanks||[]).map(blank=>{
+      const submitted=item.firstAnswer&&typeof item.firstAnswer==='object'?item.firstAnswer[blank.id]:null;
+      const correct=resultMap.has(blank.id)?resultMap.get(blank.id):null;
+      return `<div class="review-answer-preview-blank ${correct===true?'is-correct':correct===false?'is-wrong':''}"><span>${escapeHtml(blank.id)}</span><p>你的作答：${escapeHtml(reviewPreviewValue(submitted))}</p><p>答案：${escapeHtml(blank.answer||'')}</p>${blank.hint?`<small>提示：${escapeHtml(blank.hint)}</small>`:''}</div>`;
+    }).join('');
+    fields.push(`<div class="review-answer-preview-field"><h4>各空位作答</h4><div class="review-answer-preview-blanks">${blanks||'<p>没有可用空位记录。</p>'}</div></div>`);
+  }else{
+    fields.push(`<div class="review-answer-preview-field"><h4>首次作答</h4><pre>${escapeHtml(reviewPreviewValue(item.firstAnswer))}</pre></div>`);
+    if(item.modeId==='choice_reproduction'&&(material.options||[]).length){
+      fields.push(`<div class="review-answer-preview-field"><h4>选项</h4><ul class="review-answer-preview-options">${material.options.map(option=>`<li>${escapeHtml(option.id)}：${escapeHtml(option.text||'')}</li>`).join('')}</ul><p>正确选项：${escapeHtml(reviewPreviewValue(material.correctOption))}</p></div>`);
+    }
+    if(material.reference)fields.push(`<div class="review-answer-preview-field"><h4>参考答案 / 要点</h4><pre>${escapeHtml(material.reference)}</pre></div>`);
+    if(material.rubric)fields.push(`<div class="review-answer-preview-field"><h4>评分量规 / 解析</h4><pre>${escapeHtml(material.rubric)}</pre></div>`);
+  }
+  return `${fields.join('')}<p class="review-answer-preview-meta">${grade?`评分：${grade} · `:''}${item.durationMs?`耗时：${(item.durationMs/1000).toFixed(1)} 秒`:'耗时：未记录'}</p>`;
+}
+function renderReviewAnswersPreview(data){
+  const body=document.getElementById('reviewAnswersPreviewBody');if(!body)return;
+  const items=data.items||[];
+  body.innerHTML=`<div class="review-answers-preview-summary"><strong>成功复习 ${data.passed||0} / ${data.total||0}</strong><span>未通过 ${data.failed||0} · 仅曝光 ${data.exposed||0} · 已处理 ${items.length} 项</span></div>${items.map((item,index)=>{const status=reviewPreviewStatus(item);return `<details class="review-answer-preview-item" ${index===0?'open':''}><summary><span>${index+1}. ${PLAN_TYPE_LABELS[item.item_type]||item.item_type} · ${escapeHtml(item.title||'')}</span><span class="review-preview-status ${status.className}">${status.label}</span></summary><div class="review-answer-preview-content">${reviewPreviewAnswer(item)}</div></details>`;}).join('')}`;
+}
+async function loadReviewAnswersPreview(){
+  const state=reviewAnswersPreviewState,body=document.getElementById('reviewAnswersPreviewBody'),refresh=document.getElementById('reviewAnswersPreviewRefresh');
+  if(!state)return;
+  body.textContent='正在读取最新作答…';refresh.disabled=true;
+  try{
+    const endpoint=state.kind==='plan-day'
+      ? reviewPlanApi(state.planId)+'/days/'+encodeURIComponent(state.date)+'/answers'
+      : reviewSessionApi(state.sessionId)+'/answers'+(state.itemType?`?itemType=${encodeURIComponent(state.itemType)}`:'');
+    const response=await requestApi(endpoint),data=await response.json();
+    if(reviewAnswersPreviewState!==state)return;
+    if(data.course_id!==state.courseId)throw new Error('复习记录不属于当前课程');
+    renderReviewAnswersPreview(data);
+  }catch(err){if(reviewAnswersPreviewState===state)body.innerHTML=`<p class="material-review-error">${escapeHtml(err.message)}</p>`;}
+  finally{if(reviewAnswersPreviewState===state)refresh.disabled=false;}
+}
+async function openReviewAnswersPreview(sessionId,itemType=null){
+  if(!Number.isSafeInteger(sessionId)||sessionId<1)return;
+  const dialog=document.getElementById('reviewAnswersPreviewDialog');if(!dialog)return;
+  reviewAnswersPreviewState={kind:'session',courseId:currentCourseId,sessionId,itemType,returnFocus:document.activeElement};
+  document.getElementById('reviewAnswersPreviewTitle').textContent=itemType?`${PLAN_TYPE_LABELS[itemType]||''}作答预览`:'本轮作答预览';
+  if(!dialog.open)dialog.showModal();
+  document.getElementById('reviewAnswersPreviewTitle').focus({preventScroll:true});
+  await loadReviewAnswersPreview();
+}
+async function openPlanDayAnswersPreview(planId,date){
+  if(!Number.isSafeInteger(planId)||planId<1||!/^\d{4}-\d{2}-\d{2}$/.test(String(date||'')))return;
+  const dialog=document.getElementById('reviewAnswersPreviewDialog');if(!dialog)return;
+  reviewAnswersPreviewState={kind:'plan-day',courseId:currentCourseId,planId,date,returnFocus:document.activeElement};
+  document.getElementById('reviewAnswersPreviewTitle').textContent=`${date} · 当天作答预览`;
+  if(!dialog.open)dialog.showModal();
+  document.getElementById('reviewAnswersPreviewTitle').focus({preventScroll:true});
+  await loadReviewAnswersPreview();
+}
+function closeReviewAnswersPreview(){
+  const state=reviewAnswersPreviewState;reviewAnswersPreviewState=null;
+  const dialog=document.getElementById('reviewAnswersPreviewDialog');if(dialog?.open)dialog.close();
+  document.getElementById('reviewAnswersPreviewBody').replaceChildren();
+  if(state?.returnFocus?.isConnected)state.returnFocus.focus({preventScroll:true});
+}
+function refreshReviewAnswersPreview(){return loadReviewAnswersPreview();}
+function configureReviewCompletePreview(session,options={}){
+  const button=document.getElementById('mistakeCompletePreview');if(!button)return;
+  const visible=!!session&&session.status==='completed'&&Number(session.total)>0&&Number(session.skipped||0)===0;
+  button.hidden=!visible;button.disabled=false;
+  button.dataset.previewKind=options.type==='plan'?'plan-day':'session';
+  button.dataset.sessionId=visible?String(session.id):'';
+  button.dataset.planId=visible&&options.planId?String(options.planId):'';
+  button.dataset.date=visible&&options.date?options.date:'';
+}
+function openReviewCompletePreview(){
+  const button=document.getElementById('mistakeCompletePreview');
+  if(button?.dataset.previewKind==='plan-day'){
+    return openPlanDayAnswersPreview(Number(button.dataset.planId),button.dataset.date);
+  }
+  const sessionId=Number(button?.dataset.sessionId||reviewCompleteState?.sessionId);
+  return openReviewAnswersPreview(sessionId);
+}
 async function openReviewSessionDetail(id) {
   clearCenterReviewUi();
   const courseId=currentCourseId,request=++reviewCenterRequest;
@@ -133,7 +234,9 @@ async function openReviewSessionDetail(id) {
     const response=await requestApi(reviewSessionApi(id)),row=await response.json();
     if(courseId!==currentCourseId || request!==reviewCenterRequest)return;
     reviewSessionDetail=row;
-    box.innerHTML=reviewRecordCard(row)+`<p class="detail-meta">完成时间：${escapeHtml(row.completed_at || '尚未完成')}。只有顺利通过复习模式才算成功；已删除内容保留历史身份，但不计入成功数和有效任务总数。进度条蓝色=成功、橙色=未通过、灰色=跳过。</p><section class="detail-card">${row.items.map(item=>{const state=item.source_deleted ? {icon:'⊘',label:'已删除，不计入有效任务'} : item.exposure_only ? {icon:'◉',label:'已阅读（仅曝光，不评分）'} : item.status==='completed' ? (item.result==='failed' ? {icon:'✗',label:'未通过'} : {icon:'✓',label:'已通过'}) : item.status==='skipped' ? {icon:'—',label:'已跳过'} : {icon:'○',label:'待处理'};return `<div class="plan-task"><span>${state.icon} ${PLAN_TYPE_LABELS[item.item_type]} · ${escapeHtml(item.title_snapshot)}</span><small>${state.label}</small></div>`;}).join('')}</section>`;
+    const preview=row.status==='completed'&&row.total>0&&row.skipped===0
+      ? `<button type="button" onclick="openReviewAnswersPreview(${row.id})">查看每道题作答</button>` : '';
+    box.innerHTML=reviewRecordCard(row)+`<p class="detail-meta">完成时间：${escapeHtml(row.completed_at || '尚未完成')}。只有顺利通过复习模式才算成功；已删除内容保留历史身份，但不计入成功数和有效任务总数。进度条蓝色=成功、橙色=未通过、灰色=跳过。</p>${preview?`<div class="mistake-toolbar">${preview}</div>`:''}<section class="detail-card">${row.items.map(item=>{const state=item.source_deleted ? {icon:'⊘',label:'已删除，不计入有效任务'} : item.exposure_only ? {icon:'◉',label:'已阅读（仅曝光，不评分）'} : item.status==='completed' ? (item.result==='failed' ? {icon:'✗',label:'未通过'} : {icon:'✓',label:'已通过'}) : item.status==='skipped' ? {icon:'—',label:'已跳过'} : {icon:'○',label:'待处理'};return `<div class="plan-task"><span>${state.icon} ${PLAN_TYPE_LABELS[item.item_type]} · ${escapeHtml(item.title_snapshot)}</span><small>${state.label}</small></div>`;}).join('')}</section>`;
   } catch(err) {if(courseId===currentCourseId)box.innerHTML=`<p class="material-review-error">${escapeHtml(err.message)}</p><button onclick="openReviewHistory()">返回记录列表</button>`;}
 }
 function rememberReviewCenterLocation(location) {
@@ -423,8 +526,12 @@ async function centerReviewItemFinished() {
       const planId=s.session.source_type==='plan' ? s.session.source_id : null;
       centerReview=null;if(mistakeQueue?.centerContext)mistakeQueue=null;activeReadingReview=materialReadingReview;
       clearCenterReviewUi();
-      // 计划来源的复习完成后直接回计划，让日历按新记忆状态重新排布并立即呈现。
-      if(planId && typeof openReviewPlan==='function'){await openReviewPlan(planId);return;}
+      // 计划来源只有“当天全部成功”才弹完成页；失败/跳过只回当天任务卡继续。
+      if(planId && typeof openReviewPlan==='function'){
+        if(typeof showCompletedPlanDay==='function')await showCompletedPlanDay(planId,s.session.source_date,s.session);
+        else await openReviewPlan(planId);
+        return;
+      }
       if(s.session.source_type==='total' && typeof openReviewCompleteModal==='function') {
         if(typeof backToReviewPlans==='function') backToReviewPlans();
         await openReviewCompleteModal(s.session);

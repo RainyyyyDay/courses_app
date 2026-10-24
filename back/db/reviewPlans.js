@@ -28,7 +28,7 @@ function planCounts(items) {
   const active = items.filter(item => !item.source_deleted);
   const count = {total:active.length,completed:0,pending:0,skipped:0,deleted:items.length-active.length};
   for (const item of active) count[item.status]++;
-  count.completionRate = count.total === count.skipped ? 0 : Math.round(count.completed/(count.total-count.skipped)*100);
+  count.completionRate = count.total ? Math.round(count.completed/count.total*100) : 0;
   return count;
 }
 function listPlanItems(courseId,planId,filters={}) {

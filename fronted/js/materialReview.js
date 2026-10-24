@@ -270,6 +270,10 @@ function createReadingReview(kind, label, resumeId, options = {}) {
         queue.results[row.id]=pending.status;
         queue.recallAgain={id:row.id,status:pending.status};
         state.row=row;store(queue);await syncCenterReviewCounts(queue);state.actions();
+        const recallId=queue.recallAgain.id;
+        setTimeout(()=>{
+          if(current()&&state.queue===queue&&queue.recallAgain?.id===recallId&&!state.busy)void state.skip();
+        },1800);
       }else if(pending.status==='exposure'){
         queue.results[row.id]='exposed';queue.recallAgain=null;
         await advance();

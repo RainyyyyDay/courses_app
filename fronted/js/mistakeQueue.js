@@ -262,21 +262,30 @@ async function prepareMistakeQueueItem(state) {
   await tryFinishMistakeQueue(state, state.progress);
 }
 
-// 复习队列的最后一题判完就该结束了：不需要用户再点按钮，自动弹完成弹窗。
+// 每题结果保存后先短暂展示，再自动进入下一题；最后一题自动收尾。
 let mistakeQueueAutoFinishing = false;
-function mistakeQueueShouldAutoFinish(state, progress) {
+let mistakeQueueAutoAdvanceTimer = null;
+function clearMistakeQueueAutoAdvance(){
+  if(mistakeQueueAutoAdvanceTimer){clearTimeout(mistakeQueueAutoAdvanceTimer);mistakeQueueAutoAdvanceTimer=null;}
+}
+function mistakeQueueShouldAutoAdvance(state, progress) {
   if (!mistakeQueue || !mistakeQueueCurrent(state) || !progress) return false;
-  if (mistakeQueue.index !== mistakeQueue.ids.length - 1) return false;
   return progress.stage === 'completed'
     && progress.round === mistakeQueue.rounds[state.id]
     && progress.reviewable
     && progress.mistakeType === mistakeQueueTypeFor(state.id);
 }
 async function tryFinishMistakeQueue(state, progress) {
-  // 布尔锁：收尾过程中触发的重渲染不会再进来一次，失败也不会反复重试。
-  if (mistakeQueueAutoFinishing || !mistakeQueueShouldAutoFinish(state, progress)) return;
-  mistakeQueueAutoFinishing = true;
-  try { if(mistakeQueue.centerContext)await centerReviewItemFinished();else await nextMistakeQueueItem(); } finally { mistakeQueueAutoFinishing = false; }
+  clearMistakeQueueAutoAdvance();
+  if (mistakeQueueAutoFinishing || !mistakeQueueShouldAutoAdvance(state, progress)) return;
+  mistakeQueueAutoAdvanceTimer=setTimeout(async()=>{
+    mistakeQueueAutoAdvanceTimer=null;
+    if(!mistakeDetailIsCurrent(state)||!mistakeQueueShouldAutoAdvance(state,state.progress))return;
+    mistakeQueueAutoFinishing=true;
+    try{if(mistakeQueue.centerContext)await centerReviewItemFinished();else await nextMistakeQueueItem();}
+    finally{mistakeQueueAutoFinishing=false;}
+  },1800);
+  if(mistakeQueue.centerContext)renderCenterReviewToolbar();else renderMistakeQueueBanner();
 }
 function renderMistakeQueueBanner() {
   const box = document.getElementById('mistakeQueueBanner');
@@ -289,15 +298,18 @@ function renderMistakeQueueBanner() {
   const valid = p?.reviewable && p.courseId === mistakeQueue.courseId && p.mistakeType === mistakeQueueTypeFor(state.id);
   const completed = valid && p.stage === 'completed' && p.round === mistakeQueue.rounds[state.id];
   const pending = mistakeStorageGet(mistakePendingKey(state)) || state.pending;
-  // 最后一题不再有「下一题 / 完成」按钮：判完自动收尾。
+  // 结果保存后自动前进；手动“下一题”按钮保留为即时操作。
   const last = mistakeQueue.index + 1 === mistakeQueue.ids.length;
   const modeName = p?.mode?.name || AI_REVIEW_METHODS[readReviewAiMethod({courseId:mistakeQueue.courseId,type:'mistake',id:state.id})] || '标准复习';
+  const advancing=completed&&!!mistakeQueueAutoAdvanceTimer;
+  const nextButton=last ? '' : `<button id="mistakeQueueNext" onclick="nextMistakeQueueItem()" ${!completed || pending || mistakeReviewBusy || mistakeQueueLoading ? 'disabled' : ''}>下一题</button>`;
   box.innerHTML = `<strong>第 ${mistakeQueue.index + 1} / ${mistakeQueue.ids.length} 条</strong> · 已处理 ${mistakeQueue.index + (completed ? 1 : 0)} 条 · 错题 · ${escapeHtml(modeName)}
-    <div class="mistake-toolbar">${last ? '' : `<button id="mistakeQueueNext" onclick="nextMistakeQueueItem()" ${!completed || pending || mistakeReviewBusy || mistakeQueueLoading ? 'disabled' : ''}>下一题</button>`}<button onclick="pauseMistakeQueue()">返回列表，稍后继续</button><button onclick="endMistakeQueue()">结束本轮</button></div>${p && !valid ? '<p class="mistake-inline-error">本题已改变分类或缺少内容，请退出并补齐；不会自动跳过。</p>' : ''}`;
+    <div class="mistake-toolbar">${advancing?'<span class="mistake-auto-next" role="status">结果已保存，正在进入下一题…</span>':''}${nextButton}<button onclick="pauseMistakeQueue()">返回列表，稍后继续</button><button onclick="endMistakeQueue()">结束本轮</button></div>${p && !valid ? '<p class="mistake-inline-error">本题已改变分类或缺少内容，请退出并补齐；不会自动跳过。</p>' : ''}`;
 }
 async function nextMistakeQueueItem() {
   const state = mistakeDetailState;
   if (!mistakeQueueCurrent(state) || mistakeReviewBusy || mistakeQueueLoading) return;
+  clearMistakeQueueAutoAdvance();
   mistakeQueueLoading = true;
   try {
     const p = await mistakeReviewRequest(mistakeReviewUrl(state));
@@ -512,10 +524,12 @@ function reviewCompleteSummary(session) {
   if (counts.material) parts.push(`${counts.material} 份资料`);
   return parts.join('、');
 }
-async function openReviewCompleteModal(session) {
+async function openReviewCompleteModal(session, options={}) {
   const box = document.getElementById('mistakeCompleteModal');
   if (!box || !session) return;
-  reviewCompleteState = { type: 'total', session };
+  reviewCompleteState = { type: options.type||'total', session, sessionId: session.id,
+    planId: options.planId||null, date:options.date||session.source_date||null };
+  if(typeof configureReviewCompletePreview==='function')configureReviewCompletePreview(session,options);
   const summary = reviewCompleteSummary(session);
   const perfect = Number(session.total) > 0 && session.passed === session.total;
   document.getElementById('mistakeCompleteTitle').textContent = perfect
@@ -524,6 +538,8 @@ async function openReviewCompleteModal(session) {
   document.getElementById('mistakeCompleteText').textContent = perfect
     ? `本轮共 ${session.total} 项，全部通过。`
     : `本轮共 ${session.total} 项${summary ? `：${summary}` : ''}。通过 ${session.passed || 0} 项，未通过 ${session.failed || 0} 项，仅阅读曝光 ${session.exposed || 0} 项，跳过 ${session.skipped || 0} 项。`;
+  const replay=document.getElementById('reviewCompleteReplay');
+  if(replay)replay.textContent=reviewCompleteState.type==='plan'&&!perfect?'继续复习':'再来一遍';
   box.classList.add('show');
   document.body.classList.add('mistake-review-open');
   document.getElementById('mistakeCompleteTitle').focus();
@@ -532,7 +548,14 @@ async function openReviewCompleteModal(session) {
 async function openMistakeCompleteModal() {
   const box = document.getElementById('mistakeCompleteModal');
   if (!box) return;
-  reviewCompleteState = { type: 'mistake' };
+  let session=null;
+  if(mistakeQueue?.sessionId){
+    try{session=await(await requestApi(`${API}/courses/${currentCourseId}/review-sessions/${mistakeQueue.sessionId}`)).json();}
+    catch{session=null;}
+  }
+  reviewCompleteState = { type: 'mistake', session, sessionId: session?.id || mistakeQueue?.sessionId || null };
+  if(typeof configureReviewCompletePreview==='function')configureReviewCompletePreview(session);
+  const replay=document.getElementById('reviewCompleteReplay');if(replay)replay.textContent='再来一遍';
   const score = await mistakeQueueRoundScore();
   const perfect = !!score && score.correct === score.total;
   document.getElementById('mistakeCompleteTitle').textContent = perfect ? '恭喜你！你成功复习了所有所选题' : '本轮复习完成';
@@ -550,6 +573,7 @@ function closeReviewCompleteModal() {
   box.classList.remove('show');
   document.body.classList.remove('mistake-review-open');
   stopMistakeCompleteConfetti();
+  const preview=document.getElementById('mistakeCompletePreview');if(preview){preview.hidden=true;preview.dataset.sessionId='';preview.dataset.planId='';preview.dataset.date='';}
 }
 function closeMistakeCompleteModal() { closeReviewCompleteModal(); }
 async function cancelReviewComplete() {
@@ -557,6 +581,7 @@ async function cancelReviewComplete() {
   closeReviewCompleteModal();
   reviewCompleteState = null;
   if (state?.type === 'mistake') return cancelMistakeComplete();
+  if (state?.type === 'plan') return;
   if (typeof backToReviewPlans === 'function') return backToReviewPlans();
 }
 async function replayReviewComplete() {
@@ -564,6 +589,10 @@ async function replayReviewComplete() {
   closeReviewCompleteModal();
   reviewCompleteState = null;
   if (state?.type === 'mistake') return replayMistakeQueue();
+  if (state?.type === 'plan' && Number.isSafeInteger(state.planId)) {
+    await openReviewPlan(state.planId);
+    return startPlanScheduleDay(state.date,null,state.session?.passed===state.session?.total?'再来一次':'继续');
+  }
   if (state?.session && typeof repeatReviewRecord === 'function') return repeatReviewRecord(state.session.id);
 }
 async function startNewReviewComplete() {
@@ -601,6 +630,7 @@ async function startNewMistakeReview() {
 }
 async function pauseMistakeQueue() {
   if (mistakeReviewBusy) return;
+  clearMistakeQueueAutoAdvance();
   if(mistakeQueue?.centerContext)return pauseCenterReview();
   if(mistakeQueue?.sessionId){try{await recordedReviewAction(mistakeQueue.sessionId,'pause');}catch(err){showToast(err.message);return;}}
   if (mistakeQueue?.planContext) { forgetMistakeDetailLocation(); return returnFromPlanReview(); }
@@ -614,6 +644,7 @@ async function pauseMistakeQueue() {
 }
 async function endMistakeQueue() {
   if (mistakeReviewBusy) return;
+  clearMistakeQueueAutoAdvance();
   if(mistakeQueue?.centerContext)return pauseCenterReview();
   if(mistakeQueue?.sessionId){try{await recordedReviewAction(mistakeQueue.sessionId,'pause');}catch(err){showToast(err.message);return;}}
   if (mistakeQueue?.planContext) {

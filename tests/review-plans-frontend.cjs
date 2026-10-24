@@ -43,7 +43,7 @@ function reviewPlanBrowserPrelude() {
       check(document.querySelector('#reviewPlanCalendar .plan-calendar-legend').textContent.includes('已过期未完成'),'calendar legend explains overdue');
       const scheduleCell=document.querySelector('#reviewPlanCalendar .plan-calendar-cell.has-items');
       scheduleCell.click();
-      check(document.getElementById('reviewPlanDayModal').classList.contains('show') && document.querySelectorAll('#reviewPlanDayBody .review-day-card').length>0,'clicking a day opens only populated type cards');
+      check(document.getElementById('reviewPlanDayModal').classList.contains('show') && document.querySelectorAll('#reviewPlanDayBody .review-day-card').length===1,'clicking a day opens one combined task card');
       closePlanScheduleDay();
       check(ordinaryUnchanged(),'all three ordinary queues survive complete plan review');
       const w=await(await requestApi(API+'/courses/'+saved.courseId+'/mistakes/'+saved.mistakeId+'/review')).json();
@@ -128,7 +128,7 @@ function reviewPlanBrowserScenario() {
       await openReviewPlan(planId);check(reviewPlanDetail.plan.total===4,'favorite change does not change selected snapshot');
       openPlanScheduleDay(today);
       check(document.querySelector('#reviewPlanDayBody .plan-day-stats').textContent.includes('成功复习 0 / 4'),'day popup carries task stats');
-      document.querySelector('[data-plan-day-type="material"] button').click();
+      await startReviewPlanDay(planId,today,'material');
       await waitUntil(()=>currentView.type==='readingReview' && activeReadingReview.row && !planReviewStarting,'plan material starts');
       check(activeReadingReview.row.id===first.id && activeReadingReview.row.review_status==='reviewed','already reviewed content still requires plan action');
       await activeReadingReview.save('reviewed');await activeReadingReview.skip();

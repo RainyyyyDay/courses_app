@@ -1034,7 +1034,21 @@ body.mistake-review-open { overflow: hidden; }
 .review-cloze-text { white-space:pre-wrap;font-size:18px;line-height:2.5;overflow-wrap:anywhere; }
 .review-workbench .review-inline-blank { display:inline-block;margin:0 5px;max-width:100%;vertical-align:baseline; }
 .review-workbench .review-inline-blank input { width:180px;max-width:100%;border-bottom:2px solid #5673bc; }
-.review-blank-result { display:inline;background:#edf1f8;padding:3px; }
+.review-blank-result { display:inline;background:#edf1f8;padding:3px;border-radius:4px; }
+.review-blank-result.is-correct { background:#effaf3; }
+.review-blank-result.is-wrong { background:#fff3f3; }
+.review-result-status { font-weight:700; }
+.review-blank-result.is-correct .review-result-status,
+.review-answer-all-correct { color:#23864f; }
+.review-blank-result.is-wrong .review-result-status,
+.review-answer-miss { color:#c43d3d; }
+.review-answer-hit { color:#1b2230; }
+.review-saved-result { font-weight:600; }
+.review-saved-result.is-correct { color:#23864f; }
+.review-saved-result.is-wrong { color:#c43d3d; }
+.review-saved-result.is-neutral { color:#667187; }
+.review-auto-next { margin:0;color:#667187;font-size:13px; }
+.mistake-auto-next { color:#667187;font-size:13px; }
 .review-reading-body { max-width:760px;margin:18px auto;white-space:pre-wrap;font-size:18px;line-height:1.8;overflow-wrap:anywhere; }
 .review-contrast-scroll { overflow-x:auto; }
 .review-contrast-scroll table { border-collapse:collapse;width:100%; }
@@ -1204,7 +1218,9 @@ body.mistake-review-open { overflow: hidden; }
 .review-day-body { max-height: 50vh; overflow-y: auto; }
 .review-day-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 0; padding: 10px 12px; border: 1px solid #e6eaf1; border-radius: 8px; background: #f8f9fc; }
 .review-day-card p { margin: 2px 0 0; }
+.review-day-card-actions { display:flex;align-items:center;gap:8px;flex-shrink:0; }
 .review-day-card button { padding: 7px 14px; border: 0; border-radius: 7px; background: #4a6cf7; color: #fff; cursor: pointer; }
+.review-day-card button.plan-day-preview { border:1px solid #cbd7f5;background:#fff;color:#4864aa; }
 .plan-day-done { color: #1f9d5b; font-size: 13px; margin: 4px 0 8px; }
 .plan-day-partial { color: #b45309; font-size: 13px; margin: 4px 0 8px; }
 .plan-day-overdue { color: #c0392b; font-size: 13px; margin: 4px 0 8px; }
@@ -1227,6 +1243,49 @@ body.mistake-review-open { overflow: hidden; }
 .mistake-complete .modal-actions button:hover { background: #e8eaf1; }
 .mistake-complete .modal-actions button.btn-primary { background: #4a6cf7; border-color: #4a6cf7; color: #fff; }
 .mistake-complete .modal-actions button.btn-primary:hover { filter: brightness(1.06); }
+
+.review-answers-preview {
+  width:min(900px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:0;
+  border:1px solid #dfe5ef;border-radius:14px;background:#fff;overflow:hidden;
+}
+.review-answers-preview::backdrop { background:rgba(17,25,40,.52); }
+.review-answers-preview header,
+.review-answers-preview footer { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px; }
+.review-answers-preview header { border-bottom:1px solid #e9edf4; }
+.review-answers-preview header h2 { margin:0;font-size:18px; }
+.review-answers-preview header p { margin:4px 0 0;color:#7a8497;font-size:12px; }
+.review-answers-preview footer { justify-content:flex-end;border-top:1px solid #e9edf4;background:#fafbfe; }
+.review-answers-preview-body { max-height:calc(100dvh - 150px);overflow:auto;padding:16px 18px;background:#f7f9fc; }
+.review-answers-preview-summary { display:flex;flex-wrap:wrap;gap:8px 18px;padding:12px 14px;margin-bottom:12px;border:1px solid #dfe6f7;border-radius:10px;background:#f3f6ff;color:#52627f;font-size:13px; }
+.review-answers-preview-summary strong { color:#263652; }
+.review-answer-preview-item { margin:10px 0;border:1px solid #e1e6ef;border-radius:11px;background:#fff;overflow:hidden; }
+.review-answer-preview-item summary { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;cursor:pointer;color:#34415a;font-weight:600; }
+.review-answer-preview-item summary > span:first-child { min-width:0;overflow-wrap:anywhere; }
+.review-preview-status { flex:0 0 auto;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600; }
+.review-preview-status.is-correct { color:#23864f;background:#edf9f1; }
+.review-preview-status.is-wrong { color:#b93636;background:#fff0f0; }
+.review-preview-status.is-exposed,
+.review-preview-status.is-skipped,
+.review-preview-status.is-deleted { color:#7a5a28;background:#fff6e8; }
+.review-preview-status.is-pending { color:#667187;background:#f0f2f6; }
+.review-answer-preview-content { padding:4px 15px 15px;border-top:1px solid #edf0f5; }
+.review-answer-preview-field { margin-top:12px; }
+.review-answer-preview-field h4 { margin:0 0 6px;color:#52627f;font-size:13px; }
+.review-answer-preview-field pre { margin:0;padding:10px 12px;border-radius:8px;background:#f7f8fb;color:#2f3b52;font:13px/1.7 "Microsoft YaHei",system-ui,sans-serif;white-space:pre-wrap;overflow-wrap:anywhere; }
+.review-answer-preview-blanks { display:grid;gap:8px; }
+.review-answer-preview-blank { padding:10px 12px;border:1px solid #e1e6ef;border-radius:8px;background:#fafbfe; }
+.review-answer-preview-blank.is-correct { border-color:#b9e2c8;background:#f3fbf6; }
+.review-answer-preview-blank.is-wrong { border-color:#efc1c1;background:#fff5f5; }
+.review-answer-preview-blank > span { font-weight:700;color:#52627f; }
+.review-answer-preview-blank p { margin:4px 0;white-space:pre-wrap;overflow-wrap:anywhere; }
+.review-answer-preview-blank small { color:#7a8497; }
+.review-answer-preview-options { margin:0 0 8px;padding-left:22px; }
+.review-answer-preview-meta { margin:14px 0 0;color:#7a8497;font-size:12px; }
+@media(max-width:600px){
+  .review-answers-preview { width:calc(100vw - 12px);max-height:calc(100dvh - 12px); }
+  .review-answers-preview-body { max-height:calc(100dvh - 138px);padding:12px; }
+  .review-answer-preview-item summary { align-items:flex-start; }
+}
 /* 彩带层：铺满整个页面，压在弹窗卡片下面，从顶飘到底再淡出。 */
 .mistake-confetti { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
 .mistake-confetti canvas { display: block; width: 100%; height: 100%; }

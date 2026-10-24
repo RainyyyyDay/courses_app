@@ -6,6 +6,7 @@ let reviewPlanRequest = 0;
 let planReviewSession = null;
 let planReviewStarting = false;
 let reviewPlanCarousel = {courseId:null,plans:[],index:0};
+let reviewPlanCompletedPreview = null;
 
 function reviewPlanApi(id = '') { return `${API}/courses/${currentCourseId}/review-plans${id ? '/' + id : ''}`; }
 function planLocalDate() { return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
@@ -150,27 +151,24 @@ function openPlanScheduleDay(date) {
   const statsSkipped = source.filter(item => item.status === 'skipped').length;
   const stats = statsTotal
     ? `<p class="plan-day-stats">成功复习 ${statsPassed} / ${statsTotal} · 待完成 ${statsTotal - statsPassed} · 已跳过 ${statsSkipped}</p>` : '';
-  const rows = ['mistake', 'material', 'note'].map(type => {
-    const items = source.filter(item => item.type === type);
-    if (!items.length) return ''; // 没有内容的类型不显示
-    const minutes = items.reduce((sum, item) => sum + (Number(item.minutes) || 0), 0);
-    const pending = items.filter(item => !item.status || item.status === 'pending').length;
-    const skipped = items.filter(item => item.status === 'skipped').length;
-    const failed = items.filter(item => item.status === 'completed' && item.result === 'failed').length;
-    const passed = items.filter(item => item.status === 'completed' && item.result === 'passed').length;
-    const allPassed = items.length > 0 && passed === items.length;
-    const hasProgress = passed + failed + skipped > 0;
-    const canResume = !!day.sessionId && ['active', 'paused'].includes(day.sessionStatus) && (day.sessionTypes || []).includes(type);
-    // 有未通过/跳过 → 继续（只带没成功的题）；全部通过 → 再来一次；完全没开始 → 复习。
-    const label = canResume ? '继续' : allPassed ? '再来一次' : hasProgress ? '继续' : '复习';
-    const detail = `${items.length} 项 · 约 ${minutes} 分钟${failed ? ` · 未通过 ${failed}` : ''}${skipped ? ` · 跳过 ${skipped}` : ''}`;
-    const deleted = items.filter(item => item.sourceDeleted).map(item => item.title);
-    return `<article class="review-day-card" data-plan-day-type="${type}"><div><strong>${PLAN_TYPE_LABELS[type]}</strong><p class="detail-meta">${detail}</p>${deleted.length ? `<p class="detail-meta plan-deleted">内容已删除：${deleted.map(escapeHtml).join('、')}</p>` : ''}</div><button type="button" onclick="startPlanScheduleDay('${date}','${type}','${label}')">${label}</button></article>`;
-  }).join('');
   const minutes = source.reduce((sum, item) => sum + (Number(item.minutes) || 0), 0);
+  const pending = source.filter(item => !item.status || item.status === 'pending').length;
+  const skipped = source.filter(item => item.status === 'skipped').length;
+  const failed = source.filter(item => item.status === 'completed' && item.result === 'failed').length;
+  const passed = source.filter(item => item.status === 'completed' && item.result === 'passed').length;
+  const allPassed = source.length > 0 && passed === source.length;
+  const allProcessed = source.length > 0 && source.every(item => item.status === 'completed');
+  const hasProgress = passed + failed + skipped > 0;
+  const taskHeading = [['material','份资料'],['note','篇笔记'],['mistake','道错题']]
+    .map(([type,unit])=>{const count=source.filter(item=>item.type===type).length;return count?`${count} ${unit}`:'';})
+    .filter(Boolean).join(' · ');
+  // 全部任务按资料 → 笔记 → 错题进入同一个会话；完成状态优先于“继续”。
+  const label = allPassed ? '再来一次' : hasProgress ? '继续' : '复习';
+  const detail = `${source.length} 项 · 约 ${minutes} 分钟${failed ? ` · 未通过 ${failed}` : ''}${skipped ? ` · 跳过 ${skipped}` : ''}`;
+  const dayCard = source.length ? `<article class="review-day-card" data-plan-day-type="all"><div><strong>${taskHeading}</strong><p class="detail-meta">${detail}</p></div><div class="review-day-card-actions">${allProcessed?`<button type="button" class="plan-day-preview" onclick="openPlanDayAnswersPreview(${reviewPlanDetail.plan.id},'${date}')">查看作答</button>`:''}<button type="button" onclick="startPlanScheduleDay('${date}',null,'${label}')">${label}</button></div></article>` : '';
   document.getElementById('reviewPlanDayTitle').textContent = `${date} · ${source.length} 项 · 约 ${minutes} 分钟`;
   document.getElementById('reviewPlanDayBody').innerHTML = `${stats}${day.state === 'done' ? `<p class="plan-day-done">当天已全部通过 ✓${future ? '（提前完成）' : ''}</p>`
-    : day.state === 'partial' ? '<p class="plan-day-partial">当天还有未通过或跳过，可以继续。</p>' : ''}${rows}`;
+    : day.state === 'partial' ? '<p class="plan-day-partial">当天还有未通过或跳过，可以继续。</p>' : ''}${dayCard}`;
   if (future) {
     document.getElementById('reviewPlanDayBody').insertAdjacentHTML('afterbegin',
       '<p class="plan-day-early">提前复习会缩短这道题的间隔收益；完成后会按今天重新计算下次复习。</p>');
@@ -197,50 +195,33 @@ async function startPlanScheduleDay(date, type, action = '复习') {
   if (!state || !day || planReviewStarting) return;
   closePlanScheduleDay();
   if (state.plan.status !== 'active') { showToast('计划已归档，请先恢复计划'); return; }
-  if (action === '继续' && day.sessionId && ['active', 'paused'].includes(day.sessionStatus)) return resumeReviewRecord(day.sessionId);
-  if (action === '继续') {
-    // 只把这一天里还没成功复习的题带进新一轮（跳过/未通过/没做）。
-    const items = planDayItems(day)
-      .filter(item => item.type === type && !item.sourceDeleted && !(item.status === 'completed' && item.result === 'passed'))
-      .map(item => ({ type: item.type, id: item.id }));
-    if (!items.length) { showToast('这一天没有需要继续的内容'); return; }
-    planReviewStarting = true;
-    try {
-      const session = await createReviewRecord('plan', items, { planId: state.plan.id, date, requestId: reviewRequestId() });
-      await enterCenterReview(session);
-    } catch (err) { showToast(err.message); }
-    finally { planReviewStarting = false; }
+  if (!type && action === '继续' && day.sessionId && ['active', 'paused'].includes(day.sessionStatus)) return resumeReviewRecord(day.sessionId);
+  const source = planDayItems(day).filter(item => !item.sourceDeleted);
+  const selected = (action === '再来一次'
+    ? source
+    : action === '继续'
+      ? source.filter(item => !(item.status === 'completed' && item.result === 'passed'))
+      : source.filter(item => !item.status || item.status === 'pending'))
+    .sort((a, b) => ({material:0,note:1,mistake:2}[a.type] ?? 3) - ({material:0,note:1,mistake:2}[b.type] ?? 3));
+  if (!selected.length) {
+    showToast(action === '继续' ? '这一天没有需要继续的内容' : '这一天没有可复习的任务');
     return;
   }
-  if (action === '再来一次') {
-    const items = planDayItems(day).filter(item => item.type === type && !item.sourceDeleted).map(item => ({ type: item.type, id: item.id }));
-    if (!items.length) return;
-    planReviewStarting = true;
-    try {
-      const session = await createReviewRecord('plan', items, { planId: state.plan.id, date, requestId: reviewRequestId() });
-      await enterCenterReview(session);
-    } catch (err) { showToast(err.message); }
-    finally { planReviewStarting = false; }
-    return;
-  }
-  const pending = state.items.filter(item => item.scheduled_date === date && item.item_type === type && item.status === 'pending');
-  const available = planDayItems(day).filter(item => item.type === type && !item.sourceDeleted
-    && item.status !== 'completed' && item.status !== 'skipped');
-  if (pending.length && available.length <= pending.length) return startReviewPlanDay(state.plan.id, date, type);
-  const items = available.map(item => ({ type: item.type, id: item.id }));
-  if (!items.length) return;
-  planReviewStarting = true;
-  try {
-    const session = await createReviewRecord('plan', items, { planId: state.plan.id, date, requestId: reviewRequestId() });
-    await enterCenterReview(session);
-  } catch (err) { showToast(err.message); }
-  finally { planReviewStarting = false; }
+  await startReviewPlanDay(state.plan.id, date, null, false, selected.map(item => ({type:item.type,id:item.id})));
 }
 function rememberPlanPage(id = null) {
   mistakeStorageSet('review-center-location:'+currentCourseId,null);
   localStorage.setItem('currentTab','reviewPlans');
   localStorage.setItem('courseTimeStamp',Date.now());
   mistakeStorageSet('review-plan-location:' + currentCourseId,id ? {id} : null);
+}
+function setReviewPlanCompletedPreview(planId,date){
+  reviewPlanCompletedPreview=Number.isSafeInteger(planId)&&/^\d{4}-\d{2}-\d{2}$/.test(String(date||''))?{courseId:currentCourseId,planId,date}:null;
+}
+function openReviewPlanCompletedAnswers(){
+  const preview=reviewPlanCompletedPreview;
+  if(!preview||preview.courseId!==currentCourseId||!reviewPlanDetail||reviewPlanDetail.plan.id!==preview.planId)return;
+  return openPlanDayAnswersPreview(preview.planId,preview.date);
 }
 async function loadReviewPlans() {
   if (typeof loadRecentReviews==='function') loadRecentReviews();
@@ -442,7 +423,7 @@ async function openReviewPlan(id) {
     }
   }
 }
-function backToReviewPlans() { ++reviewPlanRequest; if(typeof clearCenterReviewUi==='function')clearCenterReviewUi();rememberPlanPage(); currentView={type:'course',tab:'reviewPlans'}; showPageOnly('detailPage'); switchTab('reviewPlans'); }
+function backToReviewPlans() { ++reviewPlanRequest; reviewPlanCompletedPreview=null; if(typeof clearCenterReviewUi==='function')clearCenterReviewUi();rememberPlanPage(); currentView={type:'course',tab:'reviewPlans'}; showPageOnly('detailPage'); switchTab('reviewPlans'); }
 function renderReviewPlanDetail() {
   const state = reviewPlanDetail; if (!state || state.courseId!==currentCourseId) return;
   const {plan,items} = state;
@@ -450,7 +431,7 @@ function renderReviewPlanDetail() {
   const today = plan.todayStats;
   const todayText = !today.total ? '今日没有安排复习任务' : today.pending ? `今日 ${today.pending} 项待复习` : today.completed ? '今日复习已完成' : '今日任务均已跳过';
   document.getElementById('reviewPlanDetailBody').innerHTML = `<section class="detail-card"><h2>${escapeHtml(plan.name)}</h2><p>考试日期：${plan.exam_date} · 剩余 ${plan.remainingDays} 天${plan.status==='archived' ? ' · 已归档' : ''}</p>
-    ${planProgressHtml(plan)}<p>${todayText}</p><button id="reviewPlanTodayStart" onclick="startReviewPlanDay(${plan.id},'${plan.today}')" ${!today.pending || plan.status!=='active' ? 'disabled' : ''}>开始今日复习</button>
+    ${planProgressHtml(plan)}<p>${todayText}</p><div class="mistake-toolbar"><button id="reviewPlanTodayStart" onclick="startReviewPlanDay(${plan.id},'${plan.today}')" ${!today.pending || plan.status!=='active' ? 'disabled' : ''}>开始今日复习</button>${reviewPlanCompletedPreview?.courseId===currentCourseId&&reviewPlanCompletedPreview.planId===plan.id?'<button type="button" onclick="openReviewPlanCompletedAnswers()">查看本轮作答预览</button>':''}</div>
     <p class="detail-meta">错题 → 资料 → 笔记，按类型使用原有复习页面；点日历上的日期可以查看当天安排并开始复习。跳过阅读仍保留待完成任务。</p>
     <details class="plan-settings"><summary>管理计划</summary><label>计划名称<input id="reviewPlanRename" maxlength="100" value="${escapeHtml(plan.name)}" /></label><div class="mistake-toolbar"><button onclick="saveReviewPlanName()">保存名称</button><button onclick="changeReviewPlanStatus()">${plan.status==='active' ? '归档计划' : '恢复计划'}</button><button onclick="deleteCurrentReviewPlan()">删除计划</button></div><p class="detail-meta">日期和复习范围创建后固定；需要调整时请重新生成计划。</p></details></section>
     ${planScheduleHtml(state.schedule)}`;
@@ -474,8 +455,10 @@ async function deleteCurrentReviewPlan() {
 }
 
 // 薄调度层：复用原控制器和原步骤恢复；计划只提供对象映射、存储键和返回来源。
-async function startReviewPlanDay(planId,date,type = null, restoring = false) {
+async function startReviewPlanDay(planId,date,type = null, restoring = false, selectedItems = null) {
   if (planReviewStarting || mistakeReviewBusy || activeReadingReview.busy || mistakeQueueLoading) return;
+  if(type==='mixed')type=null;
+  const unified=type===null;
   const courseId = currentCourseId; planReviewStarting = true;
   try {
     const [response,tasks] = await Promise.all([requestApi(reviewPlanApi(planId)),requestList(reviewPlanApi(`${planId}/items?scheduledDate=${encodeURIComponent(date)}`))]);
@@ -483,21 +466,35 @@ async function startReviewPlanDay(planId,date,type = null, restoring = false) {
     if (courseId!==currentCourseId) return;
     if (plan.status!=='active') throw new Error('计划已归档，请先恢复计划');
     const pending = tasks.filter(item=>item.status==='pending');
-    type ||= ['mistake','material','note'].find(kind=>pending.some(item=>item.item_type===kind));
-    const rows = pending.filter(item=>item.item_type===type);
+    let rows;
+    if(selectedItems){
+      const wanted=new Set(selectedItems.map(item=>item.type+':'+item.id));
+      rows=tasks.filter(item=>wanted.has(item.item_type+':'+item.item_id));
+      if(rows.length!==wanted.size){
+        const allPlanTasks=await requestList(reviewPlanApi(planId+'/items'));
+        rows=allPlanTasks.filter(item=>wanted.has(item.item_type+':'+item.item_id));
+      }
+      if(rows.length!==wanted.size)throw new Error('部分计划任务已不可复习，请重新打开当天任务');
+    }else{
+      const available=unified?pending:pending.filter(item=>item.item_type===type);
+      rows=available;
+    }
+    rows.sort((a,b)=>({material:0,note:1,mistake:2}[a.item_type]??3)-({material:0,note:1,mistake:2}[b.item_type]??3)
+      ||(Number(a.sort_order)||0)-(Number(b.sort_order)||0)||a.item_id-b.item_id);
     if (!rows.length) {
       mistakeStorageSet('review-plan-session:'+courseId,null); planReviewSession=null;
       showToast('该日期的任务已处理，未自动重新排期'); await openReviewPlan(planId); return;
     }
     if (rows.some(item=>!item.reviewable)) throw new Error('有错题缺少题目或答案，请展开日期并先补齐内容');
-    const storageKey = `review-plan-queue:${courseId}:${planId}:${date}:${type}`;
-    const context = {courseId,planId,date,type,storageKey,items:Object.fromEntries(rows.map(item=>[item.item_id,item.id]))};
+    const storageKey = `review-plan-queue:${courseId}:${planId}:${date}:${type||'all'}`;
+    const context = {courseId,planId,date,type:type||'mixed',storageKey,
+      items:Object.fromEntries(rows.map(item=>[unified?item.item_type+':'+item.item_id:item.item_id,item.id]))};
     const saved = mistakeStorageGet(storageKey);
     const pendingIds = new Set(rows.map(item=>item.item_id));
     const reusable = saved && !saved.finished && saved.courseId===courseId && Array.isArray(saved.ids) && saved.ids.length
       && Number.isInteger(saved.index) && saved.index>=0 && saved.index<saved.ids.length
       && saved.ids.slice(saved.index).every(id=>pendingIds.has(id));
-    const requestKey='review-plan-session-request:'+storageKey,selectionKey=rows.map(item=>item.id).join(',');
+    const requestKey='review-plan-session-request:'+storageKey,selectionKey=rows.map(item=>item.item_type+':'+item.item_id).join(',');
     let creation=mistakeStorageGet(requestKey);
     if(!creation || creation.selectionKey!==selectionKey){creation={requestId:reviewRequestId(),selectionKey};mistakeStorageSet(requestKey,creation);}
     const session=reusable && saved.sessionId ? await recordedReviewAction(saved.sessionId,'resume')
@@ -506,7 +503,9 @@ async function startReviewPlanDay(planId,date,type = null, restoring = false) {
     context.sessionId=session.id;
     const sessionItems=reviewSessionMap(session);
     planReviewSession = context; mistakeStorageSet('review-plan-session:'+courseId,context); rememberPlanPage(planId);
-    if (type==='mistake') {
+    if(unified){
+      await enterCenterReview(session);
+    }else if (type==='mistake') {
       mistakeQueue = reusable ? readMistakeQueue(storageKey) : null;
       mistakeQueue ||= {courseId,type:'mixed',types:Object.fromEntries(rows.map(item=>[item.item_id,item.mistake_type])),ids:rows.map(item=>item.item_id),index:0,rounds:{},finished:false};
       mistakeQueue.storageKey=storageKey; mistakeQueue.planContext=context; saveMistakeQueue();
@@ -531,13 +530,38 @@ async function returnFromPlanReview() {
   mistakeStorageSet('review-plan-session:'+currentCourseId,null);
   if (mistakeQueue?.planContext) mistakeQueue=null;
   planReviewSession=null; activeReadingReview=materialReadingReview; navStack=[];
-  await openReviewPlan(session.planId);
+  let sourceSession=null;
+  if(session.sessionId){try{sourceSession=await(await requestApi(`${API}/courses/${session.courseId}/review-sessions/${session.sessionId}`)).json();}catch{}}
+  await showCompletedPlanDay(session.planId,session.date,sourceSession);
+}
+async function showCompletedPlanDay(planId,date,sourceSession=null){
+  await openReviewPlan(planId);
+  const day=reviewPlanDetail?.schedule?.days?.find(item=>item.date===date);
+  const dayItems=day?.items||[];
+  const passed=dayItems.filter(item=>item.status==='completed'&&item.result==='passed').length;
+  const failed=dayItems.filter(item=>item.status==='completed'&&item.result==='failed').length;
+  const exposed=dayItems.filter(item=>item.status==='completed'&&item.result==='exposure').length;
+  const skipped=dayItems.filter(item=>item.status==='skipped').length;
+  const allPassed=dayItems.length>0&&passed===dayItems.length;
+  const allProcessed=dayItems.length>0&&dayItems.every(item=>item.status==='completed');
+  setReviewPlanCompletedPreview(planId,allProcessed&&!skipped?date:null);
+  if(allPassed&&typeof openReviewCompleteModal==='function'){
+    const session={...(sourceSession||{}),status:'completed',source_type:'plan',source_id:planId,source_date:date,
+      total:dayItems.length,passed,failed,exposed,skipped,pending:0,
+      items:dayItems.map(item=>({item_type:item.type,title:item.title}))};
+    await openReviewCompleteModal(session,{type:'plan',planId,date});
+  }else if(day){
+    openPlanScheduleDay(date);
+  }
 }
 async function restoreReviewPlanLocation(courseId) {
   if (courseId!==currentCourseId) return;
   const session = mistakeStorageGet('review-plan-session:'+courseId);
-  if (session && session.courseId===courseId && Number.isSafeInteger(session.planId) && Object.hasOwn(PLAN_TYPE_LABELS,session.type) && /^\d{4}-\d{2}-\d{2}$/.test(session.date)) {
-    await startReviewPlanDay(session.planId,session.date,session.type,true); return;
+  if (session && session.courseId===courseId && Number.isSafeInteger(session.planId)
+    && (session.type==='mixed'||Object.hasOwn(PLAN_TYPE_LABELS,session.type))
+    && /^\d{4}-\d{2}-\d{2}$/.test(session.date)) {
+    if(session.sessionId){await resumeReviewRecord(session.sessionId);return;}
+    await startReviewPlanDay(session.planId,session.date,session.type==='mixed'?null:session.type,true); return;
   }
   const saved=mistakeStorageGet('review-plan-location:'+courseId);
   if (Number.isSafeInteger(saved?.id) && saved.id>0) await openReviewPlan(saved.id);

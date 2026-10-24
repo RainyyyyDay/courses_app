@@ -80,7 +80,7 @@ async function fixture(run) {
       await new Promise(resolve=>staticServer.listen(0,'127.0.0.1',resolve));
       return 'http://127.0.0.1:'+staticServer.address().port+'/';
     };
-    await run({temp,back,ids,api,read,base,serve,restart:async()=>{await stop(child);await start();}});
+    await run({temp,back,ids,api,read,base,serve,serverLogs:()=>logs,restart:async()=>{await stop(child);await start();}});
   } finally {
     await stop(child);
     if(staticServer?.listening)await new Promise(resolve=>staticServer.close(resolve));
