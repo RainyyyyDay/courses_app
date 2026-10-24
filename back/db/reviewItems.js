@@ -249,7 +249,7 @@ function planRescheduleReasons(plan, snapshot, items, days, today) {
     ...unacknowledged(completed.sessions, snapshot.completedSessionItemIds)];
   if (changedCompletions.some(row => {
     const completedOn = planCompletionDate(row.completed_at);
-    return row.date && completedOn && completedOn < row.date;
+    return row.date > today && completedOn && completedOn < row.date;
   })) reasons.push('completed_early');
   const completedLate = changedCompletions.some(row => row.date >= floor && row.date < today && planCompletionDate(row.completed_at) > row.date);
   const unfinishedPastDay = days.some(day => day.date >= floor && day.date < today
@@ -286,6 +286,50 @@ function mergeDayItems(base, extra) {
   return [...merged.values()];
 }
 
+// A day can contain several sessions when the user continues failed or skipped
+// items. A successful attempt stays successful even if a later attempt fails.
+function aggregateSessionItems(rows) {
+  const grouped = new Map();
+  for (const row of rows) {
+    const key = row.item_type + ':' + row.item_id;
+    let group = grouped.get(key);
+    if (!group) {
+      group = {
+        type: row.item_type, id: row.item_id, title: row.title_snapshot,
+        minutes: Number(row.estimated_minutes) || 5, passed: false, failed: false,
+        exposure: false, skipped: false, latest: row,
+      };
+      grouped.set(key, group);
+    }
+    group.latest = row;
+    if (row.title_snapshot) group.title = row.title_snapshot;
+    if (row.estimated_minutes !== null && row.estimated_minutes !== undefined) {
+      group.minutes = Number(row.estimated_minutes) || group.minutes;
+    }
+    if (row.status === 'completed' && row.result === 'passed' && !row.exposure_only) group.passed = true;
+    else if (row.status === 'completed' && row.result === 'failed') group.failed = true;
+    else if (row.status === 'completed' && row.exposure_only) group.exposure = true;
+    else if (row.status === 'skipped') group.skipped = true;
+  }
+  return [...grouped.values()].map(group => {
+    let status = group.latest.status;
+    let result = group.latest.result;
+    if (group.passed) {
+      status = 'completed'; result = 'passed';
+    } else if (group.failed) {
+      status = 'completed'; result = 'failed';
+    } else if (group.latest.status === 'completed' && group.exposure) {
+      status = 'completed'; result = 'exposure';
+    } else if (group.skipped && group.latest.status === 'pending') {
+      status = 'pending'; result = null;
+    }
+    return {
+      type: group.type, id: group.id, title: group.title, minutes: group.minutes,
+      status, result: result === undefined ? null : result,
+    };
+  });
+}
+
 function getReviewPlanSchedule(courseId, planId) {
   const plan = db.prepare('SELECT * FROM review_plans WHERE id=? AND course_id=?').get(planId, courseId);
   if (!plan) planError(404, 'PLAN_NOT_FOUND', '找不到当前课程的计划');
@@ -309,19 +353,18 @@ function getReviewPlanSchedule(courseId, planId) {
     db.prepare('UPDATE review_plans SET schedule_json=? WHERE id=?').run(JSON.stringify(snapshot), plan.id);
   }
   // Read the agreed schedule; do not run the scheduling algorithm on ordinary progress refreshes.
-  const result = { days: snapshot.days, occurrences: [], unscheduled: snapshot.unscheduled || [],
+  const result = { days: [], occurrences: [], unscheduled: snapshot.unscheduled || [],
     feasibility: snapshot.feasibility || { feasible: true, shortfallMinutes: 0, coverage: {}, warnings: [] } };
+  const appliedOn = snapshot.applied
+    ? snapshot.appliedOn || planCompletionDate(snapshot.generatedAt) || plan.start_date
+    : null;
   const deletedKeys = new Set(db.prepare('SELECT item_type,item_id FROM review_plan_items WHERE plan_id=? AND source_deleted=1')
     .all(plan.id).map(row => row.item_type + ':' + row.item_id));
   const visibleSnapshotDays = snapshot.days.map(day => ({
     ...day,
-    items: (day.items || []).filter(item => !deletedKeys.has(item.type + ':' + item.id)),
+    items: (day.items || []).filter(item => day.date < today || !deletedKeys.has(item.type + ':' + item.id)),
   })).filter(day => day.items.length);
-  // 采纳新排期后，只把「采纳之后」的会话算作这一版的完成记录：
-  // 之前的提前复习不在这版排期里显示绿勾。
-  // 只有用户主动「应用新排期」之后的快照才以生成时间为界；初始快照保留历史完成状态。
-  result.days = visibleSnapshotDays;
-  // 日历要用标题；同一天的完成状态取该计划该日期最近一次计划复习会话。
+  // 日历要用标题；同一内容可能有多个排期轮次，标题优先取内容，删除后回退到任务快照。
   const titleCache = new Map();
   const titleFor = (type, id) => {
     const key = type + ':' + id;
@@ -332,106 +375,91 @@ function getReviewPlanSchedule(courseId, planId) {
     }
     return titleCache.get(key);
   };
-  const scheduledDays = result.days.map(day => {
-    const session = db.prepare(`SELECT id,status FROM review_sessions
-      WHERE course_id=? AND source_type='plan' AND source_id=? AND source_date=?
-      ORDER BY (status='completed') DESC, updated_at DESC, id DESC LIMIT 1`).get(courseId, planId, day.date);
-    let state = 'none';
-    let sessionTypes = [];
-    let sessionCounts = null;
-    let sessionItems = [];
-    if (session) {
-      const counts = db.prepare(`SELECT COUNT(*) total,
-        SUM(CASE WHEN status='completed' AND result='failed' THEN 1 ELSE 0 END) failed,
-        SUM(CASE WHEN status!='completed' THEN 1 ELSE 0 END) open,
-        SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) completed,
-        SUM(CASE WHEN status='completed' AND result='passed' THEN 1 ELSE 0 END) passed,
-        SUM(CASE WHEN status='skipped' THEN 1 ELSE 0 END) skipped,
-        SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) pending
-        FROM review_session_items WHERE session_id=? AND source_deleted=0`).get(session.id);
-      sessionCounts = {
-        total: counts.total,
-        completed: counts.completed || 0,
-        passed: counts.passed || 0,
-        failed: counts.failed || 0,
-        skipped: counts.skipped || 0,
-        pending: counts.pending || 0,
-      };
-      sessionTypes = db.prepare('SELECT DISTINCT item_type FROM review_session_items WHERE session_id=? AND source_deleted=0')
-        .all(session.id).map(row => row.item_type);
-      sessionItems = db.prepare(`SELECT item_type,item_id,title_snapshot,status,CASE WHEN exposure_only=1 THEN 'exposure' ELSE result END AS result
-        FROM review_session_items WHERE session_id=? AND source_deleted=0 ORDER BY position`).all(session.id).map(row => ({
-        type: row.item_type,
-        id: row.item_id,
-        title: row.title_snapshot,
-        status: row.status,
-        result: row.result,
-        minutes: 5,
-      }));
-    }
-    const previewItems = day.items.map(item => ({ ...item, title: titleFor(item.type, item.id) }));
-    const items = mergeDayItems(previewItems, sessionItems.map(item => ({
-      type: item.type, id: item.id, title: item.title, status: item.status, result: item.result, minutes: item.minutes,
-    })));
-    if (session) {
-      const passed = items.filter(item => item.status === 'completed' && item.result === 'passed').length;
-      state = items.length && passed === items.length ? 'done' : passed ? 'partial' : 'none';
-    }
-    return {
-      ...day,
-      state,
-      sessionId: session ? session.id : null,
-      sessionStatus: session ? session.status : null,
-      sessionTypes,
-      sessionCounts,
-      sessionItems,
-      items,
-    };
-  });
-  // 物化任务（review_plan_items）才是“实际排了、实际做了什么”的权威记录：
-  // 把它合并进日历，避免“17 号任务已完成但日历没勾”的矛盾。
   const planRows = db.prepare(`SELECT item_type,item_id,scheduled_date,status,title_snapshot,estimated_minutes,source_deleted,completed_at
-    FROM review_plan_items WHERE plan_id=? AND source_deleted=0 ORDER BY scheduled_date,sort_order`).all(planId);
-  const planByDate = new Map();
+    FROM review_plan_items WHERE plan_id=? ORDER BY scheduled_date,sort_order`).all(planId);
   for (const row of planRows) {
-    if (!planByDate.has(row.scheduled_date)) planByDate.set(row.scheduled_date, []);
-    planByDate.get(row.scheduled_date).push(row);
+    const key = row.item_type + ':' + row.item_id;
+    if (!titleCache.get(key)) titleCache.set(key, row.title_snapshot || '');
   }
-  const scheduledByDate = new Map(scheduledDays.map(day => [day.date, day]));
-  const dates = [...new Set([...scheduledByDate.keys(), ...planByDate.keys()])].sort();
-  const days = dates.map(date => {
-    let materialized = planByDate.get(date);
-    if (materialized && materialized.length === 0) materialized = null;
-    const preview = scheduledByDate.get(date) || null;
-    if (!materialized) return preview;
-    const materializedItems = materialized.map(row => ({
-      type: row.item_type,
-      id: row.item_id,
-      title: row.title_snapshot,
-      sourceDeleted: row.source_deleted ? 1 : 0,
-      status: row.status,
-      result: row.status === 'completed' ? 'passed' : null,
-      minutes: Number(row.estimated_minutes) || 5,
-      roundNo: 1,
-    }));
-    const items = mergeDayItems(
-      mergeDayItems(materializedItems, preview?.items || []),
-      preview?.sessionItems || [],
-    );
-    const completed = items.filter(row => row.status === 'completed' && row.result === 'passed').length;
+  // The snapshot is authoritative from the day it was applied onward. Materialized
+  // rows at old future dates remain as history, but cannot recreate an old calendar cell.
+  const dayMap = new Map();
+  const ensureDay = date => {
+    if (!dayMap.has(date)) dayMap.set(date, { date, minutes: 0, items: new Map(), sessionKeys: new Set() });
+    return dayMap.get(date);
+  };
+  const addItem = (date, item) => {
+    if (!item || !item.type || !Number.isSafeInteger(item.id)) return;
+    ensureDay(date).items.set(item.type + ':' + item.id, { ...item });
+  };
+  for (const day of visibleSnapshotDays) {
+    for (const item of day.items) {
+      addItem(day.date, { ...item, title: titleFor(item.type, item.id) || item.title || '' });
+    }
+  }
+  // Once a version has been applied, its preserved snapshot is the complete
+  // historical calendar. Initial materialized dates must not reappear later.
+  for (const row of appliedOn ? [] : planRows.filter(item => !item.source_deleted)) {
+    addItem(row.scheduled_date, {
+      type: row.item_type, id: row.item_id, title: row.title_snapshot || titleFor(row.item_type, row.item_id),
+      status: row.status, result: row.status === 'completed' ? 'passed' : null,
+      minutes: Number(row.estimated_minutes) || 5, roundNo: 1,
+    });
+  }
+  const sessionStatement = db.prepare(`SELECT s.id AS session_id,s.status AS session_status,
+    i.item_type,i.item_id,i.title_snapshot,i.status,i.result,i.exposure_only,
+    CASE WHEN i.exposure_only=1 THEN 'exposure' ELSE i.result END AS display_result
+    FROM review_sessions s JOIN review_session_items i ON i.session_id=s.id
+    WHERE s.course_id=? AND s.source_type='plan' AND s.source_id=? AND s.source_date=?
+      AND i.source_deleted=0
+      ${appliedOn ? 'AND (? < ? OR s.created_at >= ?)' : ''}
+    ORDER BY s.created_at,s.id,i.position`);
+  for (const date of [...dayMap.keys()].sort()) {
+    const activeDay = dayMap.get(date);
+    const versionedDay = !!appliedOn && date >= appliedOn;
+    const sessions = appliedOn
+      ? sessionStatement.all(courseId, planId, date, date, appliedOn, snapshot.generatedAt)
+      : sessionStatement.all(courseId, planId, date);
+    if (!sessions.length) continue;
+    const aggregated = aggregateSessionItems(sessions.map(row => ({
+      ...row, result: row.display_result,
+    })));
+    const latest = sessions[sessions.length - 1];
+    for (const item of aggregated) {
+      const key = item.type + ':' + item.id;
+      if (versionedDay && !activeDay.items.has(key)) continue;
+      const current = activeDay.items.get(key);
+      activeDay.items.set(key, {
+        ...(current || {}), ...item, title: item.title || current?.title || titleFor(item.type, item.id),
+        minutes: current?.minutes || item.minutes,
+      });
+      activeDay.sessionKeys.add(key);
+    }
+    activeDay.sessionId = latest.session_id;
+    activeDay.sessionStatus = latest.session_status;
+  }
+  const days = [...dayMap.values()].map(day => {
+    const items = mergeDayItems([...day.items.values()], []);
+    const passed = items.filter(item => item.status === 'completed' && item.result === 'passed').length;
+    const failed = items.filter(item => item.status === 'completed' && item.result === 'failed').length;
+    const skipped = items.filter(item => item.status === 'skipped').length;
+    const completed = items.filter(item => item.status === 'completed').length;
+    const pending = items.filter(item => !item.status || item.status === 'pending').length;
     return {
-      date,
-      minutes: items.reduce((sum, row) => sum + (Number(row.minutes) || 5), 0),
+      date: day.date,
+      minutes: items.reduce((sum, item) => sum + (Number(item.minutes) || 5), 0),
       items,
-      state: items.length && completed === items.length ? 'done' : completed ? 'partial' : 'none',
-      sessionId: preview ? preview.sessionId : null,
-      sessionStatus: preview ? preview.sessionStatus : null,
-      sessionTypes: preview ? preview.sessionTypes : [],
-      sessionCounts: preview ? preview.sessionCounts : null,
-      sessionItems: preview ? preview.sessionItems : [],
+      state: items.length && passed === items.length ? 'done' : passed ? 'partial' : 'none',
+      sessionId: day.sessionId || null,
+      sessionStatus: day.sessionStatus || null,
+      sessionTypes: [...new Set(items.map(item => item.type))],
+      sessionCounts: {
+        total: items.length, completed, passed, failed, skipped, pending,
+      },
+      sessionItems: items.filter(item => day.sessionKeys.has(item.type + ':' + item.id)),
       source: 'plan',
     };
-  }).filter(Boolean);
+  }).sort((a, b) => a.date.localeCompare(b.date));
   // 过期未完成的项目，按当前排期算出它们下一次出现在哪一天，供界面提示「已往后排」。
   const futureByItem = new Map();
   for (const day of days) {
@@ -451,7 +479,10 @@ function getReviewPlanSchedule(courseId, planId) {
     day.movedTo = [...dates].sort();
   }
   const rescheduleReasons = planRescheduleReasons(plan, snapshot, items, days, today);
-  result.occurrences = visibleSnapshotDays.flatMap(day => day.items.map(item => ({ ...item, date: day.date })));
+  result.days = days;
+  result.occurrences = visibleSnapshotDays
+    .filter(day => day.date >= today)
+    .flatMap(day => day.items.map(item => ({ ...item, date: day.date })));
   return { ...base, ...result, days, hasNewSchedule: rescheduleReasons.length > 0, rescheduleReasons };
 }
 
@@ -465,6 +496,11 @@ function applyReviewPlanSchedule(courseId, planId) {
     const { items, states, profile, capacity } = planScheduleParts(courseId, plan);
     const live = planOccurrences({ items, states, today: planToday(), examDate: plan.exam_date, profile, capacity });
     const snapshot = planScheduleSnapshot(plan, items, live, true);
+    let prior = null;
+    try { prior = plan.schedule_json ? JSON.parse(plan.schedule_json) : null; } catch {}
+    const historical = scheduleStructure((prior?.days || []).filter(day => day.date < snapshot.appliedOn));
+    const upcoming = scheduleStructure(live.days.filter(day => day.date >= snapshot.appliedOn));
+    snapshot.days = [...historical, ...upcoming].sort((a, b) => a.date.localeCompare(b.date));
     db.prepare('UPDATE review_plans SET schedule_json=? WHERE id=?').run(JSON.stringify(snapshot), plan.id);
   }
   return getReviewPlanSchedule(courseId, planId);

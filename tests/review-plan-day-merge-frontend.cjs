@@ -63,7 +63,7 @@ function reviewPlanDayMergeBrowserScenario() {
       await waitUntil(() => reviewPlanDetail?.schedule?.days?.some(item => item.date === day.date), 'merged plan schedule loaded');
       const cell = document.querySelector('#reviewPlanCalendar [data-plan-date="' + day.date + '"]');
       check(cell, 'merged calendar day exists');
-      check(cell.querySelector('.plan-calendar-count').textContent.trim() === '3 项', 'partial session keeps the full day count');
+      check(cell.querySelector('.plan-calendar-count').textContent.trim() === '1/3项', 'partial session keeps the full day count and successful count');
       cell.click();
       await waitUntil(() => document.getElementById('reviewPlanDayModal').classList.contains('show'), 'merged day popup opens');
       check(document.querySelectorAll('#reviewPlanDayBody .review-day-card').length === 1, 'the whole day remains one combined task card');

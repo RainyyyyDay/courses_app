@@ -8,7 +8,7 @@
 const { db } = require('./connection');
 
 // ===== 当前程序支持的数据库版本 =====
-const CURRENT_DB_VERSION = 25;
+const CURRENT_DB_VERSION = 26;
 
 // 判断某张表是否已经存在
 function tableExists(name) {
@@ -703,6 +703,30 @@ function migrateAssessmentCompletion() {
   } catch (err) { db.exec('ROLLBACK'); throw err; }
 }
 migrateAssessmentCompletion();
+
+// v25 -> v26: one editable assessment chart per assessment. The rendered image
+// is never stored; title/items/version remain independently editable.
+function migrateAssessmentCharts() {
+  if (getUserVersion() !== 25) return;
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS assessment_charts (
+        assessment_id INTEGER PRIMARY KEY REFERENCES assessments(id) ON DELETE CASCADE,
+        course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        items_json TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        source TEXT NOT NULL DEFAULT 'manual',
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_assessment_charts_course ON assessment_charts(course_id);
+    `);
+    setUserVersion(26);
+    db.exec('COMMIT');
+  } catch (err) { db.exec('ROLLBACK'); throw err; }
+}
+migrateAssessmentCharts();
 
 // ===== 建表：Phase 0 的基础结构（version 1）=====
 // 每一张“子表”都用 course_id 指向 courses(id)，

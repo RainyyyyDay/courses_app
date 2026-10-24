@@ -431,21 +431,81 @@
       <h3 id="assessModalTitle">添加考核</h3>
       <label for="assessTitle">考核名称</label><input id="assessTitle" maxlength="200" placeholder="考核名称，如期中考试" />
       <label for="assessDeadline">截止日期（可选）</label><input id="assessDeadline" type="date" />
-      <label for="assessReq">考核要求（可选）</label><textarea id="assessReq" maxlength="4000" placeholder="考核要求（可选）"></textarea>
-      <div id="assessAttachment">
-      <!-- 附件是可选的：不选就是一条纯文字考核 -->
-      <input type="file" id="assessFile" style="display:none"
-             onchange="showPickedFile('assessFile', 'assessFileName')" />
-      <button type="button" class="file-pick-btn" onclick="document.getElementById('assessFile').click()">
-        📎 选择附件（可选）
-      </button>
-      <div class="file-name-tip" id="assessFileName">未选择附件</div></div><p id="assessError" class="mistake-inline-error" role="alert"></p>
+      <label for="assessReq">考核要求（可选）</label><textarea id="assessReq" maxlength="20000" placeholder="考核要求（可选）"></textarea>
+      <button type="button" id="assessBodyToChartReference" class="assessment-reference-button">把考核正文传入图表的 AI 提取来源</button>
+      <div id="assessAttachment" class="assessment-attachment-editor">
+        <input type="file" id="assessFile" style="display:none"
+               onchange="showPickedFile('assessFile', 'assessFileName');assessmentFileChanged()" />
+        <button type="button" class="file-pick-btn" id="assessFilePick" onclick="document.getElementById('assessFile').click()">📎 选择附件（可选）</button>
+        <button type="button" id="assessFileRemove" class="assessment-file-remove" hidden>删除现有附件</button>
+        <div class="file-name-tip" id="assessFileName">未选择附件</div>
+        <div class="assessment-existing-file" id="assessExistingAttachment" hidden></div>
+      </div>
+      <section class="assessment-ocr-box">
+        <div class="assessment-ocr-head"><div><strong>附件识别内容</strong><small>识别后请校对；不会自动修改考核正文。</small></div><button type="button" id="assessOcrScan">识别当前附件</button></div>
+        <textarea id="assessOcrText" rows="6" maxlength="20000" placeholder="识别结果会显示在这里，也可以手动修改"></textarea>
+        <p id="assessOcrStatus" class="assessment-ocr-status" role="status" aria-live="polite"></p>
+        <div class="assessment-ocr-body-actions">
+          <button type="button" id="assessOcrAppend">追加到考核正文</button>
+          <button type="button" id="assessOcrReplace">替换考核正文</button>
+        </div>
+        <button type="button" id="assessOcrToChartReference" class="assessment-reference-button">把附件识别内容传入图表的 AI 提取来源</button>
+      </section>
+      <p id="assessChartTransferStatus" class="assessment-reference-status" role="status" aria-live="polite"></p>
+      <p id="assessError" class="mistake-inline-error" role="alert"></p>
       <div class="modal-actions">
         <button class="btn-cancel" onclick="closeAssessmentModal()">取消</button>
         <button class="btn-confirm" onclick="addAssessment()">确定</button>
       </div>
     </div>
   </div>
+
+  <!-- 考核构成图表：查看状态只读，所有修改在独立编辑器中完成。 -->
+  <dialog id="assessmentChartEditor" class="assessment-chart-editor" aria-labelledby="assessmentChartEditorTitle">
+    <header class="assessment-chart-editor-head">
+      <div><h2 id="assessmentChartEditorTitle">编辑考核构成图</h2><p>手动编辑始终可用；AI 功能需要配置真实 API。</p></div>
+      <button type="button" id="assessmentChartClose" aria-label="关闭图表编辑器">×</button>
+    </header>
+    <div class="assessment-chart-editor-body">
+      <section class="assessment-chart-fields" aria-label="图表数据">
+        <label class="assessment-chart-title-field">图表标题<input id="assessmentChartTitle" maxlength="120" placeholder="如：期末总评构成" /></label>
+        <div class="assessment-chart-rows-head"><h3>考核部分</h3><button type="button" id="assessmentChartAddRow">＋ 添加部分</button></div>
+        <div id="assessmentChartRows"></div>
+        <p id="assessmentChartSum" class="assessment-chart-sum" role="status" aria-live="polite"></p>
+
+        <details class="assessment-chart-source">
+          <summary>AI 提取与考核正文</summary>
+          <p class="ai-help">AI 只读取下方文字或已上传附件识别出的文字；不会直接修改正文或保存图表。</p>
+          <label>提取来源文字<textarea id="assessmentChartSource" rows="7" maxlength="20000" placeholder="可粘贴考核正文，或从已上传附件识别"></textarea></label>
+          <label>可选编辑要求<input id="assessmentChartInstruction" maxlength="500" placeholder="如：保留已有占比，只精简内容说明" /></label>
+          <p id="assessmentChartAiState" class="ai-help"></p>
+          <div class="assessment-chart-ai-actions">
+            <button type="button" id="assessmentChartAiBody">AI 从以上文字提取</button>
+            <button type="button" id="assessmentChartAiFile">AI 读取附件并生成</button>
+            <button type="button" id="assessmentChartAiEdit">AI 整理当前图表</button>
+          </div>
+          <p id="assessmentChartAiStatus" class="assessment-chart-status" role="status" aria-live="polite"></p>
+          <div id="assessmentChartBodyApply" class="assessment-chart-body-apply" hidden>
+            <p>识别文字已填入上方，但不会自动修改考核正文。</p>
+            <button type="button" id="assessmentChartBodyReplace">替换考核正文</button>
+            <button type="button" id="assessmentChartBodyAppend">追加到考核正文</button>
+          </div>
+        </details>
+      </section>
+      <section class="assessment-chart-preview" aria-label="图表预览">
+        <h3 id="assessmentChartPreviewTitle">图表预览</h3>
+        <div class="assessment-chart-visual">
+          <canvas id="assessmentChartEditorCanvas" role="img" aria-label="考核构成饼图预览"></canvas>
+          <div class="assessment-chart-tooltip" role="status" aria-live="polite"></div>
+        </div>
+        <ul id="assessmentChartPreviewDetails" class="assessment-chart-details"></ul>
+      </section>
+    </div>
+    <footer class="assessment-chart-editor-foot">
+      <p id="assessmentChartError" class="mistake-inline-error" role="alert"></p>
+      <div><button type="button" class="btn-cancel" id="assessmentChartCancel">取消</button><button type="button" class="btn-confirm" id="assessmentChartSave">保存图表</button></div>
+    </footer>
+  </dialog>
 
   <!-- 手动输入弹窗（资料 / 笔记 / 错题共用，标题和提示词按类型变） -->
   <div class="modal-mask" id="manualModal">
@@ -1146,6 +1206,8 @@
   <!-- 基础设施 -->
   <!-- 第三方：canvas-confetti（已本地化，断网可用；MIT，见 vendor/canvas-confetti/LICENSE） -->
   <script src="vendor/canvas-confetti/confetti.browser.js"></script>
+  <!-- 第三方：Chart.js 4.4.9（已本地化，MIT，见 vendor/chartjs/LICENSE.md） -->
+  <script src="vendor/chartjs/chart.umd.js"></script>
   <script src="js/config.js"></script>
   <script src="js/state.js"></script>
   <script src="js/utils.js?v=20261024-merged-attachment-review-31"></script>
@@ -1164,6 +1226,7 @@
   <script src="js/materials.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/notes.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/assessments.js?v=20261024-merged-attachment-review-31"></script>
+  <script src="js/assessmentCharts.js?v=20261024-assessment-chart-1"></script>
   <script src="js/ocrBrowser.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/outlineMap.js?v=20261024-outline-draft-37"></script>
   <script src="js/officeText.js?v=20261024-legacy-office-text-41"></script>

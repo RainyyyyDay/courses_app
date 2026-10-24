@@ -630,20 +630,38 @@ function validAssessmentDate(value) {
   const stamp=Date.parse(value+'T00:00:00Z');
   return Number.isFinite(stamp)&&new Date(stamp).toISOString().slice(0,10)===value;
 }
-app.put('/api/courses/:courseId/assessments/:id', (req,res)=>{
-  const body=req.body,courseId=Number(req.params.courseId),id=Number(req.params.id);
-  if(!Number.isSafeInteger(courseId)||courseId<1||!Number.isSafeInteger(id)||id<1||!body||Array.isArray(body)||typeof body!=='object'||!Object.keys(body).length||Object.keys(body).some(k=>!['title','deadline','requirement','completed'].includes(k)))return res.status(400).json({message:'考核参数无效'});
-  if(body.title!==undefined&&(typeof body.title!=='string'||!body.title.trim()||body.title.trim().length>200)||body.deadline!==undefined&&!validAssessmentDate(body.deadline)||body.requirement!==undefined&&(typeof body.requirement!=='string'||body.requirement.length>4000)||body.completed!==undefined&&typeof body.completed!=='boolean')return res.status(400).json({message:'请检查考核名称、日期或完成状态'});
-  const row=db.updateAssessment(courseId,id,{...body,...(body.title!==undefined?{title:body.title.trim()}:{})});
-  if(!row)return res.status(404).json({message:'考核不存在或不属于当前课程'});
-  res.json(row);
+app.put('/api/courses/:courseId/assessments/:id', upload.single('file'), (req,res)=>{
+  const body=req.body||{},courseId=Number(req.params.courseId),id=Number(req.params.id);
+  const discardNewFile=()=>{if(req.file?.path)try{fs.rmSync(req.file.path,{force:true});}catch{}};
+  if(!Number.isSafeInteger(courseId)||courseId<1||!Number.isSafeInteger(id)||id<1||!body||Array.isArray(body)||typeof body!=='object'||!Object.keys(body).length||Object.keys(body).some(k=>!['title','deadline','requirement','completed','removeFile'].includes(k))){discardNewFile();return res.status(400).json({message:'考核参数无效'});}
+  const multipart=req.is('multipart/form-data');
+  const completed=multipart&&body.completed==='true'?true:multipart&&body.completed==='false'?false:body.completed;
+  const removeFile=body.removeFile===true||multipart&&body.removeFile==='true';
+  if(body.title!==undefined&&(typeof body.title!=='string'||!body.title.trim()||body.title.trim().length>200)||body.deadline!==undefined&&!validAssessmentDate(body.deadline)||body.requirement!==undefined&&(typeof body.requirement!=='string'||body.requirement.length>20000)||body.completed!==undefined&&typeof completed!=='boolean'||body.removeFile!==undefined&&![true,false,'true','false'].includes(body.removeFile)){discardNewFile();return res.status(400).json({message:'请检查考核名称、日期、附件或完成状态'});}
+  try{
+    const old=db.getAssessment(courseId,id);
+    if(!old){discardNewFile();return res.status(404).json({message:'考核不存在或不属于当前课程'});}
+    const changes={...body,...(body.title!==undefined?{title:body.title.trim()}:{})};
+    delete changes.removeFile;
+    if(body.completed!==undefined)changes.completed=completed;
+    if(req.file){changes.fileUrl='/uploads/'+req.file.filename;changes.fileType=req.file.mimetype;}
+    else if(removeFile){changes.fileUrl='';changes.fileType='';}
+    const row=db.updateAssessment(courseId,id,changes);
+    if(old.file_url&&old.file_url!==row.file_url)removeUpload(old.file_url);
+    res.json(row);
+  }catch(err){
+    discardNewFile();
+    if(!err.status)console.error('更新考核失败',err);
+    return res.status(err.status||500).json({code:err.code||'INTERNAL_ERROR',message:err.status?err.message:'更新考核失败，请重试'});
+  }
 });
 
 app.post('/api/courses/:id/assessments', upload.single('file'), (req, res) => {
   const body = req.body || {};
+  const discardNewFile=()=>{if(req.file?.path)try{fs.rmSync(req.file.path,{force:true});}catch{}};
   const title = typeof body.title === 'string' ? body.title.trim() : '';
-  if (!title) return res.status(400).json({ message: '考核名不能为空' });
-  if(title.length>200||!validAssessmentDate(body.deadline||'')||typeof (body.requirement||'')!=='string'||(body.requirement||'').length>4000)return res.status(400).json({message:'请检查考核名称、日期和要求长度'});
+  if (!title){discardNewFile();return res.status(400).json({ message: '考核名不能为空' });}
+  if(title.length>200||!validAssessmentDate(body.deadline||'')||typeof (body.requirement||'')!=='string'||(body.requirement||'').length>20000){discardNewFile();return res.status(400).json({message:'请检查考核名称、日期和要求长度'});}
 
   const newItem = db.createAssessment(
     Number(req.params.id),
@@ -656,8 +674,41 @@ app.post('/api/courses/:id/assessments', upload.single('file'), (req, res) => {
   res.status(201).json(newItem);
 });
 
+app.delete('/api/courses/:courseId/assessments/:id/file',(req,res)=>{
+  const courseId=Number(req.params.courseId),id=Number(req.params.id);
+  if(!Number.isSafeInteger(courseId)||courseId<1||!Number.isSafeInteger(id)||id<1)return res.status(400).json({message:'课程或考核编号无效'});
+  const old=db.getAssessment(courseId,id);
+  if(!old)return res.status(404).json({message:'考核不存在或不属于当前课程'});
+  if(old.file_url)removeUpload(old.file_url);
+  res.json(db.updateAssessment(courseId,id,{fileUrl:'',fileType:''}));
+});
+
+app.get('/api/courses/:courseId/assessments/:id/chart', (req, res, next) => {
+  const courseId=Number(req.params.courseId),id=Number(req.params.id);
+  if(!Number.isSafeInteger(courseId)||courseId<1||!Number.isSafeInteger(id)||id<1)
+    return res.status(400).json({message:'课程或考核编号无效'});
+  try { res.json(db.getAssessmentChart(courseId,id)); }
+  catch (err) {
+    if(!err.status)console.error('读取考核图表失败',err);
+    res.status(err.status||500).json({code:err.code||'INTERNAL_ERROR',message:err.status?err.message:'读取考核图表失败，请重试'});
+  }
+});
+
+app.put('/api/courses/:courseId/assessments/:id/chart', (req, res, next) => {
+  const courseId=Number(req.params.courseId),id=Number(req.params.id);
+  if(!Number.isSafeInteger(courseId)||courseId<1||!Number.isSafeInteger(id)||id<1)
+    return res.status(400).json({message:'课程或考核编号无效'});
+  try { res.json(db.saveAssessmentChart(courseId,id,req.body)); }
+  catch (err) {
+    if(!err.status)console.error('保存考核图表失败',err);
+    res.status(err.status||500).json({code:err.code||'INTERNAL_ERROR',message:err.status?err.message:'保存考核图表失败，请重试'});
+  }
+});
+
 app.delete('/api/assessments/:id', (req, res) => {
-  db.deleteAssessment(Number(req.params.id));
+  const id=Number(req.params.id),row=Number.isSafeInteger(id)?db.getAssessmentByAnyCourse(id):null;
+  if(row?.file_url)removeUpload(row.file_url);
+  db.deleteAssessment(id);
   res.json({ success: true });
 });
 

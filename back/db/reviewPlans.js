@@ -1,6 +1,6 @@
 const {db} = require('./connection');
 const {planError,dateNumber,planDates,schedulePlan,planToday} = require('./reviewPlanSchedule');
-const {getPlanScheduleStats} = require('./reviewItems');
+const {getReviewPlanSchedule} = require('./reviewItems');
 const PLAN_SOURCES = {material:'materials',note:'notes',mistake:'mistakes'};
 
 // 迁移夹具会在 v12 旧表上建计划；旧表还没有选择题列时退回原来的答案条件。
@@ -31,6 +31,22 @@ function planCounts(items) {
   count.completionRate = count.total ? Math.round(count.completed/count.total*100) : 0;
   return count;
 }
+function scheduleCounts(days) {
+  const count={total:0,completed:0,pending:0,skipped:0,passed:0,failed:0};
+  for(const day of days||[]) for(const item of day.items||[]){
+    if(item.sourceDeleted)continue;
+    count.total++;
+    if(item.status==='completed'){
+      count.completed++;
+      if(item.result==='passed'&&!item.exposureOnly)count.passed++;
+      else if(item.result==='failed')count.failed++;
+      else count.pending++;
+    }else if(item.status==='skipped')count.skipped++;
+    else count.pending++;
+  }
+  count.completionRate=count.total?Math.round(count.passed/count.total*100):0;
+  return count;
+}
 function listPlanItems(courseId,planId,filters={}) {
   scopedPlan(courseId,planId);
   const where = ['i.plan_id = ?','i.source_deleted = 0'], args = [planId];
@@ -50,7 +66,11 @@ function planSummary(plan, detailed=false) {
   const result = {...plan,...planCounts(items),today,remainingDays:Math.max(0,dateNumber(plan.exam_date)-dateNumber(today)),
     todayStats:planCounts(items.filter(item=>item.scheduled_date===today))};
   // 进度以完整排期为准（含后续多轮），与计划详情里的日历保持一致。
-  try { result.scheduleStats = getPlanScheduleStats(plan.course_id, plan.id); } catch { result.scheduleStats = null; }
+  let schedule=null;
+  try { schedule=getReviewPlanSchedule(plan.course_id,plan.id); result.scheduleStats=scheduleCounts(schedule.days); }
+  catch { result.scheduleStats = null; }
+  const todayDay=schedule?.days.find(day=>day.date===today);
+  if(todayDay)result.todayStats=scheduleCounts([todayDay]);
   const sched = result.scheduleStats;
   const pending = sched && sched.total ? sched.pending : result.pending;
   result.reviewState = pending===0 ? 'completed' : plan.exam_date<=today ? 'expired' : 'active';

@@ -1196,7 +1196,7 @@ body.mistake-review-open { overflow: hidden; }
 .plan-calendar-mark.is-overdue-mark { color: #d64545; font-weight: 700; }
 .plan-calendar-mark.is-today-mark { color: #4a6cf7; font-size: 13px; animation: plan-pointer-bounce 1.1s ease-in-out infinite; }
 .plan-calendar-mark.is-exam-mark { color: #b7791f; font-weight: 700; }
-.plan-calendar-count { display: block; margin-top: 8px; color: #5b6a8a; }
+.plan-calendar-count { position: absolute; left: 6px; bottom: 5px; color: #5b6a8a; line-height: 1; }
 .plan-calendar-cell.is-empty .plan-calendar-count { display: none; }
 .plan-calendar-legend { margin: 10px 0 0; color: #8a93a5; font-size: 12px; line-height: 1.8; }
 .plan-calendar-legend .is-today-mark { color: #4a6cf7; }
@@ -1228,7 +1228,7 @@ body.mistake-review-open { overflow: hidden; }
 .plan-day-early { color: #5b6a8a; font-size: 13px; margin: 4px 0 8px; background: #f3f6ff; border-radius: 6px; padding: 8px 10px; }
 @media(max-width:540px) {
   .plan-calendar-cell { min-height: 46px; padding: 4px; }
-  .plan-calendar-count { margin-top: 6px; font-size: 11px; }
+  .plan-calendar-count { left: 4px; bottom: 4px; font-size: 10px; }
 }
 
 /* 复习完成弹窗：正确率 100% 时整页飘一层彩带，彩带在弹窗卡片后面，不挡内容。 */
@@ -2490,7 +2490,7 @@ dialog > .ai-request-progress-dialog { margin:12px 18px; }
 
 /* Assessment deadlines and explicit completion. */
 .assessment-sort-hint { color:#8a93a5; font-size:12px; margin:14px 0 10px; }
-.assessment-card { gap:18px; padding:20px; align-items:center; }
+.assessment-card { gap:18px; padding:20px; align-items:flex-start; }
 .assessment-card-head { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:7px; }
 .assessment-card-head h3 { font-size:16px; color:#29354a; overflow-wrap:anywhere; }
 .assessment-deadline { display:inline-flex; padding:4px 10px; border-radius:20px; font-size:12px; line-height:1.5; }
@@ -2500,7 +2500,7 @@ dialog > .ai-request-progress-dialog { margin:12px 18px; }
 .assessment-neutral { background:#f3f4f8; color:#7d8799; }
 .assessment-completed .assessment-deadline { background:#eaf6ef; color:#377c55; }
 .assessment-completed h3 { color:#788297; }
-.assessment-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; justify-content:flex-end; }
+.assessment-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; justify-content:flex-end; align-self:flex-start; }
 .assessment-actions .detail-link { margin:0; padding:8px; }
 .assessment-actions button { margin:0; background:#f3f4f8; border:1px solid #dce1eb; padding:9px 12px; line-height:1.5; border-radius:9px; }
 .assessment-actions button.ai-primary { background:#4a6cf7; border-color:#4a6cf7; color:#fff; }
@@ -2508,7 +2508,135 @@ dialog > .ai-request-progress-dialog { margin:12px 18px; }
 #assessmentModal label { display:block; color:#667187; font-size:13px; margin-bottom:6px; }
 #assessmentModal .modal { max-height:90dvh; overflow:auto; }
 #assessmentModal .modal-actions { margin-top:14px; }
+.assessment-attachment-editor { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; }
+.assessment-attachment-editor .file-name-tip { flex:1 1 180px; margin:0; }
+.assessment-existing-file { flex-basis:100%; }
+.assessment-file-remove {
+  padding:7px 10px; border:1px solid #e2caca; border-radius:8px; background:#fffafa;
+  color:#a25757; font:inherit; font-size:12px; cursor:pointer;
+}
+.assessment-ocr-box {
+  margin-top:14px; padding:12px; border:1px solid #e1e4e8; border-radius:11px; background:#f8fafb;
+}
+.assessment-ocr-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px; }
+.assessment-ocr-head strong,.assessment-ocr-head small { display:block; }
+.assessment-ocr-head strong { color:#52616e; font-size:13px; }
+.assessment-ocr-head small { margin-top:3px; color:#87929d; font-size:11px; line-height:1.45; }
+.assessment-ocr-head button,.assessment-reference-button {
+  padding:7px 10px; border:1px solid #ced8e5; border-radius:8px; background:#fff;
+  color:#536b86; font:inherit; font-size:12px; cursor:pointer;
+}
+.assessment-ocr-head button:disabled { opacity:.45; cursor:not-allowed; }
+.assessment-ocr-box textarea { background:#fff; }
+.assessment-ocr-status,.assessment-reference-status { min-height:17px; margin:6px 0; color:#7b8792; font-size:11px; line-height:1.5; }
+.assessment-ocr-body-actions { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:7px; }
+.assessment-ocr-body-actions button { padding:7px 10px; border:1px solid #d8dde3; border-radius:8px; background:#fff; color:#60707c; font:inherit; font-size:12px; cursor:pointer; }
+.assessment-ocr-box .assessment-reference-button { margin-top:1px; }
+#assessBodyToChartReference { margin:-2px 0 12px; }
 @media(max-width:600px){.assessment-card{flex-direction:column;align-items:stretch;padding:16px;gap:12px}.assessment-actions{justify-content:flex-start}.assessment-actions button{flex:1 1 auto}.assessment-actions .detail-link{width:100%;padding-left:0}}
+
+/* Editable assessment-composition chart. The rendered chart is read-only;
+   all changes happen in the dedicated editor dialog. */
+.assessment-chart-card {
+  width:min(100%,560px); margin-top:16px; padding:16px; border:1px solid #e4e1dc;
+  border-radius:14px; background:linear-gradient(145deg,#fffdfa,#f7f5f1);
+}
+.assessment-chart-card>header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.assessment-chart-card h4 { margin:0; color:#3d484b; font-size:15px; overflow-wrap:anywhere; }
+.assessment-chart-card header p { margin:4px 0 0; color:#858780; font-size:12px; }
+.assessment-chart-card header button,.assessment-chart-empty button {
+  flex:0 0 auto; padding:7px 11px; border:1px solid #d8d4cc; border-radius:8px;
+  background:#fff; color:#596765; font:inherit; font-size:12px; cursor:pointer;
+}
+.assessment-chart-visual { position:relative; height:260px; margin-top:10px; overflow:hidden; }
+.assessment-chart-visual canvas { width:100%!important; height:100%!important; }
+.assessment-chart-tooltip {
+  position:absolute; z-index:4; width:196px; padding:11px 12px; border:1px solid #ddd8cf;
+  border-radius:10px; background:rgba(255,253,250,.97); box-shadow:0 8px 24px rgba(62,68,67,.16);
+  color:#4a5554; opacity:0; transform:translateY(4px); transition:opacity .12s ease,transform .12s ease;
+  pointer-events:none; font-size:12px; line-height:1.45;
+}
+.assessment-chart-tooltip strong { display:block; color:#354240; font-size:13px; }
+.assessment-chart-tooltip span { display:block; margin-top:2px; color:#74817d; font-weight:700; }
+.assessment-chart-tooltip p { margin:7px 0 0; color:#626d69; overflow-wrap:anywhere; }
+.assessment-chart-details { display:grid; gap:7px; margin:5px 0 0; padding:0; list-style:none; }
+.assessment-chart-details li { display:grid; grid-template-columns:10px minmax(0,1fr) auto; align-items:start; gap:9px; padding:5px 0; color:#596461; font-size:12px; }
+.assessment-chart-swatch { width:9px; height:9px; margin-top:4px; border-radius:50%; background:var(--chart-color,#9aa89d); }
+.assessment-chart-details small { display:block; margin-top:2px; color:#858d89; font-size:11px; line-height:1.45; overflow-wrap:anywhere; }
+.assessment-chart-details b { color:#4e5b58; font-size:12px; }
+.assessment-chart-details .assessment-chart-no-data { display:block; color:#99978f; }
+.assessment-chart-empty {
+  display:flex; align-items:center; justify-content:space-between; gap:12px; width:min(100%,560px);
+  margin-top:14px; padding:11px 13px; border:1px dashed #d9d5cd; border-radius:10px;
+  background:#faf9f6; color:#858b88; font-size:12px;
+}
+
+dialog.assessment-chart-editor {
+  width:min(1120px,calc(100vw - 28px)); max-width:1120px; max-height:94dvh; padding:0;
+  border:1px solid #ddd9d1; border-radius:18px; background:#fbfaf7; color:#465251;
+  box-shadow:0 24px 80px rgba(45,51,49,.25); overflow:hidden;
+}
+.assessment-chart-editor::backdrop { background:rgba(38,45,43,.42); backdrop-filter:blur(2px); }
+.assessment-chart-editor-head { display:flex; justify-content:space-between; gap:16px; padding:18px 22px; border-bottom:1px solid #e5e1d9; background:#fffdfa; }
+.assessment-chart-editor-head h2 { margin:0; font-size:18px; color:#374442; }
+.assessment-chart-editor-head p { margin:5px 0 0; color:#818a87; font-size:12px; }
+.assessment-chart-editor-head>button { border:0; background:transparent; color:#77817e; font-size:24px; cursor:pointer; }
+.assessment-chart-editor-body { display:grid; grid-template-columns:minmax(0,1.08fr) minmax(320px,.92fr); gap:22px; padding:20px 22px; max-height:calc(94dvh - 146px); overflow:auto; }
+.assessment-chart-fields h3,.assessment-chart-preview h3 { margin:0; color:#4c5956; font-size:14px; }
+.assessment-chart-title-field,.assessment-chart-source>label { display:grid; gap:6px; color:#6f7976; font-size:12px; }
+.assessment-chart-title-field input,.assessment-chart-row input,.assessment-chart-row textarea,.assessment-chart-source input,.assessment-chart-source textarea {
+  width:100%; padding:9px 10px; border:1px solid #d9d6ce; border-radius:8px; background:#fff;
+  color:#3f4b49; font:inherit; font-size:13px; box-sizing:border-box;
+}
+.assessment-chart-row textarea,.assessment-chart-source textarea { resize:vertical; line-height:1.55; }
+.assessment-chart-rows-head { display:flex; align-items:center; justify-content:space-between; margin:18px 0 8px; }
+.assessment-chart-rows-head button,.assessment-chart-ai-actions button,.assessment-chart-body-apply button {
+  padding:7px 10px; border:1px solid #d9d5cd; border-radius:8px; background:#fff; color:#596663;
+  font:inherit; font-size:12px; cursor:pointer;
+}
+.assessment-chart-rows-head button:hover,.assessment-chart-ai-actions button:hover:not(:disabled),.assessment-chart-body-apply button:hover { border-color:#aab6af; background:#f8faf8; }
+.assessment-chart-ai-actions button:disabled { opacity:.45; cursor:not-allowed; }
+.assessment-chart-row {
+  display:grid; grid-template-columns:minmax(140px,1fr) 110px 52px auto; gap:8px 10px;
+  padding:12px; margin-bottom:9px; border:1px solid #e3dfd7; border-radius:11px; background:#fffdfa;
+}
+.assessment-chart-row label { display:grid; gap:5px; color:#7b817e; font-size:11px; }
+.assessment-chart-detail-field { grid-column:1 / span 3; }
+.assessment-chart-color-field input { height:34px; padding:3px; }
+.assessment-chart-remove {
+  align-self:end; height:34px; padding:0 8px; border:0; border-radius:7px;
+  background:transparent; color:#a86666; font:inherit; font-size:11px; cursor:pointer;
+}
+.assessment-chart-remove:disabled { opacity:.3; cursor:not-allowed; }
+.assessment-chart-sum { margin:8px 0 16px; padding:8px 10px; border-radius:8px; background:#f2f4ef; color:#64736b; font-size:12px; }
+.assessment-chart-sum.is-over { background:#fff0ef; color:#ad5151; }
+.assessment-chart-source { margin-top:14px; padding-top:12px; border-top:1px solid #e7e3dc; }
+.assessment-chart-source summary { color:#53615e; font-size:13px; font-weight:600; cursor:pointer; }
+.assessment-chart-source>label { margin-top:11px; }
+.assessment-chart-ai-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:9px; }
+.assessment-chart-ai-actions button { background:#f6f7f4; }
+.assessment-chart-status { min-height:18px; color:#707b77; font-size:12px; line-height:1.5; }
+.assessment-chart-body-apply { margin-top:10px; padding:9px 10px; border:1px solid #e4ded2; border-radius:9px; background:#fbf7ee; }
+.assessment-chart-body-apply p { margin:0 0 7px; color:#786f5d; font-size:12px; }
+.assessment-chart-preview { min-width:0; }
+.assessment-chart-preview .assessment-chart-visual { height:min(42vh,370px); border:1px solid #e5e1da; border-radius:12px; background:#fffdfa; }
+.assessment-chart-preview .assessment-chart-details { margin-top:12px; }
+.assessment-chart-editor-foot { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:13px 22px; border-top:1px solid #e2ded6; background:#fffdfa; }
+.assessment-chart-editor-foot .mistake-inline-error { margin:0; flex:1; }
+.assessment-chart-editor-foot>div { display:flex; gap:8px; flex:0 0 auto; }
+.assessment-chart-editor-foot button { padding:8px 16px; }
+@media(max-width:780px){
+  .assessment-chart-editor-body { grid-template-columns:1fr; padding:16px; }
+  .assessment-chart-preview { order:-1; }
+  .assessment-chart-preview .assessment-chart-visual { height:280px; }
+  .assessment-chart-row { grid-template-columns:minmax(120px,1fr) 90px 46px; }
+  .assessment-chart-row .assessment-chart-remove { grid-column:1 / -1; justify-self:end; height:auto; padding:5px; }
+  .assessment-chart-detail-field { grid-column:1 / -1; }
+  .assessment-chart-editor-head,.assessment-chart-editor-foot { padding:14px 16px; }
+  .assessment-chart-editor-foot { align-items:stretch; flex-direction:column; }
+  .assessment-chart-editor-foot>div,.assessment-chart-editor-foot button { flex:1; }
+  .assessment-chart-visual { height:245px; }
+}
 
 /* Compact AI setup: controls first, low-frequency details collapsed. */
 #coursesAiDialog { width:min(580px,calc(100vw - 24px)); }

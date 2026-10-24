@@ -67,6 +67,7 @@ const coursesAiSettings = (() => {
     if(typeof updateResourceAiSource==='function')updateResourceAiSource();
     if(typeof refreshMindmapAiAvailability==='function')refreshMindmapAiAvailability();
     if(typeof refreshPickerOutlineAvailability==='function')refreshPickerOutlineAvailability();
+    if(typeof refreshAssessmentChartAiAvailability==='function')refreshAssessmentChartAiAvailability();
     for(const prefix of ['mistakeAi','mistakeCreateAi','mistakeCreateAnswerAi','mistakeEditAnswerAi']){
       const option=document.getElementById(prefix+'Provider')?.querySelector('option[value="shared"]');if(option)option.textContent=label();
     }

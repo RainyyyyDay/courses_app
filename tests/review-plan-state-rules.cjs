@@ -27,6 +27,26 @@ test('plan day completion and new-schedule flags follow only successful planned 
     assert.equal(partialDay.state,'partial','a skipped task prevents the day from being complete');
     assert.equal(partial.hasNewSchedule,false,'an unfinished current day does not request a replacement schedule immediately');
 
+    const split=await api('POST',c+'/review-plans',{
+      name:'分两次完成当天',startDate:today,examDate:addDays(today,1),
+      selectedItems:[{type:'material',id:materialA.id},{type:'material',id:materialB.id}],
+    },201);
+    const splitItems=await api('GET',c+'/review-plans/'+split.id+'/items');
+    for(const [index,item] of splitItems.entries()){
+      const splitSession=await api('POST',c+'/review-sessions',{
+        requestId:'split-day-'+index,sourceType:'plan',sourceId:split.id,scheduledDate:today,
+        selectedItems:[{type:item.item_type,id:item.item_id}],
+      },201);
+      await api('PATCH',c+'/materials/'+item.item_id+'/review?sessionItemId='+splitSession.items[0].id+'&planItemId='+item.id,{recall:'clear'});
+    }
+    const splitDay=(await api('GET',c+'/review-plans/'+split.id+'/schedule')).days.find(day=>day.date===today);
+    assert.equal(splitDay.state,'done','successful attempts are aggregated across all sessions for the day');
+    assert.equal(splitDay.items.filter(item=>item.status==='completed'&&item.result==='passed').length,2);
+    const splitSummary=await api('GET',c+'/review-plans/'+split.id);
+    assert.equal(splitSummary.todayStats.total,2);
+    assert.equal(splitSummary.todayStats.passed,2);
+    assert.equal(splitSummary.todayStats.pending,0);
+
     const missed=await api('POST',c+'/review-plans',{
       name:'昨天未完成',startDate:addDays(today,-1),examDate:addDays(today,1),
       selectedItems:[{type:'material',id:materialA.id}],
@@ -41,14 +61,22 @@ test('plan day completion and new-schedule flags follow only successful planned 
       selectedItems:[{type:'material',id:materialA.id},{type:'material',id:materialB.id}],
     },201);
     const earlyItems=await api('GET',c+'/review-plans/'+early.id+'/items');
+    const todayTask=earlyItems.find(item=>item.scheduled_date===today);
+    assert.ok(todayTask,'early plan has a task today');
+    await api('PATCH',c+'/materials/'+todayTask.item_id+'/review?planItemId='+todayTask.id,{reviewStatus:'reviewed'});
     const futureTask=earlyItems.find(item=>item.scheduled_date>today);
     assert.ok(futureTask,'early plan has a future task');
     await api('PATCH',c+'/materials/'+futureTask.item_id+'/review?planItemId='+futureTask.id,{reviewStatus:'reviewed'});
-    assert.equal((await api('GET',c+'/review-plans/'+early.id+'/schedule')).hasNewSchedule,true,'even one future task completed early requests a new schedule');
+    const beforeApply=await api('GET',c+'/review-plans/'+early.id+'/schedule');
+    assert.equal(beforeApply.hasNewSchedule,true,'even one future task completed early requests a new schedule');
+    assert.ok(beforeApply.days.find(day=>day.date===today)?.items.some(item=>item.status==='completed'&&item.result==='passed'),'the old schedule keeps today’s success until the user applies');
     await api('POST',c+'/review-plans/'+early.id+'/schedule/apply',undefined,200);
     const appliedEarly=await api('GET',c+'/review-plans/'+early.id+'/schedule');
-    const preserved=appliedEarly.days.flatMap(day=>day.items).find(item=>item.type==='material'&&item.id===futureTask.item_id&&item.status==='completed'&&item.result==='passed');
-    assert.ok(preserved,'applying a new schedule never erases an already completed attempt');
+    const inherited=appliedEarly.days.filter(day=>day.date>=today).flatMap(day=>day.items)
+      .find(item=>item.status==='completed'&&item.result==='passed');
+    assert.equal(inherited,undefined,'a new schedule never inherits old success into current/future cells');
+    const historyTask=(await api('GET',c+'/review-plans/'+early.id+'/items')).find(item=>item.id===futureTask.id);
+    assert.equal(historyTask.status,'completed','applying a new schedule preserves the completed task record');
 
     const deletedPlan=await api('POST',c+'/review-plans',{
       name:'未来任务被删除',startDate:today,examDate:addDays(today,5),
@@ -57,6 +85,8 @@ test('plan day completion and new-schedule flags follow only successful planned 
     await api('DELETE','/notes/'+note.id);
     assert.equal((await api('GET',c+'/review-plans/'+deletedPlan.id+'/schedule')).hasNewSchedule,true,'deleting a today/future task requests a new schedule');
     await api('POST',c+'/review-plans/'+deletedPlan.id+'/schedule/apply',undefined,200);
-    assert.equal((await api('GET',c+'/review-plans/'+deletedPlan.id+'/schedule')).hasNewSchedule,false,'applying a deletion reschedules once');
+    const afterDeletion=await api('GET',c+'/review-plans/'+deletedPlan.id+'/schedule');
+    assert.equal(afterDeletion.hasNewSchedule,false,'applying a deletion reschedules once');
+    assert.equal(afterDeletion.days.length,0,'an applied empty schedule leaves every upcoming date without a task');
   });
 });

@@ -24,8 +24,8 @@ async function service(t,fetchImpl){
 }
 test('all supported AI routes forward only to fixed local service',async t=>{
  let hits=0;const request=await service(t,async(url,init)=>{hits++;assert.match(url,/^http:\/\/127\.0\.0\.1:3002\/api\/ai\//);assert.equal(init.redirect,'error');assert.equal(init.headers.Origin,'http://127.0.0.1:3002');assert.equal(JSON.parse(init.body).api_key,'synthetic-only');return new Response(JSON.stringify({ok:true,provider:'compatible'}));});
- for(const path of ['/test','/classify','/answer-draft','/review-suggestion','/review-mode-advice','/material-draft','/review-feedback']){const r=await request(path);assert.equal(r.status,200);assert.equal(r.headers.get('cache-control'),'no-store');}
- assert.equal(hits,7);assert.equal((await request('/other')).status,404);
+ for(const path of ['/test','/classify','/answer-draft','/review-suggestion','/review-mode-advice','/material-draft','/review-feedback','/assessment-chart']){const r=await request(path);assert.equal(r.status,200);assert.equal(r.headers.get('cache-control'),'no-store');}
+ assert.equal(hits,8);assert.equal((await request('/other')).status,404);
 });
 test('foreign origin, host and forwarded requests never reach AI',async t=>{
  let hits=0;const request=await service(t,async()=>{hits++;throw Error('no call');});

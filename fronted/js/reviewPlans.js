@@ -62,6 +62,7 @@ function planCalendarHtml() {
     const info = c.dayMap.get(date);
     const dayItems = planDayItems(info);
     const count = dayItems.length;
+    const passed = dayItems.filter(item => item.status === 'completed' && item.result === 'passed').length;
     const minutes = dayItems.reduce((sum, item) => sum + (Number(item.minutes) || 0), 0);
     const overdue = !!info && date < today && info.state !== 'done';
     const classes = ['plan-calendar-cell'];
@@ -75,11 +76,11 @@ function planCalendarHtml() {
       : info && info.state === 'done' ? '<span class="plan-calendar-mark is-check">✓</span>'
         : overdue ? '<span class="plan-calendar-mark is-overdue-mark">!</span>'
           : info && date === today ? '<span class="plan-calendar-mark is-today-mark">▼</span>' : '';
-    const title = info ? `${date} · ${count} 项 · 约 ${minutes} 分钟`
+    const title = info ? `${date} · 成功复习 ${passed}/${count} 项 · 约 ${minutes} 分钟`
       : date === c.examDate ? `${date} · 考试日`
         : date === today ? `${date} · 今天没有安排` : '';
     if (info) {
-      cells.push(`<button type="button" class="${classes.join(' ')}" data-plan-date="${date}" ${title ? `title="${escapeHtml(title)}"` : ''}><span class="plan-calendar-day">${day}</span>${mark}<span class="plan-calendar-count">${count} 项</span></button>`);
+      cells.push(`<button type="button" class="${classes.join(' ')}" data-plan-date="${date}" ${title ? `title="${escapeHtml(title)}"` : ''}><span class="plan-calendar-day">${day}</span>${mark}<span class="plan-calendar-count">${passed}/${count}项</span></button>`);
     } else {
       cells.push(`<div class="${classes.join(' ')}" ${title ? `title="${escapeHtml(title)}"` : ''}><span class="plan-calendar-day">${day}</span>${mark}</div>`);
     }
@@ -462,6 +463,14 @@ async function deleteCurrentReviewPlan() {
 async function startReviewPlanDay(planId,date,type = null, restoring = false, selectedItems = null) {
   if (planReviewStarting || mistakeReviewBusy || activeReadingReview.busy || mistakeQueueLoading) return;
   if(type==='mixed')type=null;
+  if(!selectedItems && !type && reviewPlanDetail?.courseId===currentCourseId && reviewPlanDetail.plan?.id===planId){
+    const day=reviewPlanDetail.schedule?.days?.find(item=>item.date===date);
+    if(day){
+      selectedItems=planDayItems(day).filter(item=>!item.sourceDeleted)
+        .map(item=>({type:item.type,id:item.id}));
+      if(!selectedItems.length)selectedItems=null;
+    }
+  }
   const unified=type===null;
   const courseId = currentCourseId; planReviewStarting = true;
   try {

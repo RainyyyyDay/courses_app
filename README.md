@@ -13,7 +13,7 @@
 - 课程复习中心：多计划轮播、最近／全部复习记录、继续与再次复习，以及课程内资料／笔记／错题总复习。会话保存固定范围和进度，详见 [复习中心与会话 API](docs/review-center.md)。
 - 上传/编辑资料、笔记和错题时可手动选择复习方式，或让 AI 自动读取正文与附件 OCR 后建议；未选择且未采用建议时固定使用标准复习。成功判定与兼容规则见 [复习方式与成功判定](docs/review-mode-selection-and-success.md)。
 - 图片与 PDF 附件预览；PDF、Word（.docx）、PPT（.pptx）文字提取并校对后填入正文，详见 [Word/PPT 文字提取](docs/office-text.md)。
-- 考核名称、截止时间、要求和附件管理。
+- 考核名称、截止时间、要求和附件管理；可保存可编辑的考核构成饼图，支持手动占比、未知比例、悬停详情和可选 AI 提取，详见 [考核构成饼图](docs/assessment-grade-chart.md)。
 - 分类与知识点的创建、改名、删除、排序和移动。
 - 父级分类汇总子节点关联的资源，“未分类”收纳没有标签的资源。
 - 恢复有效期内上次打开的课程及标签页。
@@ -22,7 +22,7 @@
 
 | 部分 | 技术 |
 | --- | --- |
-| 前端 | 原生 HTML、CSS、JavaScript |
+| 前端 | 原生 HTML、CSS、JavaScript；Chart.js 4.4.9 本地化 |
 | HTTP 服务 | Node.js、Express |
 | 数据库 | SQLite，使用 Node.js 内置 `node:sqlite` |
 | 文件上传 | Multer |
@@ -78,7 +78,7 @@ npm start --prefix back
 
 后端默认监听 3000 端口。可访问 [课程接口](http://localhost:3000/api/courses) 检查服务状态。
 
-首次启动会创建 `back/data/app.db`，并插入示例课程；已有数据库会自动执行结构迁移。数据库模块当前支持版本 13；v8 新增资料复习状态，v9 新增笔记复习状态，v10 增加独立收藏字段，v11 增加错题答案附件，v12 新增考前计划及任务表，v13 新增复习会话及项目表。升级保留旧内容、附件、标签、计划及复习状态；计划任务和单次会话状态均独立于内容状态。不补造旧历史，旧浏览器队列保留继续入口。收藏接口见 [资料与笔记收藏接口](docs/reading-favorites-api.md)，计划 API 见 [考前复习计划](docs/review-plans-api.md)，会话与总复习见 [复习中心](docs/review-center.md)。
+首次启动会创建 `back/data/app.db`，并插入示例课程；已有数据库会自动执行结构迁移。数据库模块当前支持版本 26；v8 新增资料复习状态，v9 新增笔记复习状态，v10 增加独立收藏字段，v11 增加错题答案附件，v12 新增考前计划及任务表，v13 新增复习会话及项目表，v26 新增考核构成图表。升级保留旧内容、附件、标签、计划及复习状态；计划任务和单次会话状态均独立于内容状态。不补造旧历史，旧浏览器队列保留继续入口。收藏接口见 [资料与笔记收藏接口](docs/reading-favorites-api.md)，计划 API 见 [考前复习计划](docs/review-plans-api.md)，会话与总复习见 [复习中心](docs/review-center.md)，考核图表见 [考核构成饼图](docs/assessment-grade-chart.md)。
 
 ### 前端
 

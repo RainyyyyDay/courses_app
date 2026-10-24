@@ -33,6 +33,7 @@ test('one plan-day queue runs materials, notes then mistakes and updates its pre
         await wait(()=>typeof allcourses!=='undefined'&&allcourses.some(course=>course.id===${ids.courseId}),'courses');
         await openCourse(${ids.courseId},'混合计划日','reviewPlans');
         await openReviewPlan(${plan.id});
+        check(document.querySelector('#reviewPlanCalendar [data-plan-date="${today}"] .plan-calendar-count')?.textContent.trim().startsWith('0/'),'calendar starts at zero successful items');
         openPlanScheduleDay('${today}');
         let card=document.querySelector('#reviewPlanDayBody .review-day-card');
         check(document.querySelectorAll('#reviewPlanDayBody .review-day-card').length===1,'single combined day card');
@@ -78,6 +79,7 @@ test('one plan-day queue runs materials, notes then mistakes and updates its pre
 
         openPlanScheduleDay('${today}');
         card=document.querySelector('#reviewPlanDayBody .review-day-card');
+        check(document.querySelector('#reviewPlanCalendar [data-plan-date="${today}"] .plan-calendar-count')?.textContent.trim()==='3/3项','calendar aggregates every successful item in the day');
         check([...card.querySelectorAll('button')].at(-1).textContent.trim()==='再来一次'&&!card.textContent.includes('继续'),'all-success day offers replay');
         card.querySelector('.plan-day-preview').click();
         await wait(()=>document.getElementById('reviewAnswersPreviewDialog').open&&document.getElementById('reviewAnswersPreviewBody').textContent.includes('成功复习 3 / 3'),'latest aggregate preview');
