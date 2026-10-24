@@ -2537,3 +2537,6 @@ dialog > .ai-request-progress-dialog { margin:12px 18px; }
 .resource-text-dialog button:disabled{opacity:.55;cursor:default}
 .resource-text-dialog [data-text-replace][hidden]{display:none}
 @media(max-width:600px){.resource-text-dialog{max-height:94dvh}.resource-text-dialog header{padding:14px}.resource-text-body{padding:0 14px 14px}.resource-text-dialog footer{padding:12px 14px;gap:8px}.resource-text-heading{flex-wrap:wrap}.resource-text-dialog footer button{padding:10px 14px;font-size:14px}.resource-text-entry{margin:8px 0 8px 12px}}
+
+/* 大纲操作可在窄屏换行，避免挤压卡片标题。 */
+.outline-ai-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

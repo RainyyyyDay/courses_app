@@ -66,6 +66,7 @@ const coursesAiSettings = (() => {
     if(node('DraftOpen')){node('DraftOpen').hidden=!drafts.size;node('DraftOpen').textContent='AI 草稿 · '+drafts.size;}
     if(typeof updateResourceAiSource==='function')updateResourceAiSource();
     if(typeof refreshMindmapAiAvailability==='function')refreshMindmapAiAvailability();
+    if(typeof refreshPickerOutlineAvailability==='function')refreshPickerOutlineAvailability();
     for(const prefix of ['mistakeAi','mistakeCreateAi','mistakeCreateAnswerAi','mistakeEditAnswerAi']){
       const option=document.getElementById(prefix+'Provider')?.querySelector('option[value="shared"]');if(option)option.textContent=label();
     }

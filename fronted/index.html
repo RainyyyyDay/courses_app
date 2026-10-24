@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>课内</title>
-  <link rel="stylesheet" href="style.css?v=20261024-live-deleted-progress-35" />
+  <link rel="stylesheet" href="style.css?v=20261024-ai-outline-34" />
 </head>
 <body>
 
@@ -787,10 +787,14 @@
           <div class="edit-card-head">
             <span class="edit-card-icon">🧭</span>
             <div class="edit-card-titles"><b>重点总结 / 大纲</b><small>一行一条，缩进两格表示下一级；用来生成结构图</small></div>
-            <button type="button" class="edit-mini-btn" id="tagPickerOutlineGen" style="display:none;" onclick="generatePickerOutline()">自动生成</button>
             <button type="button" class="edit-mini-btn" onclick="clearPickerOutline()">清空</button>
           </div>
           <div class="edit-card-body">
+            <div class="outline-ai-actions">
+            <button type="button" class="edit-mini-btn" id="tagPickerOutlineGen" onclick="generatePickerOutline()">AI 一键生成大纲</button>
+            <button type="button" class="edit-mini-btn" onclick="coursesAiSettings.open()">AI 设置</button>
+            </div>
+            <p id="tagPickerOutlineStatus" class="muted" role="status" aria-live="polite">使用共用 AI 设置，根据正文生成；可能计费，生成后可修改。</p>
             <textarea id="tagPickerOutline" rows="6" placeholder="- 第一章&#10;  - 1.1 极限&#10;  - 1.2 连续"></textarea>
           </div>
         </section>
@@ -1134,8 +1138,8 @@
   <script src="js/config.js"></script>
   <script src="js/state.js"></script>
   <script src="js/utils.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/ai.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/aiSettings.js?v=20261024-merged-attachment-review-31"></script>
+  <script src="js/ai.js?v=20261024-outline-draft-37"></script>
+  <script src="js/aiSettings.js?v=20261024-ai-outline-34"></script>
 
   <script src="js/attachmentPreview.js?v=20261024-attachment-preview-24"></script>
 
@@ -1150,13 +1154,13 @@
   <script src="js/notes.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/assessments.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/ocrBrowser.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/outlineMap.js?v=20261024-split-outline-mindmap-33"></script>
+  <script src="js/outlineMap.js?v=20261024-outline-draft-37"></script>
   <script src="js/officeText.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/mistakes.js?v=20261024-merged-attachment-review-31"></script>
 
   <!-- 录入流程：手动输入 + 选标签 -->
   <script src="js/manualEntry.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/tagPicker.js?v=20261024-tree-root-collapse-34"></script>
+  <script src="js/tagPicker.js?v=20261024-outline-draft-37"></script>
   <script src="js/tagPickerView.js?v=20261024-tree-root-collapse-34"></script>
 
   <!-- 详情页 -->

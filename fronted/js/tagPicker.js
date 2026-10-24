@@ -24,6 +24,9 @@ function currentResourceNodes(resourceType, resourceId) {
 
 //   resourceId   = edit 时的资源 id，upload 传 null
 async function openTagPicker(mode, resourceType, resourceId) {
+  cancelPickerOutline();
+  const outlineStatus = document.getElementById('tagPickerOutlineStatus');
+  if (outlineStatus) outlineStatus.textContent = '使用共用 AI 设置，根据正文生成；可能计费，生成后可修改。';
   // 脚本加载顺序可能让这个函数晚到，缺失时跳过即可
   if (typeof cancelMistakeCreateAi === 'function') cancelMistakeCreateAi();
   if(typeof resetPendingCreationCloze==='function')resetPendingCreationCloze('tagPicker');
@@ -124,7 +127,8 @@ async function openTagPicker(mode, resourceType, resourceId) {
   if (outlineBlock) {
     outlineBlock.style.display = isResource && mode !== 'edit' ? 'block' : 'none';
     const gen = document.getElementById('tagPickerOutlineGen');
-    if (gen) gen.style.display = isResource && mode === 'manual' && pendingManual?.content ? 'inline-flex' : 'none';
+    if (gen) gen.style.display = isResource ? 'inline-flex' : 'none';
+    refreshPickerOutlineAvailability();
     const mindmapBlock = document.getElementById('tagPickerMindmapBlock');
     if (mindmapBlock) mindmapBlock.style.display = isResource ? 'block' : 'none';
     renderPickerMindmapSummary();
@@ -274,6 +278,7 @@ function initTagPickerExpanded() {
 
 // 关闭选择器（取消时不会提交任何东西）
 function closeTagPicker() {
+  cancelPickerOutline();
   cancelMistakeCreateAi();
   if(typeof resetPendingCreationCloze==='function')resetPendingCreationCloze('tagPicker');
   if (typeof closeCreationReviewSuggestion === 'function') closeCreationReviewSuggestion();
@@ -581,27 +586,58 @@ function clearPickerResourceContent() {
   updatePickerResourceClear();
 }
 
-// 从手动输入的正文提炼大纲（本地规则，不依赖模型）
-async function generatePickerOutline() {
-  const content = pendingManual?.content || '';
-  if (!content.trim()) { showToast('没有可用于提炼的正文'); return; }
+// AI 只填入当前表单，确认上传或保存后才会写入资料。
+let pickerOutlineRequest = null;
+function refreshPickerOutlineAvailability() {
   const button = document.getElementById('tagPickerOutlineGen');
-  const original = button ? button.textContent : '';
-  if (button) { button.disabled = true; button.textContent = '提炼中…'; }
+  if (!button) return;
+  const ready = typeof mindmapAiReady === 'function' && mindmapAiReady();
+  button.disabled = !!pickerOutlineRequest || !ready;
+  button.textContent = pickerOutlineRequest ? '正在生成大纲…' : 'AI 一键生成大纲';
+  button.setAttribute('aria-busy', String(!!pickerOutlineRequest));
+  button.title = ready ? '使用当前正文生成大纲，可能计费' : '请先在 AI 设置中配置服务、Key 并同意费用';
+}
+function cancelPickerOutline() {
+  if (pickerOutlineRequest) pickerOutlineRequest.controller.abort();
+  pickerOutlineRequest = null;
+  refreshPickerOutlineAvailability();
+}
+async function generatePickerOutline() {
+  if (pickerOutlineRequest || !tagPickerState) return;
+  const status = document.getElementById('tagPickerOutlineStatus');
+  const report = message => { if (status) status.textContent = message; };
+  if (!mindmapAiReady()) { report('请先在 AI 设置中配置服务和 Key，并同意发送正文及可能产生的费用。'); return; }
+  const contentInput = document.getElementById('tagPickerResourceContent');
+  const input = document.getElementById('tagPickerOutline');
+  const content = (contentInput?.value || '').trim();
+  if (!content) { report('请先填写正文；如已识别附件，请先点击“替换正文”或“追加正文”。'); return; }
+  if (content.length > 20000) { report('正文超过 20000 字，请分段整理后生成大纲；本次未发送请求。'); return; }
+  const previous = input.value;
+  if (previous.trim() && !confirm('生成成功后将替换当前大纲，是否继续？')) return;
+  const state = tagPickerState;
+  const request = { controller: new AbortController() };
+  pickerOutlineRequest = request;
+  refreshPickerOutlineAvailability();
+  report('AI 正在生成大纲，请稍候…');
   try {
-    const response = await requestApi(`${API}/ai/outline`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: content }),
-    });
-    const data = await response.json();
-    const input = document.getElementById('tagPickerOutline');
-    if (input) input.value = data.outline || '';
-    showToast('已生成大纲，可继续手动修改');
-  } catch (err) {
-    showToast(err.message);
+    const title = (document.getElementById('tagPickerName')?.value || '').trim().slice(0, 200);
+    const result = await requestAiMindmapOutline(content, title, { signal: request.controller.signal, purpose: 'outline_draft' });
+    if (pickerOutlineRequest !== request || tagPickerState !== state || currentCourseId !== state.courseId) return;
+    if (input.value !== previous || (contentInput.value || '').trim() !== content) {
+      report('正文或大纲已修改，本次结果未填入，以保留你的修改。请重新生成。');
+      return;
+    }
+    input.value = result.outline;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    report('大纲已生成，可继续编辑；点击上传或保存后生效，请先核对内容。');
+    showToast('AI 大纲已生成，尚未保存', 4000, 'success');
+  } catch (error) {
+    if (pickerOutlineRequest === request && tagPickerState === state) report('大纲未生成：' + error.message.replace(/[。；;\s]+$/, '') + '。原大纲已保留。');
   } finally {
-    if (button) { button.disabled = false; button.textContent = original; }
+    if (pickerOutlineRequest === request) {
+      pickerOutlineRequest = null;
+      refreshPickerOutlineAvailability();
+    }
   }
 }
 

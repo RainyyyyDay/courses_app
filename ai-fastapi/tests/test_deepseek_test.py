@@ -112,9 +112,26 @@ class TransientTests(unittest.IsolatedAsyncioTestCase):
                 return httpx.Response(status, text=FAKE, headers={'location': 'https://evil.invalid'})
             with patch.object(MockProvider, 'classify', side_effect=AssertionError('no fallback')):
                 r = await self.request(handler=handler, app=self.app)
-            self.assertEqual(r.json(), {'error': expected})
+            self.assertEqual(r.json(), {'error': expected, 'upstream_status': status})
             self.assertNotIn(FAKE, r.text)
             self.assertEqual(len(hits), 1)
+
+    async def test_connection_failures_report_specific_safe_reasons(self):
+        cases = [
+            (200, {'choices': [{'finish_reason': 'length', 'message': {'content': '{'}}]}, 'AI_OUTPUT_LIMIT'),
+            (200, {'choices': [{'finish_reason': 'stop', 'message': {'content': 'not json'}}]}, 'AI_INVALID_JSON'),
+            (200, {'choices': []}, 'AI_RESPONSE_FORMAT'),
+            (400, {'error': {'code': 'model_not_found', 'message': FAKE}}, 'AI_MODEL_NOT_FOUND'),
+            (403, {'error': {'message': FAKE}}, 'AI_MODEL_PERMISSION'),
+        ]
+        for status, payload, expected in cases:
+            r = await self.request(handler=lambda request: httpx.Response(status, json=payload), app=self.app)
+            self.assertEqual(r.json()['error'], expected, r.text)
+            self.assertNotIn(FAKE, r.text)
+        def disconnected(request):
+            raise httpx.ConnectError(FAKE, request=request)
+        r = await self.request(handler=disconnected, app=self.app)
+        self.assertEqual(r.json(), {'error': 'AI_CONNECTION_FAILED'})
 
     async def test_invalid_model_result_not_success(self):
         r = await self.request(handler=lambda request: response({'wrong': FAKE}), app=self.app)
