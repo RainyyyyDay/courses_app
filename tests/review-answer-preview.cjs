@@ -96,19 +96,25 @@ test('completed no-skip sessions expose a read-only answer preview with fresh da
         const nativeFetch=fetch;
         fetch=(url,options)=>{if(String(url).endsWith('/answers'))answerLoads++;return nativeFetch(url,options);};
         await openReviewCompleteModal(completed);
+        check(![...document.querySelectorAll('#mistakeCompleteModal .modal-actions button')].some(b=>b.textContent==='取消'),'completion uses close icon instead of cancel');
+        const closeButton=document.getElementById('reviewCompleteClose');check(closeButton?.getAttribute('aria-label'),'close icon has accessible label');
         const button=document.getElementById('mistakeCompletePreview');
         check(!button.hidden&&button.textContent.includes('查看作答预览'),'completion modal exposes preview for a no-skip round');
         button.click();
         await wait(()=>document.getElementById('reviewAnswersPreviewDialog').open&&document.getElementById('reviewAnswersPreviewBody').textContent.includes('预览原生错题'),'answer preview loaded');
         const dialog=document.getElementById('reviewAnswersPreviewDialog'),body=document.getElementById('reviewAnswersPreviewBody');
         check(answerLoads===1,'preview loads latest server data on open');
+        check(!body.querySelector('details[open]'),'all answers initially collapsed');
+        body.querySelector('summary').click();check(body.querySelector('details').open,'answer can be expanded manually');
         check(body.textContent.includes('预览挖空笔记')&&body.textContent.includes('中国首都是')&&body.textContent.includes('我的独立作答')&&body.textContent.includes('参考答案内容'),'preview includes every answer type and reference');
         check(body.textContent.includes('各空位作答')&&body.textContent.includes('解析内容'),'cloze details and native explanation are present');
         check(!dialog.querySelector('input,textarea,select,[contenteditable="true"]'),'preview is strictly read-only');
         document.getElementById('reviewAnswersPreviewRefresh').click();
         await wait(()=>answerLoads===2&&!document.getElementById('reviewAnswersPreviewRefresh').disabled,'preview refresh');
+        check(!body.querySelector('details[open]'),'refreshed list starts collapsed');
         closeReviewAnswersPreview();
-        closeReviewCompleteModal();
+        await openReviewCompletePreview();check(!body.querySelector('details[open]'),'reopened list starts collapsed');closeReviewAnswersPreview();
+        closeButton.click();await wait(()=>!document.getElementById('mistakeCompleteModal').classList.contains('show'),'close icon dismisses completion modal');
         const mixed=await(await requestApi(API+'/courses/${ids.courseId}/review-sessions/${mixed.id}')).json();
         const today=planLocalDate(),day={
           date:today,state:'partial',sessionId:mixed.id,sessionStatus:'active',sessionTypes:['note','mistake'],

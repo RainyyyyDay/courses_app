@@ -1233,7 +1233,8 @@ body.mistake-review-open { overflow: hidden; }
 
 /* 复习完成弹窗：正确率 100% 时整页飘一层彩带，彩带在弹窗卡片后面，不挡内容。 */
 .mistake-complete { position: relative; z-index: 1; text-align: center; }
-.mistake-complete h3 { font-size: 19px; line-height: 1.5; margin-bottom: 10px; }
+.mistake-complete h3 { font-size: 19px; line-height: 1.5; margin-bottom: 10px; padding:0 28px; }
+.mistake-complete > .tag-sheet-close { position:absolute;top:12px;right:12px; }
 .mistake-complete p { margin: 0 0 16px; color: #5b6273; font-size: 14px; line-height: 1.6; }
 .mistake-complete .modal-actions { justify-content: center; flex-wrap: wrap; }
 .mistake-complete .modal-actions button {
@@ -1245,17 +1246,18 @@ body.mistake-review-open { overflow: hidden; }
 .mistake-complete .modal-actions button.btn-primary:hover { filter: brightness(1.06); }
 
 .review-answers-preview {
-  width:min(900px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:0;
+  width:min(900px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:0;margin:auto;
   border:1px solid #dfe5ef;border-radius:14px;background:#fff;overflow:hidden;
 }
 .review-answers-preview::backdrop { background:rgba(17,25,40,.52); }
+.review-answers-preview[open] { display:flex;flex-direction:column; }
 .review-answers-preview header,
-.review-answers-preview footer { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px; }
+.review-answers-preview footer { display:flex;flex-shrink:0;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px; }
 .review-answers-preview header { border-bottom:1px solid #e9edf4; }
 .review-answers-preview header h2 { margin:0;font-size:18px; }
 .review-answers-preview header p { margin:4px 0 0;color:#7a8497;font-size:12px; }
 .review-answers-preview footer { justify-content:flex-end;border-top:1px solid #e9edf4;background:#fafbfe; }
-.review-answers-preview-body { max-height:calc(100dvh - 150px);overflow:auto;padding:16px 18px;background:#f7f9fc; }
+.review-answers-preview-body { min-height:0;max-height:calc(100dvh - 150px);overflow:auto;padding:16px 18px;background:#f7f9fc; }
 .review-answers-preview-summary { display:flex;flex-wrap:wrap;gap:8px 18px;padding:12px 14px;margin-bottom:12px;border:1px solid #dfe6f7;border-radius:10px;background:#f3f6ff;color:#52627f;font-size:13px; }
 .review-answers-preview-summary strong { color:#263652; }
 .review-answer-preview-item { margin:10px 0;border:1px solid #e1e6ef;border-radius:11px;background:#fff;overflow:hidden; }
@@ -1389,7 +1391,7 @@ body.tag-picker-open { overflow: hidden; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-#tagPickerModal .tag-sheet-close, #mistakeEditModal .tag-sheet-close, #mistakeAiDialog .tag-sheet-close {
+#tagPickerModal .tag-sheet-close, #mistakeEditModal .tag-sheet-close, #mistakeAiDialog .tag-sheet-close, #mistakeCompleteModal .tag-sheet-close {
   flex: 0 0 auto;
   width: 34px; height: 34px;
   display: flex; align-items: center; justify-content: center;
@@ -1399,7 +1401,7 @@ body.tag-picker-open { overflow: hidden; }
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
-#tagPickerModal .tag-sheet-close:hover, #mistakeEditModal .tag-sheet-close:hover, #mistakeAiDialog .tag-sheet-close:hover { background: #e8eaf1; color: #232a3d; }
+#tagPickerModal .tag-sheet-close:hover, #mistakeEditModal .tag-sheet-close:hover, #mistakeAiDialog .tag-sheet-close:hover, #mistakeCompleteModal .tag-sheet-close:hover { background: #e8eaf1; color: #232a3d; }
 
 /* ---------- 中间：唯一的滚动区 ---------- */
 #tagPickerModal .tag-sheet-body, #mistakeEditModal .tag-sheet-body, #mistakeAiDialog .tag-sheet-body {

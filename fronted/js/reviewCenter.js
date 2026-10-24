@@ -166,7 +166,7 @@ function reviewPreviewAnswer(item){
 function renderReviewAnswersPreview(data){
   const body=document.getElementById('reviewAnswersPreviewBody');if(!body)return;
   const items=data.items||[];
-  body.innerHTML=`<div class="review-answers-preview-summary"><strong>成功复习 ${data.passed||0} / ${data.total||0}</strong><span>未通过 ${data.failed||0} · 仅曝光 ${data.exposed||0} · 已处理 ${items.length} 项</span></div>${items.map((item,index)=>{const status=reviewPreviewStatus(item);return `<details class="review-answer-preview-item" ${index===0?'open':''}><summary><span>${index+1}. ${PLAN_TYPE_LABELS[item.item_type]||item.item_type} · ${escapeHtml(item.title||'')}</span><span class="review-preview-status ${status.className}">${status.label}</span></summary><div class="review-answer-preview-content">${reviewPreviewAnswer(item)}</div></details>`;}).join('')}`;
+  body.innerHTML=`<div class="review-answers-preview-summary"><strong>成功复习 ${data.passed||0} / ${data.total||0}</strong><span>未通过 ${data.failed||0} · 仅曝光 ${data.exposed||0} · 已处理 ${items.length} 项</span></div>${items.map((item,index)=>{const status=reviewPreviewStatus(item);return `<details class="review-answer-preview-item"><summary><span>${index+1}. ${PLAN_TYPE_LABELS[item.item_type]||item.item_type} · ${escapeHtml(item.title||'')}</span><span class="review-preview-status ${status.className}">${status.label}</span></summary><div class="review-answer-preview-content">${reviewPreviewAnswer(item)}</div></details>`;}).join('')}`;
 }
 async function loadReviewAnswersPreview(){
   const state=reviewAnswersPreviewState,body=document.getElementById('reviewAnswersPreviewBody'),refresh=document.getElementById('reviewAnswersPreviewRefresh');
@@ -532,7 +532,7 @@ async function centerReviewItemFinished() {
         else await openReviewPlan(planId);
         return;
       }
-      if(s.session.source_type==='total' && typeof openReviewCompleteModal==='function') {
+      if(typeof openReviewCompleteModal==='function') {
         if(typeof backToReviewPlans==='function') backToReviewPlans();
         await openReviewCompleteModal(s.session);
         return;

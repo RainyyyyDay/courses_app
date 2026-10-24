@@ -2,12 +2,13 @@
 const REVIEW_METHOD_GUIDE = Object.freeze({
   standard: '先回忆，再选择清楚、模糊或不记得；清楚才算成功。',
   cloze: '从原文生成挖空，逐空作答。',
-  self_explain: '用自己的话讲解，由 AI 根据原文和参考答案评价。',
+  self_explain: '用自己的话讲解，对照参考要点自评；AI 批改可选。',
   reading: '看完后确认是否熟悉内容。',
-  contrast: '填写对比矩阵，由 AI 评价对象、维度和差异。',
+  contrast: '填写对比矩阵，对照对象、维度和关键异同自评；AI 批改可选。',
   retry: '重新执行已有练习，不另造判分。'
 });
-const AI_DEPENDENT_REVIEW_METHODS = new Set(['self_explain','contrast']);
+// All current review modes have manual execution. Only explicit AI actions require credentials.
+const AI_DEPENDENT_REVIEW_METHODS = new Set();
 function reviewMethodRequiresRealAi(method){return AI_DEPENDENT_REVIEW_METHODS.has(method);}
 function reviewAdviceAiReady(){
   return typeof coursesAiSettings!=='undefined'&&typeof coursesAiSettings.realReady==='function'
@@ -63,7 +64,7 @@ function mountReviewMethodEditor(prefix, type, id = null) {
         </label><button type="button" class="review-mode-setup" id="${prefix}ClozeSetup" onclick="openClozeModeSetup('${prefix}')" hidden>设置挖空</button>
       </div>
       <div class="ai-action-row"><button type="button" class="ai-primary" id="${prefix}ReviewModeAdvice" onclick="openCreationReviewSuggestion('${prefix}')" ${aiReady?'':'disabled aria-disabled="true"'} title="${aiReady?'读取正文和附件后建议复习方式':'请先在 AI 设置中接入真实 API'}">AI 建议复习方式</button></div>
-      <p class="review-api-note" id="${prefix}ReviewApiNote" ${aiReady?'hidden':''}>AI 建议、自述讲解和对比辨析都需要接入可用的真实 AI API；当前未接入，因此 AI 建议按钮和这两个复习方式暂不可选。</p>
+      <p class="review-api-note" id="${prefix}ReviewApiNote" ${aiReady?'hidden':''}>未接入 AI 仍可手动选择复习方式、准备材料并作答。只有 AI 建议、AI 生成材料及 AI 批改需要配置 AI。</p>
       <p class="review-method-status" id="${prefix}ReviewMethodStatus" role="status" aria-live="polite"></p>
       <p class="mistake-ai-note">未手动选择且未采用 AI 建议时，将按标准复习保存。标准复习是固定兜底，不交给 AI 选择。</p>
     </div>`;

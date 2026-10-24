@@ -278,6 +278,10 @@ function mistakeQueueShouldAutoAdvance(state, progress) {
 async function tryFinishMistakeQueue(state, progress) {
   clearMistakeQueueAutoAdvance();
   if (mistakeQueueAutoFinishing || !mistakeQueueShouldAutoAdvance(state, progress)) return;
+  if(progress.responseKind==='unanswered'){
+    if(mistakeQueue.centerContext)renderCenterReviewToolbar();else renderMistakeQueueBanner();
+    return;
+  }
   mistakeQueueAutoAdvanceTimer=setTimeout(async()=>{
     mistakeQueueAutoAdvanceTimer=null;
     if(!mistakeDetailIsCurrent(state)||!mistakeQueueShouldAutoAdvance(state,state.progress))return;
@@ -302,7 +306,8 @@ function renderMistakeQueueBanner() {
   const last = mistakeQueue.index + 1 === mistakeQueue.ids.length;
   const modeName = p?.mode?.name || AI_REVIEW_METHODS[readReviewAiMethod({courseId:mistakeQueue.courseId,type:'mistake',id:state.id})] || '标准复习';
   const advancing=completed&&!!mistakeQueueAutoAdvanceTimer;
-  const nextButton=last ? '' : `<button id="mistakeQueueNext" onclick="nextMistakeQueueItem()" ${!completed || pending || mistakeReviewBusy || mistakeQueueLoading ? 'disabled' : ''}>下一题</button>`;
+  const needsReading=completed&&p.responseKind==='unanswered';
+  const nextButton=last&&!needsReading ? '' : `<button id="mistakeQueueNext" onclick="nextMistakeQueueItem()" ${!completed || pending || mistakeReviewBusy || mistakeQueueLoading ? 'disabled' : ''}>${needsReading?(last?'看完了，完成本轮':'看完了，继续复习'):'下一题'}</button>`;
   box.innerHTML = `<strong>第 ${mistakeQueue.index + 1} / ${mistakeQueue.ids.length} 条</strong> · 已处理 ${mistakeQueue.index + (completed ? 1 : 0)} 条 · 错题 · ${escapeHtml(modeName)}
     <div class="mistake-toolbar">${advancing?'<span class="mistake-auto-next" role="status">结果已保存，正在进入下一题…</span>':''}${nextButton}<button onclick="pauseMistakeQueue()">返回列表，稍后继续</button><button onclick="endMistakeQueue()">结束本轮</button></div>${p && !valid ? '<p class="mistake-inline-error">本题已改变分类或缺少内容，请退出并补齐；不会自动跳过。</p>' : ''}`;
 }

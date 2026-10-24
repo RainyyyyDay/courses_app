@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>课内</title>
-  <link rel="stylesheet" href="style.css?v=20261024-review-flow-merge-46" />
+  <link rel="stylesheet" href="style.css?v=20261024-review-preview-center-50" />
 </head>
 <body>
 
@@ -596,10 +596,10 @@
     </div>
     <div id="mistakeCompleteConfetti" class="mistake-confetti" aria-hidden="true"></div>
     <div class="modal mistake-complete" role="dialog" aria-modal="true" aria-labelledby="mistakeCompleteTitle">
+      <button type="button" class="tag-sheet-close" id="reviewCompleteClose" onclick="cancelReviewComplete()" title="关闭" aria-label="关闭复习完成弹窗">×</button>
       <h3 id="mistakeCompleteTitle" tabindex="-1"></h3>
       <p id="mistakeCompleteText"></p>
       <div class="modal-actions">
-        <button type="button" onclick="cancelReviewComplete()">取消</button>
         <button type="button" id="reviewCompleteReplay" onclick="replayReviewComplete()">再来一遍</button>
         <button type="button" id="mistakeCompletePreview" onclick="openReviewCompletePreview()" hidden>查看作答预览</button>
         <button type="button" class="btn-primary" onclick="startNewReviewComplete()">开始新复习</button>
@@ -1245,13 +1245,13 @@
   <script src="js/resourceText.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/materialReview.js?v=20261024-review-flow-merge-46"></script>
   <script src="js/noteReview.js"></script>
-  <script src="js/mistakeDetail.js?v=20261024-empty-review-43"></script>
+  <script src="js/mistakeDetail.js?v=20261024-empty-answer-read-48"></script>
   <script src="js/mistakeAi.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/mistakeAnswerAi.js?v=20261023-adoption-confirm-19"></script>
   <script src="js/resourceAi.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/reviewMethodChoice.js?v=20261024-split-outline-mindmap-33"></script>
+  <script src="js/reviewMethodChoice.js?v=20261024-manual-review-47"></script>
   <script src="js/clozeEditor.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/reviewWorkbench.js?v=20261024-review-flow-merge-46"></script>
+  <script src="js/reviewWorkbench.js?v=20261024-empty-answer-read-48"></script>
   <script src="js/reviewFeedback.js?v=20261024-review-flow-merge-46"></script>
   <script src="js/reviewMaterialAi.js?v=20261024-merged-attachment-review-31"></script>
   <dialog id="mistakeAiDialog" aria-labelledby="mistakeAiDialogTitle" oncancel="event.preventDefault();resetMistakeAi()" onclick="if(event.target===this)resetMistakeAi()">
@@ -1290,11 +1290,11 @@
       <div class="modal-actions"><button type="button" class="btn-cancel" onclick="closeCreationReviewSuggestion()">关闭</button><button type="button" id="creationModeAdviceRetry" onclick="retryCreationReviewSuggestion()" hidden>重新读取</button><button type="button" class="btn-primary" id="creationModeAdviceAnalyze" onclick="analyzeCreationReviewAdvice()" hidden>分析复习方式</button><button type="button" class="btn-primary" id="creationModeAdviceAdopt" onclick="adoptCreationReviewSuggestion()" hidden>采用建议</button></div>
     </footer>
   </dialog>
-  <script src="js/mistakeQueue.js?v=20261024-review-flow-merge-46"></script>
+  <script src="js/mistakeQueue.js?v=20261024-empty-answer-read-48"></script>
   <script src="js/courseSearch.js"></script>
   <script src="js/reviewPicker.js?v=20261024-attachment-preview-24"></script>
   <script src="js/reviewPlans.js?v=20261024-review-flow-merge-46"></script>
-  <script src="js/reviewCenter.js?v=20261024-review-flow-merge-46"></script>
+  <script src="js/reviewCenter.js?v=20261024-review-resume-complete-51"></script>
 
   <!-- 知识框架 -->
   <script src="js/knowledgeTree.js"></script>

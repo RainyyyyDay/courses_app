@@ -85,9 +85,9 @@ test('upload/edit default mode, AI adoption, and total-review weak recall UI', {
         check(document.getElementById('tagPickerReviewModeHost').style.display==='block','upload review choice visible');
         check(document.getElementById('tagPickerReviewMethod').value==='','new upload has no explicit mode');
         check(document.getElementById('tagPickerReviewMethodStatus').textContent.includes('标准复习'),'default standard is disclosed');
-        check(document.querySelector('#tagPickerReviewMethod option[value="self_explain"]').disabled
-          &&document.querySelector('#tagPickerReviewMethod option[value="contrast"]').disabled
-          &&!document.getElementById('tagPickerReviewApiNote').hidden,'AI-dependent modes disabled without real API');
+        check(!document.querySelector('#tagPickerReviewMethod option[value="self_explain"]').disabled
+          &&!document.querySelector('#tagPickerReviewMethod option[value="contrast"]').disabled
+          &&!document.getElementById('tagPickerReviewApiNote').hidden,'manual modes available without real API');
         const adviceButton=document.getElementById('tagPickerReviewModeAdvice');
         check(adviceButton.disabled&&adviceButton.getAttribute('aria-disabled')==='true','AI advice disabled without real API');
         openCreationReviewSuggestion('tagPicker');
@@ -96,7 +96,7 @@ test('upload/edit default mode, AI adoption, and total-review weak recall UI', {
         check(!document.querySelector('#tagPickerReviewMethod option[value="self_explain"]').disabled
           &&!document.querySelector('#tagPickerReviewMethod option[value="contrast"]').disabled
           &&document.getElementById('tagPickerReviewApiNote').hidden
-          &&!adviceButton.disabled,'AI-dependent modes and advice enable with real API');
+          &&!adviceButton.disabled,'manual modes stay available and AI advice enables with real API');
         document.getElementById('tagPickerName').value='上传方式测试';
         document.getElementById('tagPickerResourceContent').value='光合作用把光能转成化学能。';
         pendingUploadFile=new File(['fake image bytes'],'photosynthesis.png',{type:'image/png'});
@@ -233,13 +233,12 @@ test('upload/edit default mode, AI adoption, and total-review weak recall UI', {
         await openCourse(${courseId},'题型隔离测试','materials');
         check(saveResourceAiMethod({courseId:${courseId},type:'material',id:${progressItems[0].id}},'self_explain'),'bound self explanation mode saved');
         await openTotalReview();
-        await wait(()=>totalReviewState&&!totalReviewState.loading,'AI-gated mode candidates');
+        await wait(()=>totalReviewState&&!totalReviewState.loading,'manual mode candidates');
         selectTotalReviewItem('material:${progressItems[0].id}',true);
         await startTotalReview();
-        await wait(()=>document.querySelector('.review-mode-requirement')?.textContent.includes('AI API'),'AI mode requirement shown');
-        check(document.querySelector('.review-mode-requirement').textContent.includes('改用标准复习'),'small standard fallback shown');
-        document.querySelector('.review-mode-requirement .btn-cancel').click();
-        await wait(()=>document.getElementById('materialReviewProgress')?.textContent.includes('标准复习')&&activeReadingReview.row?.id===${progressItems[0].id},'standard fallback rerenders');
+        await wait(()=>reviewWorkbench?.inline&&reviewWorkbench.attempt?.modeId==='self_explain','manual mode starts without AI');
+        check(!document.querySelector('.review-mode-requirement'),'no whole-mode AI gate');
+        closeReviewWorkbench();
         await pauseCenterReview();
         await openCourse(${courseId},'题型隔离测试','materials');
         coursesAiSettings.configure({provider:'deepseek',model:'deepseek-flash',apiKey:'synthetic-self-key',retain:true,consent:true,auto:false});

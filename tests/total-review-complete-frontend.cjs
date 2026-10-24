@@ -30,7 +30,7 @@ function totalReviewCompleteBrowserScenario() {
       check(document.getElementById('mistakeCompleteText').textContent.includes('全部通过'), 'complete text reports perfect round');
       check(typeof mistakeConfettiLayerState === 'function' && mistakeConfettiLayerState() !== 'none', 'confetti effect runs for perfect total review');
       if (location.hash !== '#totalCompleteOnly') {
-        document.querySelector('#mistakeCompleteModal .modal-actions button').click();
+        document.getElementById('reviewCompleteClose').click();
         await waitUntil(() => !document.getElementById('mistakeCompleteModal').classList.contains('show'), 'complete modal cancel');
       }
     }

@@ -893,6 +893,9 @@ function renderMistakeReview(state) {
     }
     actions = typeof mistakeQueueCurrent === 'function' && mistakeQueueCurrent(state) && p.round === mistakeQueue.rounds[state.id]
       ? '' : button('再次复习', 'start');
+    if(p.responseKind==='unanswered'&&mistakeQueue?.centerContext&&mistakeQueueCurrent(state)){
+      actions='<button type="button" onclick="centerReviewItemFinished()">看完了，继续复习</button>';
+    }
   }
   // 队列新开一轮时，不短暂展示上次已完成复习的答案。
   const answerVisible = p.answerVisible && (typeof mistakeQueueCurrent !== 'function' || !mistakeQueueCurrent(state)

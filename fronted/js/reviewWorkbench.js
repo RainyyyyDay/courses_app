@@ -452,12 +452,19 @@ function renderWorkbenchAttempt(){
   }
   wb('Attempt').innerHTML=content;
   if(typeof mountWorkbenchFeedback==='function')mountWorkbenchFeedback(s);
-  if(p.stage==='completed'&&scheduleWorkbenchAutoAdvance(s))wb('Actions').innerHTML='<p class="review-auto-next" role="status" aria-live="polite">结果已保存，正在进入下一项…</p>';
+  if(p.stage==='completed'){
+    if(workbenchNeedsAnswerReading(p)){
+      clearWorkbenchAutoAdvance(s);
+      if(s.sessionId&&s.sessionItemId)wb('Actions').innerHTML='<p>已按未掌握保存，请对照答案和解析学习，阅读后再继续。</p><button onclick="finishWorkbenchAttempt()">看完了，继续复习</button>';
+    }else if(scheduleWorkbenchAutoAdvance(s))wb('Actions').innerHTML='<p class="review-auto-next" role="status" aria-live="polite">结果已保存，正在进入下一项…</p>';
+  }
 }
+function workbenchNeedsAnswerReading(p){return !!(p?.result?.unanswered||p?.result?.results?.some(row=>row.unanswered));}
 function clearWorkbenchAutoAdvance(s=reviewWorkbench){
   if(s?.autoAdvanceTimer){clearTimeout(s.autoAdvanceTimer);s.autoAdvanceTimer=null;}
 }
 function scheduleWorkbenchAutoAdvance(s){
+  if(workbenchNeedsAnswerReading(s?.attempt)){clearWorkbenchAutoAdvance(s);return false;}
   if(!s?.sessionId||!s.sessionItemId||typeof centerReview==='undefined'||!centerReview||centerReview.session.id!==s.sessionId)return false;
   clearWorkbenchAutoAdvance(s);
   s.autoAdvanceTimer=setTimeout(()=>{
