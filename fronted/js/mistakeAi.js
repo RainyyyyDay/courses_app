@@ -31,24 +31,16 @@ function addMistakeAiEvidence(input, row, steps) {
 }
 
 function clearMistakeAiKey(prefix, resetProvider=false) {
-  const node=name=>document.getElementById(prefix+name);
-  if(node('ApiKey'))node('ApiKey').value='';
-  if(node('Cost'))node('Cost').checked=false;
-  const shared=node('Provider')?.querySelector('option[value="shared"]');
-  if(shared&&typeof coursesAiSettings!=='undefined')shared.textContent=coursesAiSettings.label();
-  if(resetProvider&&node('Provider')){node('Provider').value='shared';node('Model').value='deepseek-flash';node('KeySettings').hidden=true;}
+  const source=document.getElementById(prefix+'Source');
+  if(source&&typeof coursesAiSettings!=='undefined')source.textContent=coursesAiSettings.label();
 }
 function changeMistakeAiProvider(prefix) {
   clearMistakeAiKey(prefix);
-  document.getElementById(prefix+'KeySettings').hidden=document.getElementById(prefix+'Provider').value!=='deepseek';
 }
 function readMistakeAiKey(prefix) {
-  const node=name=>document.getElementById(prefix+name);
-  if(node('Provider').value==='shared'){const credentials=coursesAiSettings.read();if(!credentials)throw new Error('请先打开 AI 设置并配置真实 AI，也可以继续手动填写。');return credentials;}
-  if(node('Provider').value!=='deepseek')return null;
-  if(!/^[\x21-\x7e]{1,512}$/.test(node('ApiKey').value))throw mistakeAiError('INVALID_API_KEY');
-  if(!node('Cost').checked)throw mistakeAiError('COST_CONFIRMATION_REQUIRED');
-  return {apiKey:node('ApiKey').value,model:node('Model').value,confirmCost:true};
+  const credentials=coursesAiSettings.read();
+  if(!credentials)throw new Error('请先打开 AI 设置，选择平台 AI 或使用自己的 API，也可以继续手动填写。');
+  return credentials;
 }
 addEventListener('pagehide',()=>{
   clearMistakeAiKey('mistakeAi',true);clearMistakeAiKey('mistakeCreateAi',true);

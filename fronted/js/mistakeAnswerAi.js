@@ -25,11 +25,8 @@ function toggleMistakeAnswerAi(prefix){
   const state={owner,view:currentView,busy:false,controller:null,draft:null};mistakeAnswerAiStates[prefix]=state;
   const id='mistake'+prefix+'AnswerAi';
   host.innerHTML=`<p class="ai-help">可选功能：不影响手工输入。先校对题干和选项；不上传附件、不自动保存或判分。</p>
-    <fieldset id="${id}Controls"><label>生成来源<select id="${id}Provider" onchange="changeMistakeAiProvider('${id}')"><option value="shared">共用 AI 设置（右下角可配置）</option><option value="deepseek">DeepSeek 官方（临时 Key）</option></select></label>
-    <div id="${id}KeySettings" class="mistake-ai-key-settings" hidden><label>本次 Key<input id="${id}ApiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512"></label>
-    <label>模型<select id="${id}Model"><option>deepseek-flash</option><option>deepseek-v4-pro</option></select></label>
-    <label><input id="${id}Cost" type="checkbox">同意本次文字发送至 DeepSeek 官方，知晓可能产生费用。</label><small>Key 发送后清空，不保存；不自动重试或回退 Mock。</small></div>
-    <div class="ai-action-row"><button type="button" onclick="coursesAiSettings.open()">打开共用 AI 设置</button>
+    <fieldset id="${id}Controls"><p id="${id}Source" data-ai-settings-source class="ai-help"></p>
+    <div class="ai-action-row"><button type="button" onclick="coursesAiSettings.open()">AI 设置（平台 AI / 自带 API）</button>
     <button type="button" class="ai-primary" id="${id}Generate" onclick="generateMistakeAnswerAi('${prefix}')">生成草稿（不保存）</button></div></fieldset>
     <p id="${id}Status" role="status"></p><p id="${id}Error" class="mistake-inline-error" role="alert"></p>
     <section id="${id}Preview" hidden><h4>AI 参考草稿 · 待人工核实，不是客观判分依据</h4><p id="${id}Caveats"></p>

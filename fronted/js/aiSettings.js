@@ -87,9 +87,7 @@ const coursesAiSettings = (() => {
     if(typeof refreshPickerOutlineAvailability==='function')refreshPickerOutlineAvailability();
     if(typeof refreshAssessmentChartAiAvailability==='function')refreshAssessmentChartAiAvailability();
     if(typeof refreshWorkbenchAiAvailability==='function')refreshWorkbenchAiAvailability();
-    for(const prefix of ['mistakeAi','mistakeCreateAi','mistakeCreateAnswerAi','mistakeEditAnswerAi']){
-      const option=document.getElementById(prefix+'Provider')?.querySelector('option[value="shared"]');if(option)option.textContent=label();
-    }
+    for(const source of document.querySelectorAll('[data-ai-settings-source]'))source.textContent=label();
     node('Drafts').replaceChildren();
     if(!drafts.size){const empty=document.createElement('p');empty.className='ai-empty-note';empty.textContent='暂无自动分析草稿，手动生成不受影响。';node('Drafts').append(empty);}
     for(const [id,draft] of drafts){
@@ -122,9 +120,6 @@ const coursesAiSettings = (() => {
     selectedPreset=value.preset&&presets[value.preset]?.provider===value.provider?value.preset:guessPreset(value.provider,nextUrl);
     applyError='';invalidate();key=value.provider!=='mock'?value.apiKey:'';provider=value.provider;model=value.model;baseUrl=nextUrl;
     retain=!!value.retain;auto=!!value.auto;configured=true;
-    for(const prefix of ['mistakeAi','mistakeCreateAi','mistakeCreateAnswerAi','mistakeEditAnswerAi']){
-      const select=document.getElementById(prefix+'Provider');if(select){select.value='shared';changeMistakeAiProvider(prefix);}
-    }
     message=provider==='platform'?`已应用平台 AI / ${model}。仅检查了服务配置，尚未调用模型；不会自动切换到自己的 API。`:provider==='mock'?'已应用 Mock 演示；未启用真实 AI。':`已应用 ${providerLabel()} / ${model}。现在可测试连接${retain?'。':'；Key 仅供下一次请求，测试也会使用这次 Key。'}`;
     refresh();
     if(typeof refreshReviewMethodApiAvailability==='function')refreshReviewMethodApiAvailability();

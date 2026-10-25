@@ -387,7 +387,8 @@ for (const kind of ['material','note']) {
   const plural = kind === 'note' ? 'notes' : 'materials';
   app.put(`/api/courses/:courseId/${plural}/:${kind}Id/content`, readingReviewApi((req,res,row) => {
     const body=req.body;
-    if(!body || Array.isArray(body) || typeof body.text!=='string' || !body.text.trim() || body.text.length>1000000
+    const clearsWithAttachment=body?.mode==='replace'&&body.text===''&&!!row.file_url;
+    if(!body || Array.isArray(body) || typeof body.text!=='string' || (!body.text.trim()&&!clearsWithAttachment) || body.text.length>1000000
       || !['append','replace'].includes(body.mode) || typeof body.expectedContent!=='string'
       || Object.keys(body).some(key=>!['text','mode','expectedContent'].includes(key))) {
       return res.status(400).json({code:'INVALID_ARGUMENT',message:'请提交待保存文字、追加或替换方式及读取时的原正文'});

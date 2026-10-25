@@ -32,6 +32,8 @@ function cancelPickerResourceText() {
 }
 async function openTagPicker(mode, resourceType, resourceId) {
   cancelPickerResourceText();
+  const extractStatus=document.getElementById('tagPickerResourceExtractStatus');
+  if(extractStatus)extractStatus.textContent='';
   cancelPickerOutline();
   const mapStatus = document.getElementById('tagPickerMindmapStatus');
   if (mapStatus) mapStatus.textContent = '';
@@ -157,6 +159,7 @@ async function openTagPicker(mode, resourceType, resourceId) {
       if (mode === 'edit') {
         const row = currentResourceRow(resourceType, resourceId) || {};
         if (contentEl) contentEl.value = row.content || '';
+        tagPickerState.originalResourceContent=row.content||'';
         pendingUploadFile = null;
         pendingResourceRemoveFile = false;
         pickerExistingFile = row.file_url
@@ -505,6 +508,8 @@ function renderPickerResourceSummary() {
     box.innerHTML = '';
     if (remove) remove.style.display = 'none';
     if (ocr) ocr.style.display = 'none';
+    const hint=document.getElementById('tagPickerResourceExtractHint');
+    if(hint)hint.textContent='支持 PDF、图片、Word 和 PPT；文字提取不调用大模型。';
     closePickerResourceOcr();
     return;
   }
@@ -512,25 +517,54 @@ function renderPickerResourceSummary() {
   box.style.display = 'flex';
   box.innerHTML = `<span class="mistake-create-file-icon">📎</span><div><strong>${escapeHtml(file.name || '附件')}</strong><small>${escapeHtml(file.type || '附件')} · ${pendingUploadFile ? '保存后上传' : '已保存'}</small></div>`;
   if (remove) remove.style.display = 'inline-flex';
-  if (ocr) ocr.style.display = pendingUploadFile ? 'inline-flex' : 'none';
+  const info={name:pendingUploadFile?.name||existing?.url||file.name,type:file.type};
+  const supported=!!officeFileKind(info)||ocrWebIsPdf(info)||/^image\//i.test(info.type||'')||/\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(info.name||'');
+  if (ocr) {
+    ocr.style.display='inline-flex';ocr.disabled=!supported||!!recognizePickerResourceFile.request;
+    ocr.title=supported?'读取附件文字，校对后可替换或追加正文':'此附件格式暂不支持文字提取，请手动填写正文';
+  }
+  const hint=document.getElementById('tagPickerResourceExtractHint');
+  if(hint)hint.textContent=!supported?'此附件格式暂不支持文字提取，可手动填写正文。':ocrWebIsPdf(info)?'PDF 优先提取原有文字，扫描页再进行 OCR；可选择全文或指定页。':officeFileKind(info)?'提取 Word / PPT 中的文字，旧版文件先转换；不调用大模型。':'识别图片中的文字，结果需人工校对；不调用大模型。';
 }
 
 async function recognizePickerResourceFile() {
-  if (!pendingUploadFile) { showToast('请先选择附件'); return; }
+  const selected=pendingUploadFile,existing=!selected&&!pendingResourceRemoveFile?pickerExistingFile:null;
+  if (!selected&&!existing) { showToast('请先选择附件'); return; }
   const button = document.getElementById('tagPickerResourceOcrBtn');
   if (button?.disabled) return;
   const original = button ? button.textContent : '';
-  const file = pendingUploadFile, state = tagPickerState;
+  const state = tagPickerState;
+  if(!state||state.saving)return;
+  const status=document.getElementById('tagPickerResourceExtractStatus');
   const request = { controller: new AbortController(), button, original };
   recognizePickerResourceFile.request = request;
   const isCurrent = () => recognizePickerResourceFile.request === request && !request.controller.signal.aborted
-    && tagPickerState === state && pendingUploadFile === file;
+    && tagPickerState === state && currentCourseId===state.courseId && pendingUploadFile === selected
+    && (!existing||pickerExistingFile===existing&&!pendingResourceRemoveFile);
   if (button) { button.disabled = true; button.textContent = '识别中…'; }
   try {
+    if(status)status.textContent=selected?'正在提取附件文字…':'正在读取已保存的附件…';
+    let file=selected;
+    if(!file){
+      const url=attachmentUrl(existing.url);
+      if(!url)throw new Error('附件地址不可用，请重新打开资料或笔记。');
+      const response=await fetch(url,{signal:request.controller.signal});
+      if(!isCurrent())return;
+      if(!response.ok)throw new Error('附件读取失败，请确认原文件仍存在。原正文已保留。');
+      if(Number(response.headers.get('content-length'))>50*1024*1024)throw new Error('附件超过 50 MB，请拆分后再提取。');
+      const blob=await response.blob();
+      if(!isCurrent())return;
+      if(blob.size>50*1024*1024)throw new Error('附件超过 50 MB，请拆分后再提取。');
+      const ext=extname(existing.url),name=existing.name||'附件';
+      file=new File([blob],ext&&!name.toLowerCase().endsWith(ext.toLowerCase())?name+ext:name,{type:existing.type||blob.type});
+    }
     const result = await recognizeUploadedFile(file, (message) => {
       if (isCurrent() && button) button.textContent = message;
+      if (isCurrent() && status) status.textContent = message;
     }, { signal: request.controller.signal });
     if (!isCurrent()) return;
+    if(result.provider==='mock')throw new Error('当前服务返回模拟结果，未采用；请检查文字识别服务。');
+    if(!String(result.text||'').trim())throw new Error('没有提取到文字，原正文和已有识别草稿已保留。');
     const text = document.getElementById('tagPickerResourceOcrText');
     const panel = document.getElementById('tagPickerResourceOcrPanel');
     const meta = document.getElementById('tagPickerResourceOcrMeta');
@@ -543,15 +577,11 @@ async function recognizePickerResourceFile() {
       if (result.warnings?.length) parts.push(result.warnings.join('；'));
       meta.textContent = parts.join(' · ');
     }
-    if (result.provider === 'mock') {
-      if (meta) meta.textContent = '⚠ 这是 mock 样例数据，不是真实识别。';
-      showToast('当前是 mock 样例数据，不是真实识别');
-      return;
-    }
     if (panel) panel.dataset.pendingAdoption = 'true';
+    if(status)status.textContent='文字已提取，请校对后点击“替换正文”或“追加正文”，再点击底部保存。';
     notifyTextRecognitionSuccess(result, panel);
   } catch (err) {
-    if (isCurrent()) showToast(err.message);
+    if (isCurrent()) {if(status)status.textContent=err.name==='AbortError'?'已取消提取，原正文已保留。':'提取失败：'+err.message;showToast(err.message);}
   } finally {
     if (recognizePickerResourceFile.request === request) {
       recognizePickerResourceFile.request = null;
@@ -569,6 +599,8 @@ function applyPickerResourceOcr(mode) {
   const panel = document.getElementById('tagPickerResourceOcrPanel');
   if (panel) panel.dataset.pendingAdoption = 'false';
   updatePickerResourceClear();
+  const status=document.getElementById('tagPickerResourceExtractStatus');
+  if(status)status.textContent=(mode==='append'?'已追加到正文':'已替换正文')+'，点击底部保存后生效。';
   showToast(mode === 'append' ? '已追加到正文' : '已替换正文');
 }
 
@@ -583,6 +615,8 @@ function closePickerResourceOcr() {
 
 function choosePickerResourceFile(input) {
   cancelPickerResourceText();
+  closePickerResourceOcr();
+  const status=document.getElementById('tagPickerResourceExtractStatus');if(status)status.textContent='';
   pendingUploadFile = input.files?.[0] || null;
   renderPickerResourceSummary();
   const nameInput = document.getElementById('tagPickerName');
@@ -596,6 +630,8 @@ function choosePickerResourceFile(input) {
 
 function clearPickerResourceFile() {
   cancelPickerResourceText();
+  closePickerResourceOcr();
+  const status=document.getElementById('tagPickerResourceExtractStatus');if(status)status.textContent='';
   if (!pendingUploadFile && pickerExistingFile) {
     // 编辑既有资料：标记为"保存后删除原附件"
     pendingResourceRemoveFile = true;
@@ -713,8 +749,11 @@ function onTagSearchInput(value) {
 async function confirmTagPicker() {
   const state = tagPickerState;
   if (!state || state.saving) return;
+  if(['material','note'].includes(state.resourceType)&&recognizePickerResourceFile.request){
+    showToast('附件文字正在提取，请等待完成并校对结果后再保存；也可关闭弹窗取消本次提取。');return;
+  }
   const resultPanel = document.getElementById('tagPickerResourceOcrPanel');
-  if (['material', 'note'].includes(state.resourceType) && state.mode !== 'edit'
+  if (['material', 'note'].includes(state.resourceType)
       && resultPanel?.dataset.pendingAdoption === 'true'
       && document.getElementById('tagPickerResourceOcrText')?.value.trim()) {
     showToast('识别／提取结果还没填入正文。请先点“替换正文”或“追加正文”再保存；不需要可点“放弃”。', 6000);
@@ -731,6 +770,11 @@ async function confirmTagPicker() {
   const resourceId = state.resourceId;
   const file = pendingUploadFile;
   const manual = pendingManual;
+  if(mode==='edit'&&['material','note'].includes(resourceType)
+      &&!document.getElementById('tagPickerResourceContent')?.value.trim()
+      &&!file&&(!pickerExistingFile||pendingResourceRemoveFile)){
+    showToast('请保留附件或填写正文，两者至少保留一个');return;
+  }
   // 名字 = 用户填的部分 + 固定的后缀（后缀不是输入框，改不到）
   const nameBase = (document.getElementById('tagPickerName').value || '').trim();
   const nameExt = document.getElementById('tagPickerNameExt').textContent || '';
@@ -787,6 +831,14 @@ async function confirmTagPicker() {
       // 资料/笔记：顺便保存大纲与导图
       if (saved && (resourceType === 'material' || resourceType === 'note')) {
         const pathName = resourceType === 'note' ? 'notes' : 'materials';
+        const contentValue=(document.getElementById('tagPickerResourceContent')?.value||'').trim();
+        if(contentValue!==state.originalResourceContent){
+          await requestApi(`${API}/courses/${state.courseId}/${pathName}/${resourceId}/content`,{
+            method:'PUT',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({text:contentValue,mode:'replace',expectedContent:state.originalResourceContent})
+          });
+          state.originalResourceContent=contentValue;
+        }
         // 附件：先换新的，或删除原有
         if (pendingUploadFile) {
           const form = new FormData();
@@ -843,6 +895,10 @@ async function confirmTagPicker() {
       closeTagPicker();
     }
   } catch (err) {
+    if(tagPickerState===state&&['material','note'].includes(resourceType)){
+      const status=document.getElementById('tagPickerResourceExtractStatus');
+      if(status)status.textContent='保存未完成，当前输入已保留：'+(err.message||'请稍后重试');
+    }
     showToast(err.message || '保存失败，请重试');
   } finally {
     state.saving = false;

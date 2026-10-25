@@ -296,21 +296,12 @@
         <span id="mistakeAiHome" hidden></span>
         <section id="mistakeAiPanel" class="mistake-ai-panel" aria-labelledby="mistakeAiTitle" hidden>
           <h2 id="mistakeAiTitle">AI 分类 · 复习方式建议</h2>
-          <p class="mistake-ai-note">使用共用 AI 设置；也可明确选择 DeepSeek 官方并填写本次 Key。结果需人工复核，不会自动修改原错题分类。只发送下方文字，不上传附件；请勿填写个人敏感信息。</p>
+          <p class="mistake-ai-note">使用共用 AI 设置，可选择平台 AI 或自己的 API。结果需人工复核，不会自动修改原错题分类。只发送下方文字，不上传附件；请勿填写个人敏感信息。</p>
           <form id="mistakeAiForm" class="edit-card" onsubmit="event.preventDefault();requestMistakeAi()">
             <h3 class="tag-sheet-section-title">题目信息</h3>
             <fieldset id="mistakeAiInputs">
-              <label for="mistakeAiProvider">本次 AI 来源</label>
-              <button type="button" onclick="coursesAiSettings.open()">打开共用 AI 设置</button>
-              <select id="mistakeAiProvider" onchange="changeMistakeAiProvider('mistakeAi')"><option value="shared">共用 AI 设置（右下角可配置）</option><option value="deepseek">DeepSeek 官方（临时 Key）</option></select>
-              <div id="mistakeAiKeySettings" class="mistake-ai-key-settings" hidden>
-                <label for="mistakeAiApiKey">本次 API Key（不保存）</label>
-                <input id="mistakeAiApiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512">
-                <label for="mistakeAiModel">DeepSeek 模型</label>
-                <select id="mistakeAiModel"><option>deepseek-flash</option><option>deepseek-v4-pro</option></select>
-                <label><input id="mistakeAiCost" type="checkbox">同意本次将下方文字发送至 DeepSeek 官方，知晓可能产生费用。</label>
-                <p class="mistake-ai-note">Key 经过本网站后端，仅用于本次请求，发送后清空；重试需重新填写并确认。不自动重试或回退 Mock。不保证浏览器插件不会保存输入。</p>
-              </div>
+              <p id="mistakeAiSource" data-ai-settings-source class="mistake-ai-note">共用 AI 设置：尚未配置</p>
+              <button type="button" onclick="coursesAiSettings.open()">AI 设置（平台 AI / 自带 API）</button>
               <label for="mistakeAiQuestion">题目文字（必填；图片题请补充文字）</label>
               <textarea id="mistakeAiQuestion" maxlength="4000" required rows="3"></textarea>
               <label for="mistakeAiStudentAnswer">学生作答（必填，不是参考答案）</label>
@@ -480,6 +471,7 @@
           <label>可选编辑要求<input id="assessmentChartInstruction" maxlength="500" placeholder="如：保留已有占比，只精简内容说明" /></label>
           <p id="assessmentChartAiState" class="ai-help"></p>
           <div class="assessment-chart-ai-actions">
+            <button type="button" onclick="coursesAiSettings.open()">AI 设置（平台 AI / 自带 API）</button>
             <button type="button" id="assessmentChartAiBody">AI 从以上文字提取</button>
             <button type="button" id="assessmentChartAiFile">AI 读取附件并生成</button>
             <button type="button" id="assessmentChartAiEdit">AI 整理当前图表</button>
@@ -836,11 +828,15 @@
             <div id="tagPickerResourceFileSummary" class="mistake-create-file" style="display:none;"></div>
             <div class="edit-file-actions">
               <button type="button" class="edit-btn" onclick="document.getElementById('tagPickerResourceUpload').click()">上传附件</button>
-              <button type="button" class="edit-btn" id="tagPickerResourceOcrBtn" style="display:none;" onclick="recognizePickerResourceFile()">识别文字</button>
+              <button type="button" class="edit-btn" id="tagPickerResourceOcrBtn" style="display:none;" onclick="recognizePickerResourceFile()">从附件提取正文</button>
               <button type="button" class="edit-btn edit-btn-danger" id="tagPickerResourceRemove" style="display:none;" onclick="clearPickerResourceFile()">移除附件</button>
             </div>
             <input type="file" id="tagPickerResourceUpload" style="display:none" onchange="choosePickerResourceFile(this)" />
-            <textarea id="tagPickerResourceContent" rows="5" placeholder="正文 / 重点内容（可只上传附件）" oninput="updatePickerResourceClear()"></textarea>
+            <label for="tagPickerResourceContent"><b>正文内容（可编辑）</b></label>
+            <p id="tagPickerResourceContentHelp" class="muted">可手动填写，也可从附件提取文字；下方 AI 大纲根据这里的正文生成。提取结果校对后选择替换或追加，点击底部保存后生效。</p>
+            <textarea id="tagPickerResourceContent" rows="5" aria-describedby="tagPickerResourceContentHelp" placeholder="在这里填写正文或重点内容；也可只保留附件" oninput="updatePickerResourceClear()"></textarea>
+            <p id="tagPickerResourceExtractHint" class="muted">支持 PDF、图片、Word 和 PPT；文字提取不调用大模型。</p>
+            <p id="tagPickerResourceExtractStatus" class="muted" role="status" aria-live="polite"></p>
             <section id="tagPickerResourceOcrPanel" class="mistake-ocr-panel" style="display:none;">
               <div class="mistake-ocr-head"><b>识别结果</b><span>先校对，再填入正文</span></div>
               <textarea id="tagPickerResourceOcrText" rows="5"></textarea>
@@ -879,6 +875,7 @@
               <button type="button" class="edit-btn" onclick="document.getElementById('tagPickerMindmapFile').click()">上传导图</button>
               <button type="button" class="edit-btn" data-mindmap-generate="basic" id="tagPickerMindmapBasic" onclick="generatePickerMindmap('basic')">基础生成</button>
               <button type="button" class="edit-btn" data-mindmap-generate="ai" id="tagPickerMindmapAi" onclick="generatePickerMindmap('ai')" disabled>AI 润色生成</button>
+              <button type="button" class="edit-btn" onclick="coursesAiSettings.open()">AI 设置</button>
               <button type="button" class="edit-btn edit-btn-danger" id="tagPickerMindmapClear" style="display:none;" onclick="clearPickerMindmap()">删除导图</button>
             </div>
             <p id="tagPickerMindmapAiNote" class="mindmap-generation-note" role="status"></p>
@@ -1018,17 +1015,8 @@
             <summary>AI 复习建议（可选）</summary>
             <p class="mistake-ai-note">不使用也可以直接添加错题。仅主动获取时请求 AI；本地 mock 返回演示结果。选择复习方式不会改变错题分类或实际复习流程。</p>
             <fieldset id="mistakeCreateAiFields" class="edit-card-body">
-              <label for="mistakeCreateAiProvider">本次 AI 来源</label>
-              <button type="button" onclick="coursesAiSettings.open()">打开共用 AI 设置</button>
-              <select id="mistakeCreateAiProvider" onchange="changeMistakeAiProvider('mistakeCreateAi')"><option value="shared">共用 AI 设置（右下角可配置）</option><option value="deepseek">DeepSeek 官方（临时 Key）</option></select>
-              <div id="mistakeCreateAiKeySettings" class="mistake-ai-key-settings" hidden>
-                <label for="mistakeCreateAiApiKey">本次 API Key（不保存）</label>
-                <input id="mistakeCreateAiApiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512">
-                <label for="mistakeCreateAiModel">DeepSeek 模型</label>
-                <select id="mistakeCreateAiModel"><option>deepseek-flash</option><option>deepseek-v4-pro</option></select>
-                <label><input id="mistakeCreateAiCost" type="checkbox">同意本次将题目和作答发送至 DeepSeek 官方，知晓可能产生费用。</label>
-                <p class="mistake-ai-note">Key 仅本次使用，发送后清空；取消或关闭也会清空。不保存、不自动重试或回退 Mock。</p>
-              </div>
+              <p id="mistakeCreateAiSource" data-ai-settings-source class="mistake-ai-note">共用 AI 设置：尚未配置</p>
+              <button type="button" onclick="coursesAiSettings.open()">AI 设置（平台 AI / 自带 API）</button>
               <label for="mistakeCreateAiStudentAnswer">学生作答（仅获取建议时填写）</label>
               <textarea id="mistakeCreateAiStudentAnswer" rows="2" placeholder="填写当时的实际作答，不要填参考答案"></textarea>
               <label for="mistakeCreateAiSteps">解题过程（可选）</label>
@@ -1212,7 +1200,7 @@
   <script src="js/state.js"></script>
   <script src="js/utils.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/ai.js?v=20261024-platform-ai-52"></script>
-  <script src="js/aiSettings.js?v=20261024-platform-ai-52"></script>
+  <script src="js/aiSettings.js?v=20261025-unified-ai-entry-53"></script>
 
   <script src="js/attachmentPreview.js?v=20261024-office-preview-40"></script>
 
@@ -1234,7 +1222,7 @@
 
   <!-- 录入流程：手动输入 + 选标签 -->
   <script src="js/manualEntry.js?v=20261024-outline-save-39"></script>
-  <script src="js/tagPicker.js?v=20261024-legacy-office-text-41"></script>
+  <script src="js/tagPicker.js?v=20261025-attachment-body-54"></script>
   <script src="js/tagPickerView.js?v=20261024-tree-root-collapse-34"></script>
 
   <!-- 详情页 -->
@@ -1246,8 +1234,8 @@
   <script src="js/materialReview.js?v=20261024-review-flow-merge-46"></script>
   <script src="js/noteReview.js"></script>
   <script src="js/mistakeDetail.js?v=20261024-empty-answer-read-48"></script>
-  <script src="js/mistakeAi.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/mistakeAnswerAi.js?v=20261023-adoption-confirm-19"></script>
+  <script src="js/mistakeAi.js?v=20261025-unified-ai-entry-53"></script>
+  <script src="js/mistakeAnswerAi.js?v=20261025-unified-ai-entry-53"></script>
   <script src="js/resourceAi.js?v=20261024-merged-attachment-review-31"></script>
   <script src="js/reviewMethodChoice.js?v=20261024-manual-review-47"></script>
   <script src="js/clozeEditor.js?v=20261024-merged-attachment-review-31"></script>
