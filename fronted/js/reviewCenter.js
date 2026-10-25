@@ -470,7 +470,7 @@ function renderCenterReviewToolbar() {
   }
   const activeItems=s.session.items.filter(row=>!row.source_deleted),activePosition=activeItems.findIndex(row=>row.id===item.id);
   const context=centerWorkbenchContext(item,s.session),selection=workbenchSelection(context),activeSelection=readReviewActive(context);
-  const displayedMode=activeSelection?.mode||selection.mode;
+  const displayedMode=activeSelection?.viaRetry?'retry':activeSelection?.mode||selection.mode;
   const processed=activeItems.filter(row=>row.status!=='pending').length,shownPosition=Math.max(0,activePosition)+1;
   bar.innerHTML=`<strong>${escapeHtml(s.session.name)} · 第 ${shownPosition} / ${s.session.total} 项</strong><p>成功复习 ${s.session.passed || 0} / ${s.session.total} · 未通过 ${s.session.failed || 0} · 仅曝光 ${s.session.exposed || 0} · 跳过 ${s.session.skipped}${s.session.deleted?` · 已删除 ${s.session.deleted}`:''}</p><p class="review-current-mode">第 ${shownPosition} / ${s.session.total} 条 · 已处理 ${processed} 条 · ${PLAN_TYPE_LABELS[item.item_type]} · ${AI_REVIEW_METHODS[displayedMode]}</p><div class="mistake-toolbar"><button onclick="moveCenterReview(-1)" ${blocked || s.position===0 ? 'disabled' : ''}>上一项</button><button onclick="moveCenterReview(1)" ${blocked ? 'disabled' : ''}>下一项</button><button onclick="skipCenterReviewItem()" ${blocked || item.status!=='pending' ? 'disabled' : ''}>跳过</button><button onclick="pauseCenterReview()" ${busy ? 'disabled' : ''}>暂停，稍后继续</button></div>`;
   const active=activeSelection;
@@ -487,7 +487,7 @@ function renderCenterReviewToolbar() {
   const aiPanel=document.getElementById('resourceAiPanel');if(aiPanel)aiPanel.hidden=inlineVisible||workbenchActive;
   if(item.item_type!=='mistake')for(const id of ['materialReviewContent','materialReviewPreview']){const original=document.getElementById(id);if(original)original.hidden=inlineVisible||workbenchActive;}
   if(workbenchActive){
-    bar.insertAdjacentHTML('afterbegin',`<p>当前实际执行：${escapeHtml(AI_REVIEW_METHODS[active.mode])} · 在本页直接作答</p>`);
+    bar.insertAdjacentHTML('afterbegin',`<p>当前实际执行：${escapeHtml(AI_REVIEW_METHODS[displayedMode])} · 在本页直接作答</p>`);
     if(item.item_type==='mistake'&&mistakeDetailState?.progress){const p=mistakeDetailState.progress;document.getElementById('mistakeDetailMeta').textContent=`${MISTAKE_TYPES[p.mistakeType]} · ${AI_REVIEW_METHODS[active.mode]} · ${mistakeStatusText(p.reviewStatus)}`;}
   }
 }

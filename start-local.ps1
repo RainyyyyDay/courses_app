@@ -39,8 +39,15 @@ function Start-LocalAi {
     $previousPythonPath = $env:PYTHONPATH
     try {
         $env:PYTHONPATH = Join-Path $projectRoot '.local-ai-deps'
-        & $pythonCommand.Source -B -c 'import fastapi, uvicorn, httpx' 2>$null
-        if ($LASTEXITCODE -ne 0) { throw '缺少 AI 服务依赖，请按启动说明准备 FastAPI、uvicorn 和 httpx。' }
+        # Windows PowerShell can promote native stderr warnings to terminating errors.
+        # Judge this probe by its exit code; a warning alone does not mean import failed.
+        $previousErrorAction = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $probeOutput = & $pythonCommand.Source -B -c 'import fastapi, uvicorn, httpx' 2>&1
+            $probeExitCode = $LASTEXITCODE
+        } finally { $ErrorActionPreference = $previousErrorAction }
+        if ($probeExitCode -ne 0) { throw 'Python 或 AI 服务依赖检查失败，请确认 Python 可运行，并按启动说明准备 FastAPI、uvicorn 和 httpx。' }
         if ($CheckOnly) { Write-Host 'AI 依赖检查通过。'; return }
         $aiProcess = Start-Process -FilePath $pythonCommand.Source -ArgumentList '-B', 'local_runner.py' `
             -WorkingDirectory (Join-Path $projectRoot 'ai-fastapi') -WindowStyle Hidden -PassThru `
