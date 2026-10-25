@@ -73,7 +73,7 @@ async function testBackend() {
   db = require(path.join(temp, 'db/connection.js')).db;
   const store = require(path.join(temp, 'db/index.js'));
   db = store.db;
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 26);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 27);
   assert.deepEqual(db.prepare('SELECT id, name FROM courses ORDER BY id').all(), existing);
   for (const snapshot of snapshots) assert.deepEqual(db.prepare(snapshot.sql).all(), snapshot.rows);
   const course = store.createCourse('regression course');
