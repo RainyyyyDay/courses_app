@@ -708,6 +708,29 @@ function extractMistakeOcrAnswer(text) {
   return picked.join('\n').trim();
 }
 
+// OCR may keep each option on its own line, or place the whole answer row on one
+// line. Parse explicit A/B/C markers from both layouts and ignore earlier stem text.
+function parseMistakeOcrChoiceOptions(text) {
+  const source = String(text || '').normalize('NFKC');
+  const marker = /(?:^|[\s,，;；])(?:\(([A-Za-z])\)|([A-Za-z])[.)、:：])\s*/g;
+  const matches = [];
+  let match;
+  while ((match = marker.exec(source)) !== null) {
+    matches.push({ label: (match[1] || match[2]).toUpperCase(), start: match.index, end: marker.lastIndex });
+  }
+  const values = [];
+  for (let index = 0; index < matches.length && values.length < 26; index += 1) {
+    const current = matches[index];
+    const expected = choiceLetters(values.length + 1).at(-1);
+    if (current.label !== expected) continue;
+    const next = matches[index + 1];
+    const value = source.slice(current.end, next ? next.start : source.length)
+      .replace(/^[\s,，;；]+/, '').replace(/[\s,，;；]+$/, '').trim();
+    if (value) values.push(value);
+  }
+  return values;
+}
+
 function applyMistakeOcr(target, mode = 'replace') {
   const text = (document.getElementById('mistakeCreateOcrText')?.value || '').trim();
   if (!text) { showToast('识别结果为空'); return; }
@@ -722,14 +745,8 @@ function applyMistakeOcr(target, mode = 'replace') {
   }
   if (target === 'options') {
     if (format !== 'choice') return;
-    const values = [];
-    for (const rawLine of text.split('\n')) {
-      // OCR 常输出全角字母、全角标点、（A）这类写法，先归一化再解析。
-      const line = rawLine.normalize('NFKC');
-      const match = line.match(/^\s*[（(]?\s*([A-Za-z])\s*(?:[）)]\s*|[.、,:：;；)）]\s*|\s+)(.+)$/);
-      if (match) values.push(match[2].trim());
-    }
-    if (values.length < 2) { showToast('没有识别到 A./B./C. 形式的选项行，请手动校对'); return; }
+    const values = parseMistakeOcrChoiceOptions(text);
+    if (values.length < 2) { showToast('没有识别到 A)/B)/C) 或 A./B./C. 形式的选项，请手动校对'); return; }
     renderMistakeChoiceOptionRows('Create', values, []);
     showToast('已填入选项，请核对编号和内容');
     return;
