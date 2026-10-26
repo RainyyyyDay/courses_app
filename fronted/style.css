@@ -1260,13 +1260,16 @@ body.mistake-review-open { overflow: hidden; }
 }
 
 /* 复习完成弹窗：正确率 100% 时整页飘一层彩带，彩带在弹窗卡片后面，不挡内容。 */
-.mistake-complete { position: relative; z-index: 1; text-align: center; }
+.mistake-complete {
+  position: relative; z-index: 1; width:min(620px,calc(100vw - 24px)); max-width:620px;
+  text-align: center;
+}
 .mistake-complete h3 { font-size: 19px; line-height: 1.5; margin-bottom: 10px; padding:0 28px; }
 .mistake-complete > .tag-sheet-close { position:absolute;top:12px;right:12px; }
 .mistake-complete p { margin: 0 0 16px; color: #5b6273; font-size: 14px; line-height: 1.6; }
-.mistake-complete .modal-actions { justify-content: center; flex-wrap: wrap; }
+.mistake-complete .modal-actions { display:flex; justify-content:center; flex-wrap:nowrap; width:100%; gap:8px; }
 .mistake-complete .modal-actions button {
-  padding: 10px 16px; border: 1px solid #d7dae3; border-radius: 8px;
+  flex:1 1 0; min-width:0; padding:10px 12px; border:1px solid #d7dae3; border-radius:8px;
   background: #f3f4f8; color: #333; font: inherit; cursor: pointer;
 }
 .mistake-complete .modal-actions button:hover { background: #e8eaf1; }

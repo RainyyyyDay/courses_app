@@ -75,6 +75,10 @@ test('one plan-day queue runs materials, notes then mistakes and updates its pre
         await submitMistakeReview('judge','correct',true);
         await wait(()=>document.getElementById('mistakeCompleteModal').classList.contains('show')&&document.getElementById('mistakeCompleteTitle').textContent.includes('恭喜'),'perfect completion');
         await wait(()=>mistakeConfettiLayerState()!=='none','perfect confetti');
+        const planActions=[...document.querySelectorAll('#mistakeCompleteModal .modal-actions button')].filter(button=>!button.hidden);
+        check(planActions.length===2&&document.getElementById('reviewCompleteStartNew').hidden,'plan completion offers only plan actions');
+        check(document.getElementById('reviewCompleteReplay').classList.contains('btn-primary')&&document.getElementById('reviewCompleteReplay').textContent.trim()==='再来一遍','plan replay is the blue primary action');
+        check(new Set(planActions.map(button=>Math.round(button.getBoundingClientRect().top))).size===1,'plan completion actions stay on one row');
         await cancelReviewComplete();
 
         openPlanScheduleDay('${today}');
