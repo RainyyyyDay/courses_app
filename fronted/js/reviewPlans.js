@@ -215,11 +215,11 @@ async function startPlanScheduleDay(date, type, action = '复习') {
   }
   await startReviewPlanDay(state.plan.id, date, null, false, selected.map(item => ({type:item.type,id:item.id})));
 }
-function rememberPlanPage(id = null) {
+function rememberPlanPage(id = null,fromList=false) {
   mistakeStorageSet('review-center-location:'+currentCourseId,null);
   localStorage.setItem('currentTab','reviewPlans');
   localStorage.setItem('courseTimeStamp',Date.now());
-  mistakeStorageSet('review-plan-location:' + currentCourseId,id ? {id} : null);
+  mistakeStorageSet('review-plan-location:' + currentCourseId,id ? {id,fromList} : null);
 }
 function setReviewPlanCompletedPreview(planId,date){
   reviewPlanCompletedPreview=Number.isSafeInteger(planId)&&/^\d{4}-\d{2}-\d{2}$/.test(String(date||''))?{courseId:currentCourseId,planId,date}:null;
@@ -253,6 +253,7 @@ function refreshReviewPlanSurface() {
   planSurfaceRefreshTimer = setTimeout(() => {
     if(reviewPlanSurfaceLoading||reviewPlanCreate)return;
     if (currentView.type === 'reviewPlan') void openReviewPlan(currentView.id);
+    else if(currentView.type==='reviewPlanList')void loadAllReviewPlans();
     else if (currentView.type === 'course' && currentView.tab === 'reviewPlans') void loadReviewPlans();
   }, 250);
 }
@@ -266,15 +267,42 @@ function switchReviewPlanCard(delta) {
   s.index=(s.index+delta+s.plans.length)%s.plans.length;
   mistakeStorageSet('review-plan-carousel:'+currentCourseId,s.plans[s.index].id);renderReviewPlanCarousel();
 }
+function openAllReviewPlans(){
+  if(typeof clearCenterReviewUi==='function')clearCenterReviewUi();
+  currentView={type:'reviewPlanList'};showPageOnly('reviewPlanListPage');rememberPlanPage();
+  mistakeStorageSet('review-plan-location:'+currentCourseId,{view:'list'});
+  return loadAllReviewPlans();
+}
+async function loadAllReviewPlans(){
+  reviewPlanSurfaceLoading++;
+  const courseId=currentCourseId,request=++reviewPlanRequest,box=document.getElementById('reviewPlanAllList');
+  box.textContent='加载中…';document.getElementById('reviewPlanAllCount').textContent='';
+  try{
+    const plans=await requestList(reviewPlanApi());
+    if(courseId!==currentCourseId||request!==reviewPlanRequest||currentView.type!=='reviewPlanList')return;
+    document.getElementById('reviewPlanAllCount').textContent=`共 ${plans.length} 个计划（含已归档和已过期计划）`;
+    box.innerHTML=plans.length?plans.map(plan=>reviewPlanCardHtml(plan)).join(''):'<p class="empty">暂无复习计划，可点击右上角创建计划。</p>';
+  }catch(err){
+    if(courseId===currentCourseId&&request===reviewPlanRequest&&currentView.type==='reviewPlanList'){
+      showListError(box,err);box.insertAdjacentHTML('beforeend','<button type="button" onclick="loadAllReviewPlans()">重试</button>');
+    }
+  }finally{reviewPlanSurfaceLoading--;}
+}
 function renderReviewPlanCarousel() {
   const {plans,index}=reviewPlanCarousel,plan=plans[index],box=document.getElementById('reviewPlanList');
-  box.innerHTML = plan ? `<article class="detail-card plan-card" data-plan-id="${plan.id}">
-      <div class="review-plan-card-top"><h2><button class="plan-title" onclick="openReviewPlan(${plan.id})">${escapeHtml(plan.name)}</button></h2><div class="review-plan-controls" role="group" aria-label="切换复习计划">${plans.length>1 ? '<button type="button" aria-label="上一个计划" onclick="switchReviewPlanCard(-1)">←</button>' : ''}<span aria-live="polite">当前计划 ${index+1} / ${plans.length}</span>${plans.length>1 ? '<button type="button" aria-label="下一个计划" onclick="switchReviewPlanCard(1)">→</button>' : ''}</div></div>
+  const toggle=document.getElementById('reviewPlanViewAll');
+  toggle.textContent=`查看全部${plans.length?'（'+plans.length+'）':''}`;
+  const controls=`<div class="review-plan-controls" role="group" aria-label="切换复习计划">${plans.length>1 ? '<button type="button" aria-label="上一个计划" onclick="switchReviewPlanCard(-1)">←</button>' : ''}<span aria-live="polite">当前计划 ${index+1} / ${plans.length}</span>${plans.length>1 ? '<button type="button" aria-label="下一个计划" onclick="switchReviewPlanCard(1)">→</button>' : ''}</div>`;
+  box.innerHTML = plan ? reviewPlanCardHtml(plan,controls) : '<div class="review-center-empty"><p>还没有考前复习计划</p><span>点击右上角「创建计划」，安排每日复习任务。</span></div>';
+}
+function reviewPlanCardHtml(plan,controls=''){
+  return `<article class="detail-card plan-card review-record" data-plan-id="${plan.id}">
+      <div class="review-plan-card-top"><h2><button class="plan-title" onclick="openReviewPlan(${plan.id})">${escapeHtml(plan.name)}</button></h2>${controls}</div>
       <span class="material-review-badge">${{active:'进行中',completed:'已完成',expired:'已过期'}[plan.reviewState]}</span>
       <p>考试：${escapeHtml(plan.exam_date)} · ${plan.remainingDays ? `剩余 ${plan.remainingDays} 天` : '已到考试日期'}${plan.status==='archived' ? ' · 已归档' : ''}</p>
       ${planProgressHtml(plan)}<p>今日 ${plan.todayStats.pending} 项待复习</p>
       <div class="mistake-toolbar"><button onclick="openReviewPlan(${plan.id})">查看计划</button><button type="button" onclick="openReviewPlanEdit(${plan.id})">编辑计划</button><button onclick="startReviewPlanDay(${plan.id},'${plan.today}')" ${plan.status!=='active' || !plan.todayStats.pending ? 'disabled' : ''}>开始今日复习</button></div>
-    </article>` : '<div class="review-center-empty"><p>还没有考前复习计划</p><span>点击右上角「创建计划」，安排每日复习任务。</span></div>';
+    </article>`;
 }
 function openReviewPlanEdit(id) {return openReviewPlanCreate(id);}
 function openReviewPlanCreate(editId=null) {
@@ -443,10 +471,11 @@ async function createReviewPlan() {
   }catch(err){if(state===reviewPlanCreate)document.getElementById('reviewPlanCreateError').textContent=err.message;}
   finally{state.busy=false;renderReviewPlanSelection();}
 }
-async function openReviewPlan(id) {
+async function openReviewPlan(id,fromList=null) {
+  if(fromList===null)fromList=currentView.type==='reviewPlanList'||(currentView.type==='reviewPlan'&&!!reviewPlanDetail?.fromList);
   reviewPlanSurfaceLoading++;
   const request = ++reviewPlanRequest, courseId = currentCourseId;
-  currentView = {type:'reviewPlan',id}; showPageOnly('reviewPlanDetailPage'); rememberPlanPage(id);
+  currentView = {type:'reviewPlan',id}; showPageOnly('reviewPlanDetailPage'); rememberPlanPage(id,fromList);
   const box = document.getElementById('reviewPlanDetailBody'); box.innerHTML = '<p class="loading-tip">加载中…</p>';
   try {
     const [response,items,scheduleResponse] = await Promise.all([requestApi(reviewPlanApi(id)),requestList(reviewPlanApi(id+'/items')),
@@ -454,7 +483,7 @@ async function openReviewPlan(id) {
     const plan = await response.json();
     const schedule = scheduleResponse ? await scheduleResponse.json().catch(()=>null) : null;
     if (request!==reviewPlanRequest || courseId!==currentCourseId || currentView.type!=='reviewPlan') return;
-    reviewPlanDetail = {plan,items,schedule,courseId}; renderReviewPlanDetail();
+    reviewPlanDetail = {plan,items,schedule,courseId,fromList}; renderReviewPlanDetail();
   } catch(err) {
     if (request===reviewPlanRequest && courseId===currentCourseId) {
       showListError(box,err); box.insertAdjacentHTML('beforeend',`<button onclick="openReviewPlan(${id})">重试</button><button onclick="backToReviewPlans()">返回计划列表</button>`);
@@ -462,6 +491,7 @@ async function openReviewPlan(id) {
   } finally {reviewPlanSurfaceLoading--;}
 }
 function backToReviewPlans() { ++reviewPlanRequest; reviewPlanCompletedPreview=null; if(typeof clearCenterReviewUi==='function')clearCenterReviewUi();rememberPlanPage(); currentView={type:'course',tab:'reviewPlans'}; showPageOnly('detailPage'); switchTab('reviewPlans'); }
+function backFromReviewPlan(){return reviewPlanDetail?.fromList?openAllReviewPlans():backToReviewPlans();}
 function renderReviewPlanDetail() {
   const state = reviewPlanDetail; if (!state || state.courseId!==currentCourseId) return;
   const {plan,items} = state;
@@ -601,6 +631,8 @@ async function showCompletedPlanDay(planId,date,sourceSession=null){
 }
 async function restoreReviewPlanLocation(courseId) {
   if (courseId!==currentCourseId) return;
+  const saved=mistakeStorageGet('review-plan-location:'+courseId);
+  if(saved?.view==='list'){await openAllReviewPlans();return;}
   const session = mistakeStorageGet('review-plan-session:'+courseId);
   if (session && session.courseId===courseId && Number.isSafeInteger(session.planId)
     && (session.type==='mixed'||Object.hasOwn(PLAN_TYPE_LABELS,session.type))
@@ -608,6 +640,5 @@ async function restoreReviewPlanLocation(courseId) {
     if(session.sessionId){await resumeReviewRecord(session.sessionId);return;}
     await startReviewPlanDay(session.planId,session.date,session.type==='mixed'?null:session.type,true); return;
   }
-  const saved=mistakeStorageGet('review-plan-location:'+courseId);
-  if (Number.isSafeInteger(saved?.id) && saved.id>0) await openReviewPlan(saved.id);
+  if (Number.isSafeInteger(saved?.id) && saved.id>0) await openReviewPlan(saved.id,!!saved.fromList);
 }

@@ -2061,6 +2061,13 @@ body.mistake-edit-open { overflow: hidden; }
 #pane-reviewPlans button:disabled { cursor: default; opacity: .45; }
 #pane-reviewPlans .review-panel-action { flex-shrink: 0; border: 1px solid #dce2ed; border-radius: 7px; padding: 7px 11px; background: #fff; color: #526785; font-size: 13px; line-height: 1.5; white-space: nowrap; }
 #pane-reviewPlans .review-panel-action:hover { background: #f7f9fc; }
+#pane-reviewPlans .review-panel-heading { flex-wrap: wrap; }
+#pane-reviewPlans .review-plan-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; max-width: 100%; }
+.review-plan-all-list { display: grid; gap: 14px; max-width: 1120px; margin: 0 auto; }
+.review-plan-all-list .plan-card { margin: 0; overflow-wrap: anywhere; }
+.review-plan-all-list .review-plan-card-top h2 { margin-top: 0; }
+#reviewPlanListPage > .header { flex-wrap: wrap; gap: 12px; }
+#reviewPlanAllCount { max-width: 1120px; margin: 12px auto; }
 #pane-reviewPlans .plan-card { padding: 18px 20px; margin: 0; border: 1px solid #e6ebf3; border-radius: 10px; background: #f4f6fa; overflow-wrap: anywhere; }
 #pane-reviewPlans .review-plan-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 #pane-reviewPlans .review-plan-card-top h2 { flex: 1; min-width: 0; margin: 2px 0 0; font-size: 17px; line-height: 1.5; }
