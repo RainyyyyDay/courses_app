@@ -501,7 +501,43 @@ function applyReviewPlanSchedule(courseId, planId) {
     const snapshot = planScheduleSnapshot(plan, items, live, true);
     let prior = null;
     try { prior = plan.schedule_json ? JSON.parse(plan.schedule_json) : null; } catch {}
-    const historical = scheduleStructure((prior?.days || []).filter(day => day.date < snapshot.appliedOn));
+    // Freeze the calendar exactly as the user last saw it before today. This
+    // includes direct task completions, skipped items and preserved evidence,
+    // not only sessions that can be re-attached afterwards.
+    const historyByDate = new Map(scheduleStructure(current.days
+      .filter(day => day.date < snapshot.appliedOn))
+      .map(day => [day.date, day]));
+    const planRows = db.prepare(`SELECT item_type,item_id,scheduled_date,status,estimated_minutes
+      FROM review_plan_items WHERE plan_id=? AND scheduled_date<?`).all(planId, snapshot.appliedOn);
+    for (const row of planRows) {
+      if (row.status === 'pending') continue;
+      const day = historyByDate.get(row.scheduled_date) || {
+        date: row.scheduled_date, minutes: 0, items: [],
+      };
+      if (!day.items.some(item => item.type === row.item_type && item.id === row.item_id)) {
+        day.items.push({ type: row.item_type, id: row.item_id,
+          minutes: Number(row.estimated_minutes) || 5, roundNo: 1, reason: 'repeat' });
+      }
+      historyByDate.set(day.date, day);
+    }
+    const historical = [...historyByDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+    const preservedResults = Object.fromEntries(Object.entries(prior?.preservedResults || {})
+      .filter(([key]) => key.slice(0, 10) < snapshot.appliedOn));
+    for (const day of current.days.filter(item => item.date < snapshot.appliedOn)) {
+      for (const item of day.items || []) {
+        if (!item.status || item.status === 'pending') continue;
+        preservedResults[day.date + ':' + item.type + ':' + item.id] = {
+          status: item.status, result: item.result || null, exposureOnly: !!item.exposureOnly,
+        };
+      }
+    }
+    for (const row of planRows) {
+      if (row.status === 'pending') continue;
+      preservedResults[row.scheduled_date + ':' + row.item_type + ':' + row.item_id] = {
+        status: row.status, result: row.status === 'completed' ? 'passed' : null, exposureOnly: false,
+      };
+    }
+    snapshot.preservedResults = preservedResults;
     const upcoming = scheduleStructure(live.days.filter(day => day.date >= snapshot.appliedOn));
     snapshot.days = [...historical, ...upcoming].sort((a, b) => a.date.localeCompare(b.date));
     db.prepare('UPDATE review_plans SET schedule_json=? WHERE id=?').run(JSON.stringify(snapshot), plan.id);

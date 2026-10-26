@@ -106,7 +106,7 @@ function planScheduleHtml(schedule) {
   };
   const reasonLabels = {content_deleted:'计划内有内容被删除',completed_early:'提前完成了未来的复习任务',overdue:'有任务未按安排在当天内完成'};
   const reasons = (schedule.rescheduleReasons || []).map(reason => reasonLabels[reason]).filter(Boolean);
-  const adjustment = schedule.hasNewSchedule ? `<p class="detail-meta">需要调整：${escapeHtml(reasons.join('；') || '计划执行情况发生变化')}。点击“应用新排期”后生效。</p>` : '';
+  const adjustment = schedule.hasNewSchedule ? `<p class="detail-meta">需要调整：${escapeHtml(reasons.join('；') || '计划执行情况发生变化')}。当前页面仍沿用已应用的排期；点击“应用新排期”后，从今天起按最新复习状态重算，今天以前的完成状态保持不变。</p>` : '';
   const warnings = (feasibility.warnings || []).map(text => `<li>${escapeHtml(text)}</li>`).join('');
   return `<section class="detail-card plan-schedule"><h2>智能排期预览</h2>
     <p class="detail-meta">当前排期共 ${total} 次复习${feasibility.feasible ? '' : '，有内容排不下'}。点击有安排的日期可以查看当天内容，图例见日历下方。</p>
