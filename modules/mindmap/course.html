@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>捞捞思维导图（独立版）</title>
+<link rel="stylesheet" href="css/mindmap-standalone.css">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
+<link rel="stylesheet" href="css/node-content.css">
+<link rel="stylesheet" href="vendor/pdfjs/web/pdf_viewer.css">
+<link rel="stylesheet" href="css/pdf-nodes.css">
+<link rel="stylesheet" href="css/editor-format.css">
+<link rel="stylesheet" href="css/ai-settings.css">
+<link rel="stylesheet" href="css/paper-studio.css">
+<link rel="stylesheet" href="css/ai-workflow.css">
+<link rel="stylesheet" href="css/ai-outline.css">
+<link rel="stylesheet" href="css/ai-lecture.css">
+<link rel="stylesheet" href="css/ai-usage.css">
+<link rel="stylesheet" href="css/topic-layout.css">
+<link rel="stylesheet" href="css/map-library.css">
+<link rel="stylesheet" href="css/map-workspace.css">
+<link rel="stylesheet" href="css/course-host.css">
+<script src="js/course-source.js?v=20261026-text-1"></script>
+<script src="js/course-host.js?v=20261026-text-1"></script>
+</head>
+<body>
+  <!-- 顶部提示条：原代码的 ResizeObserver 观察它，必须有这个元素 -->
+  <div id="banner"></div>
+
+  <header class="mm-head">
+    <div class="mm-brand" aria-label="捞捞思维导图"><span class="mm-brand-symbol" aria-hidden="true">捞</span><span>捞捞</span></div>
+    <span class="mm-head-divider" aria-hidden="true"></span>
+    <b id="mmHeadTitle" class="mm-head-title">学习书桌</b>
+    <input id="mmTitleIn" class="mm-title-in hidden" maxlength="80" placeholder="导图名称">
+    <button class="mm-b pri hidden" id="mmSaveExit" type="button">保存并退出</button>
+    <button class="mm-b hidden" id="mmDiscardExit" type="button">不保存退出</button>
+    <span id="mmSync" class="mm-sync"></span>
+    <span class="mm-head-gap"></span>
+    <button class="mm-b" id="mmOpenLocal" type="button">本地导图</button>
+    <button class="mm-b" id="mmStudentSettingsButton" type="button" aria-haspopup="dialog" aria-controls="mmStudentSettingsDialog">学习背景</button>
+    <button class="mm-b" id="mmAPISettingsButton" type="button" aria-haspopup="dialog" aria-controls="mmAPISettingsDialog">大模型 API 接入</button>
+    <button class="mm-b mm-shortcuts-button" id="mmShortcutsButton" type="button" aria-controls="mmShortcuts" aria-expanded="false">补全快捷键</button>
+    <a class="mm-head-link" href="docs/user-manual/index.html" target="_blank" rel="noopener">使用指南 ↗</a>
+  </header>
+
+  <main id="mmBox" class="mm-box"></main>
+  <aside id="mmShortcuts" class="mm-shortcuts hidden" aria-labelledby="mmShortcutsTitle">
+    <div class="mm-shortcuts-heading"><b id="mmShortcutsTitle">补全快捷键</b><button id="mmShortcutsClose" class="mm-b ic" type="button" aria-label="关闭补全快捷键">✕</button></div>
+    <div id="mmShortcutsBody"></div>
+  </aside>
+
+  <dialog id="mmDlg"><div id="mmDlgBody"></div></dialog>
+
+  <script src="js/workspace-state.js"></script>
+  <script src="js/capacity.js"></script>
+  <script src="js/document-cache.js"></script>
+  <script src="js/node-kinds.js"></script>
+  <script src="js/zoom-guard.js"></script>
+  <script src="js/host-bridge.js"></script>
+  <script src="js/edge-router.js"></script>
+  <script src="js/edge-policy.js"></script>
+  <script src="vendor/markdown-it/markdown-it.min.js"></script>
+  <script src="vendor/katex/katex.min.js"></script>
+  <script src="vendor/html-to-image/html-to-image.js"></script>
+  <script src="js/math-completion.js"></script>
+  <script src="js/node-content.js"></script>
+  <script src="js/context-menus.js"></script>
+  <script src="js/scene-renderer.js"></script>
+  <script src="js/pdf-nodes.js"></script>
+  <script src="js/node-align.js"></script>
+  <script src="js/editor-format.js"></script>
+  
+  <script src="js/student-settings.js"></script>
+  <script src="js/lecture-cleanup.js"></script>
+  <script src="js/structure-plan.js"></script>
+  <script src="js/module-learning.js"></script>
+  <script src="js/topic-layout.js"></script>
+  <script src="js/map-library-model.js"></script>
+  <script src="vendor/mindmap.js"></script>
+  <script src="js/standalone.js"></script>
+  <script src="js/spatial-groups.js"></script>
+  <script src="js/canvas-tools.js"></script>
+  <script src="js/structure-overview.js"></script>
+<script src="js/module-learning-ui.js"></script>
+<script src="js/topic-ui.js"></script>
+  <script src="js/media-files.js"></script>
+  <script src="js/ai-note-format.js"></script>
+  <script src="js/ai-math-check.js"></script>
+  <script src="js/ai-lecture-plan.js"></script>
+  <script src="js/ai-summary.js"></script>
+  <script src="js/ai-source-context.js"></script>
+  <script src="js/ai-media.js"></script>
+  <script src="js/ai-memory.js"></script>
+  <script src="js/ai-learning.js"></script>
+  <script src="js/ai-branch.js"></script>
+  <script src="js/ai-workflow.js"></script>
+  <script src="js/ai-usage.js"></script>
+  <script src="js/ai-sidebar.js"></script>
+  <script src="js/ai-pdf-source.js"></script>
+  <script src="js/ai-structure-review-ui.js"></script>
+  <script src="js/ai-outline.js"></script>
+  <script src="js/ai-lecture.js"></script>
+  <script src="js/lecture-task-ui.js"></script>
+  <script src="js/text-task-ui.js"></script>
+  <script src="js/ai-inspector.js"></script>
+  <script src="js/ai-math-review-ui.js"></script>
+  <script src="js/style-chrome.js"></script>
+  <script src="js/mindmap-interchange.js"></script>
+  <script src="js/library-selection.js"></script>
+  <script src="js/map-library-ui.js"></script>
+  <script src="js/node-kinds-ui.js"></script>
+  
+  
+</body>
+</html>

@@ -26,13 +26,17 @@ async function fixture(run) {
   fs.mkdirSync(back);
   let child,staticServer;
   try {
-    for(const file of ['server.js','aiProxy.js','localAiGateway.js','db.js']){
+    for(const file of ['server.js','aiProxy.js','localAiGateway.js','localAiSettings.js','mindmapService.js','db.js']){
       fs.copyFileSync(path.join(root,'back',file),path.join(back,file));
     }
     for(const folder of ['db','ai','ocr','officePreview']){
       fs.cpSync(path.join(root,'back',folder),path.join(back,folder),
         {recursive:true,filter:p=>fs.statSync(p).isDirectory()||p.endsWith('.js')});
     }
+    // Hosted module code must resolve the fixture's settings, never real user settings.
+    const moduleRoot=path.join(root,'modules/mindmap'),fixtureModule=path.join(temp,'modules/mindmap');
+    fs.cpSync(moduleRoot,fixtureModule,{recursive:true,filter:p=>!p.split(path.sep).includes('node_modules')});
+    fs.symlinkSync(path.join(moduleRoot,'node_modules'),path.join(fixtureModule,'node_modules'),'junction');
     const env={...process.env,NODE_PATH:path.join(root,'back/node_modules'),AI_PROVIDER:'mock',
       AI_ENABLE_REAL:'false',OCR_PROVIDER:'mock'};
     delete env.NODE_OPTIONS;delete env.NPM_CONFIG_NODE_OPTIONS;
@@ -67,7 +71,9 @@ async function fixture(run) {
     };
     const serve=async()=>{
       const frontend=path.join(root,'fronted');
-      staticServer=http.createServer((request,response)=>{
+      staticServer=http.createServer(async(request,response)=>{
+        if(request.url.startsWith('/api/')||request.url.startsWith('/mindmap/')){try{const chunks=[];for await(const chunk of request)chunks.push(chunk);const proxyHeaders={...request.headers,host:new URL(base).host,origin:base.replace(/\/api$/,'')};delete proxyHeaders.connection;delete proxyHeaders['content-length'];const upstream=await fetch(base.replace(/\/api$/,'')+request.url,{method:request.method,headers:proxyHeaders,...(chunks.length?{body:Buffer.concat(chunks)}:{})});response.writeHead(upstream.status,{'Content-Type':upstream.headers.get('content-type')||'application/json'});response.end(Buffer.from(await upstream.arrayBuffer()));}catch(e){response.writeHead(500).end(e.message);}return;}
+
         const file=path.resolve(frontend,decodeURIComponent(request.url.split('?')[0]).slice(1)||'index.html');
         if(!file.startsWith(frontend+path.sep)||! /\.(html|js|css|png|svg|wasm|tar)$/.test(file)||!fs.existsSync(file)){
           response.writeHead(404).end();return;

@@ -9,89 +9,6 @@
  */
 const OCR_WEB = { script: null, engine: null, backend: null };
 
-// Only join lines when both geometry and text support a continuation. Keep the
-// original order and characters; uncertain layouts stay exactly as recognized.
-function ocrLineBounds(line) {
-  const points = line?.box;
-  if (!Array.isArray(points) || points.length < 4 || !points.every(p =>
-    Array.isArray(p) && p.length >= 2 && p.slice(0, 2).every(Number.isFinite))) return null;
-  const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
-  const x = Math.min(...xs), y = Math.min(...ys), right = Math.max(...xs), bottom = Math.max(...ys);
-  const width = right - x, height = bottom - y;
-  if (width <= 0 || height <= 0 || Math.abs(points[1][1] - points[0][1]) > height * .25) return null;
-  return { x, y, right, bottom, width, height };
-}
-
-function ocrMergePageLines(lines) {
-  const original = lines.map(line => line.text).join('\n');
-  const boxes = lines.map(ocrLineBounds);
-  if (lines.length < 2) return original;
-  const bullet = text => /^[•●▪◆·◦‣]/.test(text.trim());
-  const structured = text => /^(?:[（(]?[A-HＡ-Ｈ][）).．、:：]|[（(]?\d+[）).．、:：]|[（(][一二三四五六七八九十]+[）)]|[一二三四五六七八九十]+[、.．]|第[一二三四五六七八九十百零\d]+(?:场|章|节|题|部分|幕)|[①-⑳•●▪◆·◦‣]|[-*+]\s|(?:答案|答|解析|分析|考点|解|证明|参考答案|正确答案)\s*[:：])/.test(text.trim());
-  const wrappedItem = text => bullet(text) || /^[（(]?(?:[A-HＡ-Ｈ]|\d+)[）).．、:：]|^第[一二三四五六七八九十百零\d]+(?:场|章|节|题|部分|幕)/.test(text.trim());
-  const formula = text => /[=＝≠≈≤≥∑∫√|\t]| {2,}/.test(text);
-  const unitsOf = text => [...text.trim()].reduce((n, c) => n + (/[^\x00-\xff]/.test(c) ? 1 : .5), 0);
-  const suffix = text => /^[（(]\d+\s*[^（）()\n]{0,6}[）)]$/.test(text.trim());
-  // A split heading or tiny bullet elsewhere must not disable the entire page.
-  // Protect only rows that actually have substantial side-by-side text boxes.
-  const rowConflict = index => {
-    const box = boxes[index];
-    return boxes.some((other, j) => j !== index && other && box.width >= box.height * 3
-      && other.width >= other.height * 3 && !suffix(lines[j].text) && !suffix(lines[index].text)
-      && Math.min(box.bottom, other.bottom) - Math.max(box.y, other.y) > Math.min(box.height, other.height) * .2);
-  };
-  let text = lines[0].text;
-  for (let i = 1; i < lines.length; i += 1) {
-    const previous = lines[i - 1].text, next = lines[i].text;
-    const a = boxes[i - 1], b = boxes[i];
-    if (!a || !b || /[\r\n]/.test(previous + next)) { text += '\n' + next; continue; }
-    const h = (a.height + b.height) / 2;
-    const gap = b.y - a.bottom;
-    const units = unitsOf(previous);
-    // Infer the right edge from nearby text in the same column and font size.
-    const nearby = boxes.filter(box => box && Math.abs(box.y - a.y) <= h * 12
-      && Math.abs(box.x - Math.min(a.x, b.x)) <= h * 2.5
-      && box.height / h >= .75 && box.height / h <= 1.35 && box.width >= h * 8);
-    const right = Math.max(a.right, b.right, ...nearby.map(box => box.right));
-    const inlineSuffix = suffix(next) && units <= 16 && b.x >= a.right && b.x - a.right <= h
-      && Math.abs((a.y + a.bottom) - (b.y + b.bottom)) <= h * .5;
-    // A long question/option may itself wrap. Protect the boundary BEFORE a new
-    // item, while allowing a full-width item line to continue into ordinary text.
-    const merge = (!structured(previous) || wrappedItem(previous)) && !structured(next) && !formula(previous) && !formula(next)
-      && !/[。！？!?；;：:.)）”’」』-]\s*$/.test(previous)
-      && units >= 12 && a.width >= h * 8 && a.height / b.height >= .8 && a.height / b.height <= 1.25
-      && gap >= -h * .05 && gap <= h && Math.abs(a.right - right) <= h * 1.25
-      && b.x - a.x >= -h * 2.5 && b.x - a.x <= h * (bullet(previous) ? 1.5 : .45)
-      && !rowConflict(i - 1) && !rowConflict(i);
-    // Latin word boundaries need a space; Chinese continuations do not.
-    const space = /[A-Za-z0-9]$/.test(previous) && /^[A-Za-z0-9]/.test(next) ? ' ' : '';
-    text += (merge || inlineSuffix ? space : '\n') + next;
-  }
-  return text;
-}
-
-function formatOcrParagraphs(result) {
-  if (!result || typeof result.rawText === 'string' || result.provider === 'office-browser' || result.provider === 'mock') return result;
-  const rawText = String(result.text || '');
-  const lines = result.lines || [];
-  if (result.pages > 1 && lines.some(line => !Number.isInteger(line.page))) {
-    return { ...result, rawText, paragraphMode: 'smart' };
-  }
-  let text = '', offset = 0;
-  for (let start = 0; start < lines.length;) {
-    let end = start + 1;
-    while (end < lines.length && lines[end].page === lines[start].page) end += 1;
-    const group = lines.slice(start, end), raw = group.map(line => line.text).join('\n');
-    const found = raw ? rawText.indexOf(raw, offset) : -1;
-    if (found >= 0) {
-      text += rawText.slice(offset, found) + ocrMergePageLines(group);
-      offset = found + raw.length;
-    }
-    start = end;
-  }
-  return { ...result, rawText, text: text + rawText.slice(offset), paragraphMode: 'smart' };
-}
-
 function ocrWebAvailable() {
   return typeof window !== 'undefined' && (location.protocol === 'http:' || location.protocol === 'https:');
 }
@@ -260,12 +177,14 @@ function createPdfOcrDialog(controller, options = {}) {
       dialog.querySelector('fieldset').disabled = false;
       const button = dialog.querySelector('[data-pdf-start]');
       button.disabled = false;
+      if (options.startText) button.textContent = options.startText;
       return new Promise((resolve, reject) => {
         rejectSelection = reject;
         button.onclick = () => {
           try {
             const pages = dialog.querySelector('input[value="all"]').checked
               ? Array.from({ length: total }, (_, i) => i + 1) : parsePdfPageRange(range.value, total);
+            if (options.maxPages && pages.length > options.maxPages) throw new Error(`每次最多 ${options.maxPages} 页，请选择“指定页码”缩小范围。`);
             dialog.querySelector('fieldset').disabled = true;
             button.disabled = true;
             button.textContent = options.label ? '提取中…' : '识别中…';
@@ -282,6 +201,7 @@ function createPdfOcrDialog(controller, options = {}) {
       const bar = dialog.querySelector('progress');
       bar.hidden = false; bar.max = total; bar.value = done;
     },
+    stage(message) { const bar=dialog.querySelector('progress');bar.hidden=false;bar.removeAttribute('value');dialog.querySelector('[data-pdf-progress]').textContent=message; },
     close() { controller.signal.removeEventListener('abort', abortSelection); dialog.close(); dialog.remove(); },
   };
 }
@@ -355,8 +275,8 @@ async function recognizePdfInBrowser(file, onProgress, options = {}) {
     const warnings = [`PDF 共 ${pdf.numPages} 页，已处理 ${pages.length} 页；直接提取 ${textPages} 页，扫描识别 ${scannedPages} 页`];
     if (empty.length) warnings.push(`第 ${empty.join('、')} 页未识别到文字，请人工核对`);
     warnings.push(`用时 ${((performance.now() - started) / 1000).toFixed(1)}s`);
-    return formatOcrParagraphs({ text: texts.join('\n\n'), lines, provider: 'browser', confidence: scoreCount ? scoreSum / scoreCount : null,
-      pages: pages.length, totalPages: pdf.numPages, selectedPages: pages, textPages, scannedPages, warnings, elapsedMs: Math.round(performance.now() - started) });
+    return { text: texts.join('\n\n'), lines, provider: 'browser', confidence: scoreCount ? scoreSum / scoreCount : null,
+      pages: pages.length, totalPages: pdf.numPages, selectedPages: pages, textPages, scannedPages, warnings, elapsedMs: Math.round(performance.now() - started) };
   } catch (err) {
     ocrCheckCancelled(controller.signal);
     throw err;
@@ -424,7 +344,7 @@ async function recognizeTextInBrowser(file, onProgress, options = {}) {
   }
 
   warnings.push(`浏览器端识别，用时 ${((performance.now() - started) / 1000).toFixed(1)}s`);
-  return formatOcrParagraphs({
+  return {
     text: texts.join('\n'),
     lines,
     provider: 'browser',
@@ -432,5 +352,5 @@ async function recognizeTextInBrowser(file, onProgress, options = {}) {
     pages,
     warnings,
     elapsedMs: Math.round(performance.now() - started),
-  });
+  };
 }

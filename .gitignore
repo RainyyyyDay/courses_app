@@ -34,3 +34,17 @@ fronted/vendor/ocr/
 
 # Word/PPT ZIP runtime: node tools/prepare-office-text.cjs
 fronted/vendor/office/
+
+# Local credentials and update snapshots
+back/data/local-ai/
+.local-update-backup-*/
+
+.local-service-processes.json
+.header-service-backup-*/
+
+# Machine-local state, repair snapshots and generated screenshots
+.*-backup-*/
+artifacts/
+**/.local/
+modules/mindmap/storage/
+*.lnk

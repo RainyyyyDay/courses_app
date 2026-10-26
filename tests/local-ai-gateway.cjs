@@ -37,8 +37,36 @@ test('missing service, response bounds and upstream errors have safe messages',a
  const large=await service(t,async()=>new Response('x'.repeat(70000)));r=await large();assert.equal(r.status,502);
  const failing=await service(t,async()=>new Response(JSON.stringify({error:'AI_AUTH_FAILED',detail:'synthetic-secret'}),{status:502}));r=await failing();assert.deepEqual(await r.json(),{error:'AI_AUTH_FAILED'});
 });
+
+test('obsolete AI routes return a local compatibility error instead of an upstream Key error', async t=>{
+ for(const status of [404,405]){
+  const request=await service(t,async()=>new Response(JSON.stringify({detail:'Method Not Allowed'}),{status}));
+  const response=await request();
+  assert.equal(response.status,503);
+  assert.deepEqual(await response.json(),{error:'LOCAL_AI_INCOMPATIBLE'});
+ }
+});
+
+test('dedicated AI port keeps a loopback destination and forwards health checks without a model call', async t=>{
+ let hit=false;
+ const app=express();
+ app.use('/api/ai',createLocalAiGateway({port:3003,fetchImpl:async(url,init)=>{
+  hit=true;
+  assert.equal(url,'http://127.0.0.1:3003/api/ai/local-health');
+  assert.equal(init.headers.Origin,'http://127.0.0.1:3003');
+  assert.equal(init.method,'GET');
+  assert.equal(init.body,undefined);
+  return new Response(JSON.stringify({service:'courses-local-ai'}));
+ }}));
+ const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
+ t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const response=await fetch(`http://127.0.0.1:${server.address().port}/api/ai/local-health`);
+ assert.equal(response.status,200);assert.equal(hit,true);
+ assert.deepEqual(await response.json(),{service:'courses-local-ai'});
+ for(const port of ['localhost:80','https://evil.invalid',0,65536,'3003/path'])assert.throws(()=>createLocalAiGateway({port}));
+});
 const {test: outlineGatewayTest}=require('node:test');
-outlineGatewayTest('outline forwards the same 32 KB input bound as Python and rejects oversize without a call',async t=>{
+outlineGatewayTest('outline forwards the same 2 MiB input bound as Python and rejects oversize without a call',async t=>{
  let hits=0;const request=await service(t,async(url,init)=>{
   hits++;assert.equal(JSON.parse(init.body).purpose,'outline_draft');
   return new Response(JSON.stringify({provider:'deepseek',result:{outline:'- Writing',needs_review:true}}));
@@ -46,7 +74,7 @@ outlineGatewayTest('outline forwards the same 32 KB input bound as Python and re
  const body={api_key:'synthetic-only',purpose:'outline_draft',input:{title:'Writing',text:'字'.repeat(7000)}};
  assert.equal((await request('/outline-polish',{},body)).status,200);
  assert.equal(hits,1);
- body.input.text='字'.repeat(11000);
+ body.input.text='字'.repeat(800000);
  assert.equal((await request('/outline-polish',{},body)).status,413);
  assert.equal(hits,1);
 });

@@ -32,15 +32,7 @@ function readStoredReviewMethod(type, id) {
 function saveStoredReviewMethod(type, id, method) {
   if (!Number.isSafeInteger(id) || id < 1) return false;
   if (type === 'mistake') return saveMistakeAiMethod({courseId:currentCourseId,id},method);
-  const context={courseId:currentCourseId,type,id};
-  const previous=readResourceAiMethod(context);
-  if(method==='retry'&&typeof RESOURCE_RETRY_MODES!=='undefined'&&RESOURCE_RETRY_MODES.includes(previous)){
-    mistakeStorageSet(resourceRetryKey(context),{version:1,mode:previous});
-    if(mistakeStorageGet(resourceRetryKey(context))?.mode!==previous)return false;
-  }
-  if(!saveResourceAiMethod(context,method))return false;
-  if(previous!==method&&typeof clearResourceSessionChoices==='function')clearResourceSessionChoices(context);
-  return true;
+  return saveResourceAiMethod({courseId:currentCourseId,type,id},method);
 }
 
 function reviewModePrefix(prefix) { return String(prefix).replace(/[^A-Za-z0-9_-]/g,''); }

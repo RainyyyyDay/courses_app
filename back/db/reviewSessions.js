@@ -110,7 +110,6 @@ function createReviewSession(courseId,body,repeatFrom=null) {
       if(!canReview(item.type,row)) planError(422,'REVIEW_CONFIG_INCOMPLETE','错题需要先补齐题目和参考答案');
       let planItem=null;
       if(plan) {
-        if(require('./reviewPlanSchedule').planExcludedKeys(plan).has(compound))planError(409,'PLAN_ITEM_UNAVAILABLE','此内容已移出当前计划');
         planItem=db.prepare("SELECT id FROM review_plan_items WHERE plan_id=? AND item_type=? AND item_id=? AND scheduled_date=? AND status='pending'").get(plan.id,item.type,item.id,body.scheduledDate);
         if(!planItem) {
           // 允许提前复习/补做：内容属于这个计划即可，不强制绑定某条具体任务。

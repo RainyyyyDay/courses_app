@@ -10,6 +10,14 @@ $backendPath = Join-Path $projectRoot 'back'
 $frontedEntry = Join-Path $projectRoot 'fronted\index.html'
 $ocrEntry = Join-Path $projectRoot 'fronted\vendor\ocr\paddleocr-js.iife.js'
 $url = 'http://127.0.0.1:3000/'
+# Keep this project's current AI API separate from older services on 3002.
+$localAiPort = 3003
+$env:COURSES_LOCAL_AI_PORT = [string]$localAiPort
+$projectHash = [System.Security.Cryptography.SHA256]::Create()
+try { $localAiProjectId = ([BitConverter]::ToString($projectHash.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($projectRoot.ToLowerInvariant())))).Replace('-', '').ToLowerInvariant() }
+finally { $projectHash.Dispose() }
+. (Join-Path $projectRoot 'service-control.ps1')
+. (Join-Path $projectRoot 'ai-python.ps1')
 
 function Test-LoopbackPort([int]$Port) {
     $client = [System.Net.Sockets.TcpClient]::new()
@@ -20,42 +28,58 @@ function Test-LoopbackPort([int]$Port) {
     finally { $client.Dispose() }
 }
 
-function Wait-Ready([int]$TimeoutSeconds = 60) {
+function Test-WebsiteReady {
+    try {
+        $response = Invoke-WebRequest -Uri $url -TimeoutSec 2 -UseBasicParsing
+        $identity = Invoke-RestMethod -Uri ($url + 'api/local-service') -TimeoutSec 2
+        if ($identity.service -ne 'courses-local-website' -or $identity.project_id -ne $localAiProjectId) { return $false }
+        if ($response.StatusCode -ne 200 -or $response.Content.Trim() -ne ([System.IO.File]::ReadAllText($frontedEntry)).Trim()) { return $false }
+        $courses = Invoke-WebRequest -Uri ($url + 'api/courses') -TimeoutSec 2 -UseBasicParsing
+        if ($courses.StatusCode -ne 200 -or -not $courses.Content.TrimStart().StartsWith('[')) { return $false }
+        $null = ConvertFrom-Json -InputObject $courses.Content -ErrorAction Stop
+        return $true
+    } catch { return $false }
+}
+
+function Wait-Ready($Process, [int]$TimeoutSeconds = 60) {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
-        try {
-            $response = Invoke-WebRequest -Uri $url -TimeoutSec 2 -UseBasicParsing
-            if ($response.StatusCode -eq 200) { return $true }
-        } catch { }
+        $Process.Refresh()
+        if ($Process.HasExited) { throw "后端已退出。请查看：$backendStderr" }
+        if (Test-WebsiteReady) { return $true }
         Start-Sleep -Milliseconds 500
     }
     return $false
 }
 
+function Test-LocalAiReady {
+    try {
+        $response = Invoke-WebRequest -Uri "http://127.0.0.1:$localAiPort/api/ai/local-health" -TimeoutSec 2 -UseBasicParsing
+        $health = ConvertFrom-Json -InputObject $response.Content -ErrorAction Stop
+        return ($health.service -eq 'courses-local-ai' -and $health.api_version -eq 1 -and $health.project_id -eq $localAiProjectId -and @($health.routes) -contains '/api/ai/test' -and @($health.routes) -contains '/api/ai/vision-ocr')
+    } catch { return $false }
+}
+
 function Start-LocalAi {
-    if (Test-LoopbackPort 3002) { return }
-    $pythonCommand = Get-Command python.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $pythonCommand) { throw 'AI 服务需要 Python，请先安装 Python。' }
+    if (Test-LoopbackPort $localAiPort) {
+        if (-not (Test-LocalAiReady)) { throw "$localAiPort 端口已有其他项目或旧版 AI 服务，不会复用。" }
+        Write-Host "本项目 AI 接口已就绪：http://127.0.0.1:$localAiPort"
+        return
+    }
     $previousPythonPath = $env:PYTHONPATH
     try {
         $env:PYTHONPATH = Join-Path $projectRoot '.local-ai-deps'
-        # Windows PowerShell can promote native stderr warnings to terminating errors.
-        # Judge this probe by its exit code; a warning alone does not mean import failed.
-        $previousErrorAction = $ErrorActionPreference
-        try {
-            $ErrorActionPreference = 'Continue'
-            $probeOutput = & $pythonCommand.Source -B -c 'import fastapi, uvicorn, httpx' 2>&1
-            $probeExitCode = $LASTEXITCODE
-        } finally { $ErrorActionPreference = $previousErrorAction }
-        if ($probeExitCode -ne 0) { throw 'Python 或 AI 服务依赖检查失败，请确认 Python 可运行，并按启动说明准备 FastAPI、uvicorn 和 httpx。' }
+        $pythonCommand = Select-LocalAiPython -ProjectRoot $projectRoot -CheckOnly:$CheckOnly
+        Write-Host "AI 使用 Python $($pythonCommand.Version)：$($pythonCommand.Source)"
         if ($CheckOnly) { Write-Host 'AI 依赖检查通过。'; return }
         $aiProcess = Start-Process -FilePath $pythonCommand.Source -ArgumentList '-B', 'local_runner.py' `
             -WorkingDirectory (Join-Path $projectRoot 'ai-fastapi') -WindowStyle Hidden -PassThru `
             -RedirectStandardOutput (Join-Path $projectRoot 'local-ai.stdout.log') -RedirectStandardError (Join-Path $projectRoot 'local-ai.stderr.log')
         $deadline = (Get-Date).AddSeconds(20)
         while ((Get-Date) -lt $deadline) {
+            $aiProcess.Refresh()
             if ($aiProcess.HasExited) { throw 'AI 服务启动失败，请查看 local-ai.stderr.log。' }
-            if (Test-LoopbackPort 3002) { Write-Host '本机 AI 服务已启动。'; return }
+            if (Test-LocalAiReady) { Write-Host "本项目 AI 接口已就绪：http://127.0.0.1:$localAiPort"; return }
             Start-Sleep -Milliseconds 300
         }
         throw 'AI 服务启动超时，请查看 local-ai.stderr.log。'
@@ -66,8 +90,37 @@ try {
     Write-Host "项目目录：$projectRoot"
     if (-not (Test-Path -LiteralPath $frontedEntry)) { throw '找不到 fronted/index.html，项目不完整。' }
     if (-not (Test-Path -LiteralPath (Join-Path $backendPath 'server.js'))) { throw '找不到 back/server.js，项目不完整。' }
-    if (-not (Get-Command node.exe -CommandType Application -ErrorAction SilentlyContinue)) {
-        throw '没有找到 Node.js，请先安装 Node 20 或更高版本。'
+    $nodeCommand = Get-Command node.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $nodeCommand) {
+        throw '没有找到 Node.js，请先安装 Node.js 24 或更高版本。'
+    }
+    $nodePath = $nodeCommand.Source
+    # Import SQLite without opening the user's database; resolve packages from this copy.
+    $dependencyProbe = @'
+try {
+    const path = require('node:path');
+    const { createRequire } = require('node:module');
+    const { DatabaseSync } = require('node:sqlite');
+    if (typeof DatabaseSync !== 'function') throw new Error('node:sqlite unavailable');
+    const localRequire = createRequire(path.join(process.argv[1], 'package.json'));
+    for (const name of ['express', 'cors', 'multer']) localRequire(name);
+    console.log('Node.js ' + process.version + ' / SQLite / express / cors / multer OK');
+} catch (error) { console.log(error.message); process.exitCode = 1; }
+'@
+    $dependencyResult = & $nodePath --no-warnings -e $dependencyProbe $backendPath
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ($dependencyResult -join [Environment]::NewLine) -ForegroundColor Yellow
+        Write-Host '请使用 Node.js 24 或更新版本，并在 PowerShell 执行以下命令安装当前项目的后端依赖：' -ForegroundColor Yellow
+        Write-Host ('  npm.cmd ci --prefix "' + $backendPath + '"') -ForegroundColor Yellow
+        throw '后端运行环境或依赖不完整，尚未启动服务。'
+    }
+    Write-Host ($dependencyResult -join [Environment]::NewLine)
+
+    # Verify the existing listener before starting any optional services.
+    $websiteRunning = $false
+    if (Test-LoopbackPort 3000) {
+        if (-not (Test-WebsiteReady)) { throw '3000 端口已被其他服务占用，或课程网站尚未就绪。请检查占用进程后重试。' }
+        $websiteRunning = $true
     }
 
     $officeModule = Join-Path $backendPath 'officePreview'
@@ -110,8 +163,16 @@ try {
         Write-Host '  需要 AI 时请按启动说明准备 Python 依赖，或暂时忽略。' -ForegroundColor Yellow
     }
 
-    if (Test-LoopbackPort 3000) {
-        Write-Host '3000 端口已有服务在运行，直接打开页面。' -ForegroundColor Green
+    if ($websiteRunning) {
+        if (Test-LocalAiReady) {
+            try {
+                $gatewayHealth = Invoke-WebRequest -Uri ($url + 'api/ai/local-health') -TimeoutSec 2 -UseBasicParsing
+                $gatewayData = ConvertFrom-Json -InputObject $gatewayHealth.Content
+                if ($gatewayData.project_id -ne $localAiProjectId) { throw 'project mismatch' }
+            } catch { throw '网站后端仍使用旧版 AI 配置。请先停止后端，再重新运行启动课程网站。' }
+        }
+        if (-not $CheckOnly) { $null = Save-LocalServiceState }
+        Write-Host "课程网站已经在运行：$url" -ForegroundColor Green
         if (-not $CheckOnly -and -not $NoOpen) { Start-Process -FilePath $url | Out-Null }
         exit 0
     }
@@ -121,17 +182,26 @@ try {
         exit 0
     }
 
-    Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', 'title 课程网站 - 后端 && npm run dev' `
-        -WorkingDirectory $backendPath -WindowStyle Hidden | Out-Null
+    $backendStdout = Join-Path $projectRoot 'local-backend.stdout.log'
+    $backendStderr = Join-Path $projectRoot 'local-backend.stderr.log'
+    $backendProcess = Start-Process -FilePath $nodePath -ArgumentList '--env-file-if-exists=.env', 'server.js' `
+        -WorkingDirectory $backendPath -WindowStyle Hidden -PassThru `
+        -RedirectStandardOutput $backendStdout -RedirectStandardError $backendStderr
 
     Write-Host '正在等待后端就绪…'
-    if (-not (Wait-Ready 60)) {
-        throw '后端没有在 60 秒内就绪，请查看新打开的后端窗口里的报错。'
+    if (-not (Wait-Ready $backendProcess 60)) {
+        throw "后端没有在 60 秒内就绪。请查看：$backendStderr 和 $backendStdout"
     }
 
+    if (Test-LocalAiReady) {
+        $gatewayData = Invoke-RestMethod -Uri ($url + 'api/ai/local-health') -TimeoutSec 3
+        if ($gatewayData.project_id -ne $localAiProjectId -or @($gatewayData.routes) -notcontains '/api/ai/vision-ocr') { throw '网站网关尚未连接当前项目的 AI 服务。请核对旧开发进程。' }
+    }
     if (-not $NoOpen) { Start-Process -FilePath $url | Out-Null }
+    $null = Save-LocalServiceState
     Write-Host "已启动：$url" -ForegroundColor Green
-    Write-Host '停止服务：到“课程网站 - 后端”窗口按 Ctrl+C，或直接关闭那个窗口。'
+    Write-Host "后端进程 PID：$($backendProcess.Id)；日志：$backendStdout 和 $backendStderr"
+    Write-Host '启动管理窗口输入 2 可停止本项目服务，也可双击“停止课程网站.bat”。'
 } catch {
     Write-Host "启动未完成：$($_.Exception.Message)" -ForegroundColor Red
     exit 1

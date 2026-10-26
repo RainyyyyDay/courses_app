@@ -1,6 +1,7 @@
 /* Tab-memory credentials only. Host authentication/quotas must still run server-side. */
 const coursesAiSettings = (() => {
   let baseUrl='', key='', provider='mock', model='deepseek-flash', retain=false, auto=false, configured=false, epoch=0;
+  let outputTokens=32768;
   let selectedPreset='mock', formPreset='mock', workspaceId='', connectionState='untested';
   let platformState={available:false};
   const presets=Object.freeze({
@@ -44,7 +45,7 @@ const coursesAiSettings = (() => {
     if(!waitingTimer)waitingTimer=setInterval(renderWaiting,1000);
   }
   const node=id=>document.getElementById('coursesAi'+id);
-  const status=()=>({provider,preset:selectedPreset,model,baseUrl,retain,auto,configured,hasKey:!!key,connectionState,epoch,calls,drafts:drafts.size});
+  const status=()=>({provider,preset:selectedPreset,model,baseUrl,retain,auto,configured,hasKey:!!key,connectionState,epoch,calls,outputTokens,drafts:drafts.size});
   const realReady=()=>provider==='platform'?configured&&platformState.available:provider!=='mock'&&!!key;
   async function checkPlatform(){
     const version=epoch,controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
@@ -80,14 +81,17 @@ const coursesAiSettings = (() => {
     if(node('Verification'))node('Verification').textContent=provider==='platform'?'平台状态仅表示服务配置就绪，不代表真实模型连接或额度已验证。':provider==='mock'?'尚未配置 AI。':connectionState==='passed'?'当前配置最近一次连接测试已通过；不代表所有生成场景或模型都已验证。':connectionState==='failed'?'最近一次连接测试未通过。':'尚未通过连接测试。';
     node('Message').classList.toggle('ai-settings-error',!!applyError);
     if(node('Applied'))node('Applied').textContent=provider==='mock'?'尚未启用 AI':`已生效：${providerLabel()} / ${model} · ${provider==='platform'?(realReady()?'平台配置就绪':'平台不可用'):key?'Key 就绪':'需要填写 Key'}`;
-    node('Open').textContent='AI 设置';
+    node('Open').textContent='AI 设置';node('Open').title=label();node('Open').classList.toggle('is-configured',realReady());
     if(node('DraftOpen')){node('DraftOpen').hidden=!drafts.size;node('DraftOpen').textContent='AI 草稿 · '+drafts.size;}
     if(typeof updateResourceAiSource==='function')updateResourceAiSource();
     if(typeof refreshMindmapAiAvailability==='function')refreshMindmapAiAvailability();
     if(typeof refreshPickerOutlineAvailability==='function')refreshPickerOutlineAvailability();
+    if(typeof refreshVisionOcrOptions==='function')refreshVisionOcrOptions();
     if(typeof refreshAssessmentChartAiAvailability==='function')refreshAssessmentChartAiAvailability();
     if(typeof refreshWorkbenchAiAvailability==='function')refreshWorkbenchAiAvailability();
-    for(const source of document.querySelectorAll('[data-ai-settings-source]'))source.textContent=label();
+    for(const prefix of ['mistakeAi','mistakeCreateAi','mistakeCreateAnswerAi','mistakeEditAnswerAi']){
+      const option=document.getElementById(prefix+'Provider')?.querySelector('option[value="shared"]');if(option)option.textContent=label();
+    }
     node('Drafts').replaceChildren();
     if(!drafts.size){const empty=document.createElement('p');empty.className='ai-empty-note';empty.textContent='暂无自动分析草稿，手动生成不受影响。';node('Drafts').append(empty);}
     for(const [id,draft] of drafts){
@@ -120,6 +124,9 @@ const coursesAiSettings = (() => {
     selectedPreset=value.preset&&presets[value.preset]?.provider===value.provider?value.preset:guessPreset(value.provider,nextUrl);
     applyError='';invalidate();key=value.provider!=='mock'?value.apiKey:'';provider=value.provider;model=value.model;baseUrl=nextUrl;
     retain=!!value.retain;auto=!!value.auto;configured=true;
+    for(const prefix of ['mistakeAi','mistakeCreateAi','mistakeCreateAnswerAi','mistakeEditAnswerAi']){
+      const select=document.getElementById(prefix+'Provider');if(select){select.value='shared';changeMistakeAiProvider(prefix);}
+    }
     message=provider==='platform'?`已应用平台 AI / ${model}。仅检查了服务配置，尚未调用模型；不会自动切换到自己的 API。`:provider==='mock'?'已应用 Mock 演示；未启用真实 AI。':`已应用 ${providerLabel()} / ${model}。现在可测试连接${retain?'。':'；Key 仅供下一次请求，测试也会使用这次 Key。'}`;
     refresh();
     if(typeof refreshReviewMethodApiAvailability==='function')refreshReviewMethodApiAvailability();
@@ -129,7 +136,7 @@ const coursesAiSettings = (() => {
     if(provider==='mock')return null;
     if(provider==='platform'&&!realReady())throw new Error('平台 AI 不可用，请重新检查平台状态。');
     if(provider!=='platform'&&!key)throw new Error('共享设置中没有 Key，请打开“AI 设置”填写；不会自动切换 Mock。');
-    if(calls>=20)throw new Error('本标签页共享调用已达 20 次安全上限，请停止并核对用量；刷新前确认没有重复请求。');
+
     const value={...(provider==='platform'?{provider:'platform'}:{apiKey:key}),model,confirmCost:true,sharedEpoch:epoch,...(provider==='compatible'?{provider,baseUrl,...(workspaceId?{workspaceId}:{})}:{})};calls++;
     if(provider!=='platform'&&!retain){key='';auto=false;}refresh();return value;
   }
@@ -163,7 +170,7 @@ const coursesAiSettings = (() => {
     if(node('Dialog').open){node('Dialog').focus();return;}
     node('Provider').value=selectedPreset;node('Workspace').value=workspaceId;node('BaseUrl').value=baseUrl;node('CustomModel').value=provider==='compatible'?model:'';node('Model').value=provider==='deepseek'?model:'deepseek-flash';node('Key').value='';node('Retain').checked=retain;
     node('Model').dataset.selectedModel=provider==='deepseek'?model:'deepseek-flash';syncProviderModel(false);
-    node('Auto').checked=auto;node('Consent').checked=false;
+    node('Auto').checked=auto;node('Consent').checked=false;node('OutputTokens').value=outputTokens;
     node('Body')?.scrollTo(0,0);refresh();if(!node('Dialog').open)node('Dialog').showModal();
   }
   function syncProviderModel(changed=false){
@@ -174,7 +181,7 @@ const coursesAiSettings = (() => {
     node('KeyNote').hidden=choice==='platform';
     if(field.value)field.dataset.selectedModel=field.value;
     field.disabled=!real;node('EndpointGroup').hidden=!custom;node('Custom').hidden=!custom;node('ModelLabel').hidden=custom||choice==='platform';node('ModelPickLabel').hidden=!custom;
-    node('Advanced').open=choice==='compatible';node('Advanced').querySelector('summary').textContent=choice==='compatible'?'高级设置 · 自定义接口':'高级设置';
+    node('Advanced').open=choice==='compatible';node('Retain').closest('label').hidden=true;node('Advanced').querySelector('summary').textContent=choice==='compatible'?'高级设置 · 自定义接口':'高级设置';
     field.value=real?(field.dataset.selectedModel||'deepseek-flash'):'';
     if(serviceChanged){
       node('Key').value='';node('Workspace').value='';node('Consent').checked=false;applyError='';
@@ -203,7 +210,10 @@ const coursesAiSettings = (() => {
     }
     const enteredKey=node('Key').value.trim();
     try{configure({preset:choice,workspaceId:node('WorkspaceGroup').hidden?'':node('Workspace').value.trim(),provider:preset.provider,model:preset.provider==='compatible'?node('CustomModel').value.trim():(node('Model').value||'deepseek-flash'),baseUrl:node('BaseUrl').value.trim(),apiKey:enteredKey||(choice===selectedPreset&&(provider!=='compatible'||node('BaseUrl').value.trim().replace(/\/$/,'')===baseUrl)?key:''),
-      retain:node('Retain').checked,auto:node('Auto').checked,consent:node('Consent').checked});node('Key').value='';}
+      retain:true,auto:node('Auto').checked,consent:node('Consent').checked});
+      const response=await fetch(new URL(API+'/ai/local-settings',location.href),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider,model,baseUrl,workspaceId,preset:selectedPreset,apiKey:key,consent:true,outputTokens:Number(node('OutputTokens').value)})});
+      if(!response.ok)throw new Error('本机配置未保存，请检查输入后重试。');
+      const saved=(await response.json()).settings;outputTokens=saved.outputTokens;key='__COURSES_LOCAL_SAVED_KEY__';retain=true;node('Key').value='';message='已保存到本机，下次打开自动恢复；各功能共用此配置。';refresh();}
     catch(err){applyError='设置未应用：'+err.message;message=applyError;refresh();if(err.field){node(err.field)?.scrollIntoView({block:'center',behavior:'smooth'});node(err.field)?.focus({preventScroll:true});}}
   }
   async function testConnection(){
@@ -225,7 +235,7 @@ const coursesAiSettings = (() => {
       if(endpoint.origin!==location.origin||endpoint.username||endpoint.password||!(endpoint.protocol==='https:'||endpoint.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(endpoint.hostname)))throw mistakeAiError('AI_TEMP_KEY_ORIGIN');
       node('Test').disabled=true;node('Test').textContent='正在测试连接…';message='正在连接所选 AI 服务，请稍候；不会自动重试。';refresh();timer=setTimeout(()=>{timedOut=true;controller.abort();},100000);
       const pending=fetch(endpoint.href,{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',signal:controller.signal,
-        body:JSON.stringify({api_key:credentials.apiKey,model:credentials.model,action:'connection',confirm_cost:true,...(credentials.provider==='compatible'?{provider:'compatible',base_url:credentials.baseUrl,...(credentials.workspaceId?{workspace_id:credentials.workspaceId}:{})}:{})})});
+        body:JSON.stringify({provider:credentials.provider||'deepseek',api_key:credentials.apiKey,model:credentials.model,action:'connection',confirm_cost:true,...(credentials.provider==='compatible'?{provider:'compatible',base_url:credentials.baseUrl,...(credentials.workspaceId?{workspace_id:credentials.workspaceId}:{})}:{})})});
       credentials.apiKey='';
       const response=await pending, body=await response.json().catch(()=>null);
       if(!valid(credentials))return;
@@ -283,44 +293,55 @@ const coursesAiSettings = (() => {
     mistakeAiElement('Result').hidden=false;mistakeAiElement('Status').textContent='保存后生成的分析草稿，未自动采用；已有手动选择优先。';
     document.getElementById('mistakeAiDialogQuestionTitle').textContent=draft.title;updateMistakeAiConfirm();dialog.showModal();
   }
+  function placeInHeader(pageId){
+    const bar=document.getElementById('coursesAiHeaderActions');if(!bar)return;
+    const ids=['listPage','detailPage','courseSearchPage','nodeDetailPage','mistakeDetailPage','resourceDetailPage','materialReviewPage','reviewPlanDetailPage','reviewHistoryPage','reviewSessionDetailPage'];
+    const page=pageId?document.getElementById(pageId):ids.map(id=>document.getElementById(id)).find(el=>el&&getComputedStyle(el).display!=='none');
+    const header=page?.querySelector('.header');if(!header)return;
+    let actions=header.querySelector(':scope > .course-header-actions,:scope > .page-header-actions');
+    if(!actions){actions=document.createElement('div');actions.className='page-header-actions';for(const child of [...header.children])if(child.tagName==='BUTTON'&&!child.classList.contains('back-btn'))actions.append(child);header.append(actions);}
+    actions.append(bar);header.classList.add('has-ai-actions');
+  }
   function mount(){
-    const button=document.createElement('button');button.id='coursesAiOpen';button.type='button';button.className='courses-ai-open';button.onclick=open;document.body.append(button);
+    const button=document.createElement('button');button.id='coursesAiOpen';button.type='button';button.className='courses-ai-open';button.onclick=open;const bar=document.createElement('div');bar.id='coursesAiHeaderActions';bar.className='header-ai-actions';bar.append(button);document.body.append(bar);
     const dialog=document.createElement('dialog');dialog.id='coursesAiDialog';dialog.className='courses-ai-settings';
     dialog.setAttribute('aria-labelledby','coursesAiTitle');
-    dialog.innerHTML=`<header class="ai-settings-head"><div><h2 id="coursesAiTitle">AI 设置</h2><p>当前标签页共用 · 刷新或关闭页面后失效</p></div><button type="button" id="coursesAiClose" aria-label="关闭 AI 设置">×</button></header>
+    dialog.innerHTML=`<header class="ai-settings-head"><div><h2 id="coursesAiTitle">AI 设置</h2><p>本机项目共用 · 保存后再次打开自动恢复</p></div><button type="button" id="coursesAiClose" aria-label="关闭 AI 设置">×</button></header>
       <div class="ai-settings-body" id="coursesAiBody">
       <div class="ai-settings-fields">
       <label>AI 使用方式 / 服务<select id="coursesAiProvider"><option value="mock" disabled>请选择 AI 服务</option><option value="platform">使用平台 AI</option><optgroup label="使用自己的 API">${Object.entries(presets).filter(([id])=>!['mock','platform'].includes(id)).map(([id,p])=>`<option value="${id}">${p.name}</option>`).join('')}</optgroup></select></label>
       <label id="coursesAiModelLabel">模型<select id="coursesAiModel" disabled><option value=""></option><option>deepseek-flash</option><option>deepseek-v4-pro</option></select></label>
       <label id="coursesAiModelPickLabel" hidden>模型<select id="coursesAiModelPick"></select></label></div>
       <div id="coursesAiCustom" hidden><label id="coursesAiCustomModelLabel">模型 / 接入点 ID<input list="coursesAiModelSuggestions" id="coursesAiCustomModel" maxlength="200" placeholder="填写完整模型 ID，或 ep- 接入点 ID" autocomplete="off"></label><datalist id="coursesAiModelSuggestions"></datalist></div>
-      <label>API Key<input id="coursesAiKey" type="password" autocomplete="new-password" autocapitalize="none" autocorrect="off" data-lpignore="true" data-1p-ignore spellcheck="false" maxlength="512" placeholder="输入新 Key；留空可沿用本标签页已保留的 Key"></label>
-      <p id="coursesAiKeyNote" class="ai-help">Key 仅暂存在当前标签页，不写入浏览器存储或数据库。</p>
-      <label class="ai-check-row"><input id="coursesAiRetain" type="checkbox"><span>在本标签页保留 Key<small>不勾选则仅下一次请求可用。</small></span></label>
-      <label class="ai-check-row ai-consent-row"><input id="coursesAiConsent" type="checkbox"><span>同意发送所选文字及可能产生的费用<small>测试连接也可能计费；包含下方明确开启的自动分析。</small></span></label>
-      <details id="coursesAiAdvanced" class="ai-settings-extras"><summary>高级设置</summary>
+      <label>API Key<input id="coursesAiKey" type="password" autocomplete="new-password" autocapitalize="none" autocorrect="off" data-lpignore="true" data-1p-ignore spellcheck="false" maxlength="512" placeholder="输入新 Key；留空沿用本机已保存的 Key"></label>
+      <p id="coursesAiKeyNote" class="ai-help">Key 保存到当前本机项目，其他项目副本各自独立；不在浏览器存储原 Key。</p>
+      <label class="ai-check-row" hidden><input id="coursesAiRetain" type="checkbox" checked><span>保留配置</span></label><p class="ai-help">应用后，Key 加密保存在当前本机项目中；页面不回显原 Key。可随时清除。</p>
+      <label class="ai-check-row ai-consent-row"><input id="coursesAiConsent" type="checkbox"><span>同意发送所选文字及主动选择的附件页面图片，可能产生费用<small>测试连接也可能计费；仅选择“大模型识别”时发送页面图片，默认本地 OCR 不调用大模型。</small></span></label>
+      <label class="ai-output-budget">整份文档最大输出 token<input id="coursesAiOutputTokens" type="number" min="1024" max="131072" step="1024" value="32768"><small>默认 32768，须在所选模型支持的范围内；内容截断会明确报错。</small></label><details id="coursesAiAdvanced" class="ai-settings-extras"><summary>高级设置</summary>
       <div id="coursesAiEndpointGroup" hidden><label>API 地址<input id="coursesAiBaseUrl" type="url" maxlength="2048" placeholder="https://服务商域名/v1" autocomplete="off"></label><p class="ai-help">预设地址通常无需修改。自定义地址仅支持公网 HTTPS 的 Chat Completions 兼容接口。</p></div>
       <label id="coursesAiWorkspaceGroup" hidden>Anthropic 工作区 ID（按 Key 类型需要时填写）<input id="coursesAiWorkspace" maxlength="128" autocomplete="off" placeholder="控制台显示的工作区 ID"></label>
       <p id="coursesAiPresetNote" class="ai-help"></p><a id="coursesAiPresetDocs" href="#" class="ai-help" target="_blank" rel="noopener noreferrer" hidden>服务商接入文档 ↗</a>
-      <label class="ai-check-row"><input id="coursesAiAuto" type="checkbox"><span>保存新错题后自动生成分析草稿<small>默认关闭。自己的 API 需保留 Key，且题干和学生作答齐全；不自动采用或重试。</small></span></label>
-      <p class="ai-help">学生作答在新增错题的“AI 复习建议”中填写。每标签页最多 20 次共享调用；不代替后端配额。</p>
+      <label class="ai-check-row"><input id="coursesAiAuto" type="checkbox"><span>保存新错题后自动生成分析草稿<small>默认关闭。题干和学生作答须齐全；不自动采用或重试。</small></span></label>
+      <p class="ai-help">学生作答在新增错题的“AI 复习建议”中填写。调用量仅供统计，不设置标签页累计次数上限。</p>
       <div class="ai-settings-maintenance"><button type="button" class="ai-text-button" id="coursesAiClear">清除 Key</button><button type="button" class="ai-text-button" id="coursesAiClearDrafts">清空 AI 草稿</button></div></details></div>
       <footer class="ai-settings-footer"><div class="modal-actions"><button type="button" class="ai-primary" id="coursesAiApply">应用设置</button><button type="button" id="coursesAiTest">测试连接</button></div><div class="ai-settings-state" aria-label="当前 AI 状态"><p id="coursesAiApplied" class="ai-settings-applied"></p><p id="coursesAiVerification" class="ai-help"></p><p id="coursesAiMessage" role="status"></p></div></footer>`;
     dialog.addEventListener('close',()=>{if(!dialog.open)node('Key').value='';});document.body.append(dialog);
-    node('Apply').onclick=apply;node('Test').onclick=testConnection;node('Clear').onclick=clearKey;node('ClearDrafts').onclick=clearDrafts;node('Close').onclick=()=>dialog.close();
+    node('Apply').onclick=apply;node('Test').onclick=testConnection;node('Clear').onclick=async()=>{const response=await fetch(new URL(API+'/ai/local-settings',location.href),{method:'DELETE'});if(!response.ok){message='清除本机配置失败，请重试。';refresh();return;}clearKey();};node('ClearDrafts').onclick=clearDrafts;node('Close').onclick=()=>dialog.close();
     const draftDialog=document.createElement('dialog');draftDialog.id='coursesAiDraftDialog';draftDialog.className='courses-ai-settings';draftDialog.setAttribute('aria-labelledby','coursesAiDraftTitle');
     draftDialog.innerHTML='<header class="ai-settings-head"><div><h2 id="coursesAiDraftTitle">AI 分析草稿</h2><p>仅当前标签页保留，查看后需人工确认采用。</p></div><button type="button" id="coursesAiDraftClose" aria-label="关闭 AI 草稿">×</button></header><div class="ai-settings-body" id="coursesAiDrafts"></div>';
     document.body.append(draftDialog);
-    const draftOpen=document.createElement('button');draftOpen.id='coursesAiDraftOpen';draftOpen.className='courses-ai-open courses-ai-draft-open';draftOpen.type='button';draftOpen.hidden=true;draftOpen.onclick=openDrafts;document.body.append(draftOpen);node('DraftClose').onclick=()=>draftDialog.close();refresh();
+    const draftOpen=document.createElement('button');draftOpen.id='coursesAiDraftOpen';draftOpen.className='courses-ai-open courses-ai-draft-open';draftOpen.type='button';draftOpen.hidden=true;draftOpen.onclick=openDrafts;bar.append(draftOpen);placeInHeader();node('DraftClose').onclick=()=>draftDialog.close();refresh();
 
     node('Provider').onchange=()=>syncProviderModel(true);node('BaseUrl').oninput=syncWorkspace;
     node('ModelPick').onchange=()=>{const chosen=node('ModelPick').value;node('CustomModelLabel').hidden=!!chosen;if(chosen)node('CustomModel').value=chosen;else node('CustomModel').focus();};
     node('CustomModel').oninput=()=>{node('ModelPick').value=presets[node('Provider').value]?.models.includes(node('CustomModel').value)?node('CustomModel').value:'';};syncProviderModel(false);
+    const restoringEpoch=epoch;
+    fetch(new URL(API+'/ai/local-settings',location.href),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(data=>{const value=data?.settings;if(!value?.hasKey||epoch!==restoringEpoch)return;configure({...value,apiKey:'__COURSES_LOCAL_SAVED_KEY__',consent:true,retain:true,auto:false});outputTokens=value.outputTokens||32768;message='已恢复本机保存的 AI 配置。';refresh();}).catch(()=>{});
   }
   document.addEventListener?.('close',()=>queueMicrotask(renderWaiting),true);
   addEventListener('pagehide',clear);
   // Host calls this on verified login/logout/account switch. It supplies no browser-trusted identity.
   addEventListener('courses-ai-identity-changed',clear);
   if(document.readyState==='loading')addEventListener('DOMContentLoaded',mount,{once:true});else mount();
-  return Object.freeze({status,label,describe,configure,read,track,valid,clear,open,openDrafts,captureCreation,afterCreated,identityChanged:clear,realReady});
+  return Object.freeze({status,label,describe,configure,read,track,valid,clear,open,openDrafts,captureCreation,afterCreated,identityChanged:clear,realReady,placeInHeader});
 })();

@@ -15,8 +15,18 @@ const { createLocalAiGateway } = require('./localAiGateway');
 
 const app = express();
 
+const mindmapRuntime = require('./mindmapService').mountMindmap(app);
+
 // 允许跨域、允许解析 JSON 数据
 app.use(cors());
+// A local, non-secret project identity lets the launcher stop only its own copy.
+app.get('/api/local-service',(req,res)=>{
+ if(!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress))return res.sendStatus(403);
+ res.set('Cache-Control','no-store').json({service:'courses-local-website',project_id:require('node:crypto').createHash('sha256').update(path.resolve(__dirname,'..').toLowerCase()).digest('hex'),pid:process.pid});
+});
+// Whole-document image payloads have a dedicated bound; ordinary APIs keep their existing bound.
+app.use('/api/ai/vision-ocr', express.json({limit:'48mb'}));
+app.use('/api/ai/local-settings', express.json({limit:'16kb'}),require('./localAiSettings').router());
 // 导图截图以 data URL 回传，2MB 图片转 base64 约 2.7MB，默认 100KB 会 413
 app.use(express.json({ limit: '8mb' }));
 
@@ -326,6 +336,22 @@ app.post('/api/courses/:courseId/review-sessions/:sessionId/items/:sessionItemId
   res.json(db.skipReviewSessionItem(mistakeCourse(req.params.courseId),positiveId(req.params.sessionId),positiveId(req.params.sessionItemId)));
 }));
 
+
+// Course-scoped resource type vocabulary. Underlying record identities stay stable.
+const typeApi=handler=>(req,res)=>{try{const courseId=Number(req.params.courseId);if(!db.findCourse(courseId))return res.status(404).json({message:'课程不存在'});handler(req,res,courseId);}catch(error){res.status(400).json({message:error.message.includes('UNIQUE')?'同名类型已存在':error.message});}};
+app.get('/api/courses/:courseId/resource-types',typeApi((req,res,c)=>res.json(db.listResourceTypes(c))));
+app.post('/api/courses/:courseId/resource-types',typeApi((req,res,c)=>res.status(201).json(db.createResourceType(c,req.body))));
+app.patch('/api/courses/:courseId/resource-types/:id',typeApi((req,res,c)=>{db.updateResourceType(c,Number(req.params.id),req.body);res.json(db.listResourceTypes(c));}));
+app.delete('/api/courses/:courseId/resource-types/:id',typeApi((req,res,c)=>{db.db.prepare('DELETE FROM resource_types WHERE id=? AND course_id=?').run(Number(req.params.id),c);res.json(db.listResourceTypes(c));}));
+app.post('/api/courses/:courseId/resource-types/:id/merge',typeApi((req,res,c)=>{db.db.exec('SAVEPOINT merge_types');try{db.mergeResourceType(c,Number(req.params.id),req.body.targetId);db.db.exec('RELEASE merge_types');}catch(e){db.db.exec('ROLLBACK TO merge_types;RELEASE merge_types');throw e;}res.json(db.listResourceTypes(c));}));
+app.put('/api/courses/:courseId/resource-types/assign',typeApi((req,res,c)=>{
+ const {items,typeIds}=req.body||{};db.validateTypes(c,typeIds);
+ if(!Array.isArray(items)||!items.length||items.length>1000)throw Error('请选择 1–1000 条资料');
+ for(const item of items){const row=item.kind==='note'?db.findNote(item.id):item.kind==='material'?db.findMaterial(item.id):null;if(!row||row.course_id!==c)throw Error('资料不存在或不属于当前课程');}
+ db.db.exec('SAVEPOINT assign_types');try{for(const item of items)db.setResourceTypes(c,item.kind,item.id,typeIds);db.db.exec('RELEASE assign_types');}catch(e){db.db.exec('ROLLBACK TO assign_types;RELEASE assign_types');throw e;}
+ res.json({success:true});
+}));
+
 // ==================== 资料接口 ====================
 
 app.get('/api/courses/:id/materials', (req, res) => {
@@ -387,8 +413,9 @@ for (const kind of ['material','note']) {
   const plural = kind === 'note' ? 'notes' : 'materials';
   app.put(`/api/courses/:courseId/${plural}/:${kind}Id/content`, readingReviewApi((req,res,row) => {
     const body=req.body;
-    const clearsWithAttachment=body?.mode==='replace'&&body.text===''&&!!row.file_url;
-    if(!body || Array.isArray(body) || typeof body.text!=='string' || (!body.text.trim()&&!clearsWithAttachment) || body.text.length>1000000
+    if(!body || Array.isArray(body) || typeof body.text!=='string' || body.text.length>1000000
+      || (body.text !== '' && !body.text.trim())
+      || (!body.text.trim() && !(body.mode==='replace' && row.file_url))
       || !['append','replace'].includes(body.mode) || typeof body.expectedContent!=='string'
       || Object.keys(body).some(key=>!['text','mode','expectedContent'].includes(key))) {
       return res.status(400).json({code:'INVALID_ARGUMENT',message:'请提交待保存文字、追加或替换方式及读取时的原正文'});
@@ -449,6 +476,7 @@ app.patch('/api/courses/:courseId/notes/:noteId/review', readingReviewApi((req, 
 app.post('/api/courses/:id/materials', upload.single('file'), (req, res) => {
   const courseId = Number(req.params.id);
   const body = req.body || {};
+  let typeIds;try{typeIds=body.typeIds===undefined?undefined:db.validateTypes(courseId,JSON.parse(body.typeIds));}catch(e){if(req.file)fs.rm(path.join(uploadDir,req.file.filename),{force:true},()=>{});return res.status(400).json({message:e.message});}
 
   const title = typeof body.title === 'string' ? body.title.trim() : '';
   const content = typeof body.content === 'string' ? body.content : '';
@@ -482,7 +510,8 @@ app.post('/api/courses/:id/materials', upload.single('file'), (req, res) => {
     content,
     typeof body.outline === 'string' ? body.outline : '',
     typeof body.mindmapJson === 'string' ? body.mindmapJson : '',
-    typeof body.mindmapImage === 'string' ? body.mindmapImage : ''
+    typeof body.mindmapImage === 'string' ? body.mindmapImage : '',
+    typeIds
   );
   res.status(201).json(newItem);
 });
@@ -538,6 +567,7 @@ app.get('/api/courses/:id/notes', (req, res) => {
 app.post('/api/courses/:id/notes', upload.single('file'), (req, res) => {
   const courseId = Number(req.params.id);
   const body = req.body || {};
+  let typeIds;try{typeIds=body.typeIds===undefined?undefined:db.validateTypes(courseId,JSON.parse(body.typeIds));}catch(e){if(req.file)fs.rm(path.join(uploadDir,req.file.filename),{force:true},()=>{});return res.status(400).json({message:e.message});}
 
   const title = typeof body.title === 'string' ? body.title.trim() : '';
   const content = typeof body.content === 'string' ? body.content : '';
@@ -571,7 +601,8 @@ app.post('/api/courses/:id/notes', upload.single('file'), (req, res) => {
     content,
     typeof body.outline === 'string' ? body.outline : '',
     typeof body.mindmapJson === 'string' ? body.mindmapJson : '',
-    typeof body.mindmapImage === 'string' ? body.mindmapImage : ''
+    typeof body.mindmapImage === 'string' ? body.mindmapImage : '',
+    typeIds
   );
   res.status(201).json(newItem);
 });
@@ -1398,12 +1429,16 @@ function mindmapPayload(body) {
 app.put('/api/courses/:courseId/materials/:id/mindmap', (req, res) => {
   const row = db.findMaterial(Number(req.params.id));
   if (!row || row.course_id !== Number(req.params.courseId)) return res.status(404).json({ message: '资料不存在' });
+  if(typeof req.body?.expectedMindmapJson==='string' && req.body.expectedMindmapJson!==(row.mindmap_json||''))return res.status(409).json({code:'MINDMAP_CONFLICT',message:'导图已被其他窗口修改；当前草稿保留，请核对后再保存。'});
+  if (typeof req.body?.expectedOutline === 'string' && req.body.expectedOutline !== (row.outline || '')) return res.status(409).json({ code: 'OUTLINE_CONFLICT', message: '大纲已在其他页面修改，当前草稿保留。请核对最新内容后再保存。' });
   res.json(db.setMaterialMindmap(row.id, row.course_id, mindmapPayload(req.body)));
 });
 
 app.put('/api/courses/:courseId/notes/:id/mindmap', (req, res) => {
   const row = db.findNote(Number(req.params.id));
   if (!row || row.course_id !== Number(req.params.courseId)) return res.status(404).json({ message: '笔记不存在' });
+  if(typeof req.body?.expectedMindmapJson==='string' && req.body.expectedMindmapJson!==(row.mindmap_json||''))return res.status(409).json({code:'MINDMAP_CONFLICT',message:'导图已被其他窗口修改；当前草稿保留，请核对后再保存。'});
+  if (typeof req.body?.expectedOutline === 'string' && req.body.expectedOutline !== (row.outline || '')) return res.status(409).json({ code: 'OUTLINE_CONFLICT', message: '大纲已在其他页面修改，当前草稿保留。请核对最新内容后再保存。' });
   res.json(db.setNoteMindmap(row.id, row.course_id, mindmapPayload(req.body)));
 });
 

@@ -8,52 +8,6 @@ function rememberReviewModeSelection(s,mode){
   if(!s.sessionItemId)return;
   reviewModeSelections.set(reviewModeSelectionKey(s),mode);mistakeStorageSet(reviewModeSelectionKey(s),mode);
 }
-// A newly saved resource preference replaces old unstarted session choices.
-// Active attempts keep their own mode and answer snapshot until completed.
-function clearResourceSessionChoices(s){
-  if(!['material','note'].includes(s.type))return;
-  const current=new RegExp('^review-mode-selection:'+s.courseId+':[^:]+:'+s.type+':'+s.id+'$');
-  const legacy=new RegExp('^review-mode-selection:'+s.courseId+':'+s.type+':'+s.id+':[^:]+$');
-  const matches=key=>current.test(key)||legacy.test(key);
-  for(const key of reviewModeSelections.keys())if(matches(key))reviewModeSelections.delete(key);
-  const keys=[];
-  for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(matches(key))keys.push(key);}
-  for(const key of keys)localStorage.removeItem(key);
-}
-function saveWorkbenchStandardMode(){
-  const s=reviewWorkbench;if(!s||s.busy||s.sessionItemId||s.mode!=='standard'||!['material','note'].includes(s.type))return;
-  try{
-    if(!saveResourceAiMethod(s,'standard'))throw Error('复习方式未能保存到本浏览器，请重试');
-    clearResourceSessionChoices(s);closeReviewWorkbench();showToast('已保存为标准复习');
-  }catch(err){wb('Error').textContent=err.message;}
-}
-const RESOURCE_RETRY_MODES=['standard','cloze','self_explain','contrast'];
-const resourceRetryKey=s=>`resource-retry-target:${s.courseId}:${s.type}:${s.id}`;
-function resourceRetryMode(s){
-  const saved=mistakeStorageGet(resourceRetryKey(s));
-  const preferred=readReviewAiMethod(s);
-  return [s.resourceRetryTarget,s.lastExecutableMode,saved?.mode,preferred,'standard'].find(mode=>RESOURCE_RETRY_MODES.includes(mode));
-}
-function saveResourceRetryMode(){
-  const s=reviewWorkbench;if(!s||s.busy||s.sessionItemId||s.mode!=='retry'||!s.resourceRetryTarget)return;
-  try{
-    mistakeStorageSet(resourceRetryKey(s),{version:1,mode:s.resourceRetryTarget});
-    if(mistakeStorageGet(resourceRetryKey(s))?.mode!==s.resourceRetryTarget||!saveResourceAiMethod(s,'retry'))throw Error('重新作答方式未能保存，请重试');
-    clearResourceSessionChoices(s);closeReviewWorkbench();showToast('已保存为重新作答');
-  }catch(err){wb('Error').textContent=err.message;}
-}
-async function prepareResourceRetryTask(){
-  const s=reviewWorkbench;if(!s||s.busy||s.type==='mistake')return;
-  s.modeChoice='retry';s.resourceRetryTarget='standard';
-  await loadReviewWorkbenchMode('standard',false);
-  if(reviewWorkbench!==s||!wb('Prompt'))return;
-  wb('Mode').value='retry';
-  wb('Prompt').closest('label').firstChild.textContent='题目（可编辑，已带入正文）';
-  wb('Reference').closest('label').firstChild.textContent='参考答案 / 解析（必填）';
-  wb('Rubric').closest('label').firstChild.textContent='判定要点（可选）';
-  wb('Actions').querySelector('button').textContent=s.sessionItemId?'保存题目与答案并开始本轮':'保存题目、答案并使用重新作答';
-  renderWorkbenchReadiness('draft','设置重新作答题目与参考答案；这与标准复习的记忆自评分开保存');
-}
 // A confirmed suggestion chooses a mode, never supplies its materials or a grade.
 function recommendReviewMode(type,row={},explicit=null,ai=null){
   row=row||{};
@@ -136,12 +90,12 @@ function centerWorkbenchContext(item,session){
 }
 async function routeCenterReviewMode(item,session){
   if(item.status!=='pending'||centerReviewHasPendingSave())return;
-  const context=centerWorkbenchContext(item,session),active=readReviewActive(context),mode=active?.mode||workbenchSelection(context).mode;
+  const context=centerWorkbenchContext(item,session),mode=readReviewActive(context)?.mode||workbenchSelection(context).mode;
   if(typeof reviewMethodRequiresRealAi==='function'&&reviewMethodRequiresRealAi(mode)
     &&!(typeof reviewMethodIsAvailable==='function'&&reviewMethodIsAvailable(mode)))return;
   // Resource standard/reading have native in-page flows and start immediately.
-  if(item.item_type!=='mistake'&&['standard','reading'].includes(mode)&&!active?.viaRetry)return;
-  await openReviewWorkbench(item.item_type,item.item_id,{...context,mode,retryExecution:!!active?.viaRetry});
+  if(item.item_type!=='mistake'&&['standard','reading'].includes(mode))return;
+  await openReviewWorkbench(item.item_type,item.item_id,{...context,mode});
   if(!reviewWorkbench||reviewWorkbench.sessionItemId!==item.id)return;
   if((item.item_type==='mistake'&&['standard','retry','choice_reproduction'].includes(mode))||mode==='retry'){
     await runExistingReviewMode();
@@ -174,7 +128,7 @@ async function prepareCenterQuickMode(item,session){
   const active=readReviewActive(context);
   q.modeId=explicit&&Object.hasOwn(AI_REVIEW_METHODS,explicit)?explicit:aiMode||originalMode;
   // Restore a real in-progress flow without replacing it with a new default.
-  if(active?.mode)q.modeId=active.viaRetry?'retry':active.mode;
+  if(active?.mode)q.modeId=active.mode;
   if(centerReview===owner&&currentCenterItem()?.id===item.id)owner.quickMode=q;
 }
 function syncCenterQuickMode(mode){
@@ -233,7 +187,7 @@ async function confirmCenterQuickMode(){
   finally{q.busy=false;if(centerReview===owner)renderCenterReviewToolbar();}
 }
 function renderWorkbenchInfo(s){
-  const actual=s.retryExecution?'retry':s.attempt?.modeId||readReviewActive(s)?.mode||(s.type==='mistake'?mistakeDetailState?.progress?.mode?.id:'standard');
+  const actual=s.attempt?.modeId||readReviewActive(s)?.mode||(s.type==='mistake'?mistakeDetailState?.progress?.mode?.id:'standard');
   const suggestion=readReviewAiMethod(s),selection=workbenchSelection(s);
   wb('Info').textContent=s.sessionItemId?`当前实际流程：${AI_REVIEW_METHODS[actual]||'尚未开始'}。待使用：${AI_REVIEW_METHODS[s.mode]}（${{user:'本次明确选择',ai:'已保存的选择，尚需本次采用',rule:'规则推荐'}[selection.source]}）。选择/准备不评分；开始本轮后才执行选中模式。切换不会改写历史、评分或计划；已完成项目请在记录中再次复习。`:'材料准备：手动填写即可，AI 可选。确认保存后从总复习或计划进入。';
   wb('Suggestion').innerHTML=s.sessionItemId&&suggestion?`<p>已保存的复习方式：${escapeHtml(AI_REVIEW_METHODS[suggestion])}；不等于已创建材料。</p>${s.mode===suggestion?'<p>本次已选用此方式，无需重复确认。</p>':'<button type="button" onclick="useWorkbenchSuggestion()">本次使用此方式（先检查材料）</button>'}`:'';
@@ -285,7 +239,7 @@ async function openCenterReviewSettings(){
   const item=currentCenterItem(),owner=centerReview;if(!item||!owner)return;
   if(reviewWorkbench?.inline&&reviewWorkbench.sessionItemId===item.id){wb('Settings').open=!wb('Settings').open;return;}
   const context=centerWorkbenchContext(item,owner.session),mode=readReviewActive(context)?.mode||owner.quickMode?.modeId||workbenchSelection(context).mode;
-  await openReviewWorkbench(item.item_type,item.item_id,{...context,mode,retryExecution:!!readReviewActive(context)?.viaRetry});
+  await openReviewWorkbench(item.item_type,item.item_id,{...context,mode});
   if(reviewWorkbench?.sessionItemId===item.id)wb('Settings').open=true;
 }
 function mountReviewPreparation(host,type,row){
@@ -329,16 +283,10 @@ async function loadReviewWorkbenchMode(mode,explicit=true){
   if(s.mode&&(mistakeStorageGet(reviewWorkbenchKey(s)+':pending')||s.pending)){wb('Error').textContent='有提交待确认，请先重试当前操作，再切换模式。';wb('Mode').value=s.mode;return;}
   saveWorkbenchAnswerDraft();
   if(s.mode && wb('Prompt'))mistakeStorageSet(reviewWorkbenchKey(s)+':draft',readWorkbenchMaterial());
-  if(explicit){s.modeChoice=mode;s.retryExecution=false;rememberReviewSelection(s,mode);if(s.sessionItemId)syncCenterQuickMode(mode);s.editing=false;}
+  if(explicit){s.modeChoice=mode;rememberReviewSelection(s,mode);if(s.sessionItemId)syncCenterQuickMode(mode);s.editing=false;}
   s.aiDraft=null;s.beforeAi=null;
   s.mode=mode;s.startRequestId=null;s.attempt=null;s.pending=null;wb('Error').textContent='';wb('Editor').innerHTML='';wb('Attempt').innerHTML='';wb('Actions').innerHTML='';
-  wb('Mode').value=mode==='choice_reproduction'||s.retryExecution&&mode==='standard'?'retry':mode;renderWorkbenchInfo(s);
-  if(mode==='standard'&&s.type!=='mistake'&&readReviewModeChoice(s)!=='retry'&&!s.retryExecution){
-    renderWorkbenchReadiness('ready','标准复习直接使用原正文和附件，无需准备参考要点或核对标准');
-    wb('Editor').innerHTML='<p>先阅读资料或笔记，再回忆并选择“清楚”“模糊”或“不记得”。标准复习不需要另填任务、参考要点和核对标准。</p>';
-    wb('Actions').innerHTML=(!s.sessionItemId?'<button type="button" onclick="saveWorkbenchStandardMode()">保存为标准复习</button>':'')+'<button type="button" onclick="closeReviewWorkbench()">返回复习</button>';
-    return;
-  }
+  wb('Mode').value=mode==='choice_reproduction'?'retry':mode;renderWorkbenchInfo(s);
   renderWorkbenchReadiness('checking','正在检查材料；不会创建轮次或评分…');
   if(mode==='retry'||mode==='choice_reproduction'||(mode==='standard'&&s.type==='mistake')){
     const incompatible=mode==='choice_reproduction'&&!recommendReviewMode(s.type,s.row||{}).alternatives.includes(mode);
@@ -347,19 +295,14 @@ async function loadReviewWorkbenchMode(mode,explicit=true){
     wb('Editor').textContent=incompatible?'当前缺少已确认且完整的选择题选项和正确答案。请在错题详情编辑题型，或明确切换标准复习。':mode==='retry'?'将隐藏旧作答、答案和解析，开启新轮次。复用已有流程和判分，旧轮次证据保留；不会覆盖历史。':'使用原题和答案，不需要额外材料。进入后先独立作答，再揭示答案并自评。切换原生模式会重新开始本轮，但不改变记忆状态。';
     wb('Actions').innerHTML=incompatible?'<p class="mistake-inline-error">当前绑定的选择题材料不完整，请先在内容编辑页补齐。</p>':s.sessionItemId?'<p>正在按该条内容绑定的复习模式进入…</p>':'<p>请从总复习或考前计划中运行。</p>';
     if(mode==='retry'&&s.type!=='mistake'){
-      let showRetryEditor=false;
       s.busy=true;wb('Mode').disabled=true;
       try{
-        const target=resourceRetryMode(s),data=await(await requestApi(reviewWorkbenchBase(s)+'/materials/'+target+'?view=practice')).json();
+        const target=s.lastExecutableMode||'standard',data=await(await requestApi(reviewWorkbenchBase(s)+'/materials/'+target+'?view=practice')).json();
         if(reviewWorkbench!==s)return;
-        s.resourceRetryTarget=data.version?target:null;
-        showRetryEditor=!s.sessionItemId&&(!data.version||target==='standard');
-        renderWorkbenchReadiness(data.version?'ready':'missing',data.version?'可以直接开始：复用已确认的'+AI_REVIEW_METHODS[target]+'材料':'还需设置重新作答的题目与参考答案；无需连接 AI');
-        if(data.version&&!s.sessionItemId)wb('Actions').innerHTML='<button type="button" onclick="saveResourceRetryMode()">保存为重新作答</button><button type="button" onclick="prepareResourceRetryTask()">另设重新作答题目与答案</button>';
-        if(!data.version){wb('Editor').textContent='正文或附件可以作为题面，但还需要你确认参考答案。保存后从复习入口开始作答；标准复习仍只需记忆自评。';wb('Actions').innerHTML='<button type="button" onclick="prepareResourceRetryTask()">设置重新作答题目与答案</button>';}
+        renderWorkbenchReadiness(data.version?'ready':'missing',data.version?'可以直接开始：复用已确认的'+AI_REVIEW_METHODS[target]+'材料':'还缺可重新作答的任务；可手动准备标准任务，或返回原阅读');
+        if(!data.version){wb('Editor').textContent='尚无可重新作答的任务；不会把阅读当作成功作答。';wb('Actions').innerHTML='<button onclick="loadReviewWorkbenchMode(\'standard\')">准备标准复习任务</button>';}
       }catch(err){if(reviewWorkbench===s){renderWorkbenchReadiness('error','无法确认已有任务；可重试或返回原阅读');wb('Error').textContent=err.message;wb('Actions').innerHTML='<button onclick="loadReviewWorkbenchMode(\'retry\',false)">重试检查</button><button onclick="switchWorkbenchToAvailableMode()">返回原阅读流程</button>';}}
       finally{if(reviewWorkbench===s){s.busy=false;wb('Mode').disabled=false;}}
-      if(showRetryEditor&&reviewWorkbench===s)await prepareResourceRetryTask();
     }
     return;
   }
@@ -402,15 +345,6 @@ async function saveWorkbenchMaterial(startAfterSave=false){
     if(reviewWorkbench!==s)return;s.version=data.version;mistakeStorageSet(reviewWorkbenchKey(s)+':draft',null);
     if(typeof updateResourceAiActions==='function')void updateResourceAiActions();
     if(!s.sessionItemId){
-      if(['material','note'].includes(s.type)){
-        const retry=s.mode==='standard'&&s.modeChoice==='retry';
-        if(retry){
-          mistakeStorageSet(resourceRetryKey(s),{version:1,mode:'standard'});
-          if(mistakeStorageGet(resourceRetryKey(s))?.mode!=='standard')throw Error('材料已保存，但重新作答方式未能保存，请重试');
-        }
-        if(!saveResourceAiMethod(s,retry?'retry':s.mode))throw Error('材料已保存，但复习方式未能保存到本浏览器，请重试');
-        clearResourceSessionChoices(s);
-      }
       // Do not let close() re-create the just-confirmed form as an unsaved draft.
       wb('Editor').innerHTML='';s.busy=false;closeReviewWorkbench();showToast('保存成功');return;
     }
@@ -434,7 +368,7 @@ async function startWorkbenchAttempt(){
   try{
     const body={modeId:s.mode,expectedMaterialVersion:s.version,requestId:s.startRequestId,sessionItemId:s.sessionItemId};if(s.planItemId)body.planItemId=s.planItemId;
     const attempt=await (await requestApi(reviewWorkbenchBase(s)+'/attempts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
-    if(reviewWorkbench!==s)return;s.attempt=attempt;s.lastExecutableMode=attempt.modeId;rememberReviewSelection(s,s.retryExecution?'retry':attempt.modeId);syncCenterQuickMode(s.retryExecution?'retry':attempt.modeId);writeReviewActive(s,{mode:attempt.modeId,...(s.retryExecution?{viaRetry:true}:{})});mistakeStorageSet(reviewWorkbenchKey(s),{attemptId:attempt.id});renderWorkbenchAttempt();
+    if(reviewWorkbench!==s)return;s.attempt=attempt;s.lastExecutableMode=attempt.modeId;rememberReviewSelection(s,attempt.modeId);syncCenterQuickMode(attempt.modeId);writeReviewActive(s,{mode:attempt.modeId});mistakeStorageSet(reviewWorkbenchKey(s),{attemptId:attempt.id});renderWorkbenchAttempt();
   }catch(err){if(reviewWorkbench===s)wb('Error').textContent=err.message;}
   finally{if(reviewWorkbench===s)s.busy=false;}
 }
@@ -481,13 +415,10 @@ function workbenchContrastHtml(m,answer='',readonly=false){
   const field=(key,label)=>`<label>${escapeHtml(label)}<textarea data-contrast-field="${key}" rows="3" maxlength="3000" ${readonly?'readonly':''}>${escapeHtml(values[key]||'')}</textarea></label>`;
   return `<section data-contrast-task><h4>比较对象：${escapeHtml(m.objects.join(' / '))}</h4><div class="review-contrast-scroll"><table><caption>逐维度独立比较</caption><thead><tr><th>维度</th>${m.objects.map(o=>'<th scope="col">'+escapeHtml(o)+'</th>').join('')}</tr></thead><tbody>${m.dimensions.map((d,i)=>`<tr><th scope="row">${escapeHtml(d)}</th>${m.objects.map((o,j)=>`<td>${field('d'+i+'o'+j,o+' · '+d)}</td>`).join('')}</tr>`).join('')}</tbody></table></div><div class="review-contrast-summary">${[['same','相同点'],['different','不同点'],['conditions','适用条件 / 反例'],['pitfalls','易混点 / 易错点']].map(([key,label])=>field(key,label)).join('')}</div>${readonly&&!Object.keys(values).length?'<p>旧版首次作答：'+escapeHtml(answer)+'</p>':''}</section>`;
 }
-function workbenchResultField(title,body,attributes=''){
-  return `<section class="review-result-field"><h4>${escapeHtml(title)}</h4><div class="detail-content" ${attributes}>${body}</div></section>`;
-}
 function workbenchCheckpoints(p){
   const points=(p.material.reference+'\n'+p.material.rubric).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
   const checked=mistakeStorageGet(reviewWorkbenchKey()+':checkpoints:'+p.id)||[];
-  return `<section class="review-result-field review-checkpoint-field"><h4>逐项核对 <small>（不自动判分）</small></h4><fieldset class="review-checkpoint-card" data-review-checkpoints aria-label="逐项核对，不自动判分"><div class="review-checkpoint-list">${points.map((point,i)=>`<label class="review-check"><input type="checkbox" data-review-checkpoint="${i}" ${checked.includes(i)?'checked':''} onchange="saveWorkbenchCheckpoints()"><span>${escapeHtml(point)}</span></label>`).join('')}</div></fieldset></section>`;
+  return `<fieldset data-review-checkpoints><legend>逐项核对（不自动判分）</legend>${points.map((point,i)=>`<label class="review-check"><input type="checkbox" data-review-checkpoint="${i}" ${checked.includes(i)?'checked':''} onchange="saveWorkbenchCheckpoints()"><span>${escapeHtml(point)}</span></label>`).join('')}</fieldset>`;
 }
 function saveWorkbenchCheckpoints(){const s=reviewWorkbench;if(s?.attempt)mistakeStorageSet(reviewWorkbenchKey(s)+':checkpoints:'+s.attempt.id,[...wb('Attempt').querySelectorAll('[data-review-checkpoint]:checked')].map(n=>Number(n.dataset.reviewCheckpoint)));}
 function renderWorkbenchAttempt(){
@@ -498,7 +429,7 @@ function renderWorkbenchAttempt(){
   if(pending&&pending.expectedVersion<p.version){mistakeStorageSet(reviewWorkbenchKey(s)+':pending',null);s.pending=null;pending=null;}
   pending ||= mistakeStorageGet(reviewWorkbenchKey(s)+':answer:'+p.id);
   renderWorkbenchInfo(s);
-  let content=`<h3 data-executing-mode="${escapeHtml(p.modeId)}">实际执行：${escapeHtml(AI_REVIEW_METHODS[s.retryExecution?'retry':p.modeId])}</h3>`;
+  let content=`<h3 data-executing-mode="${escapeHtml(p.modeId)}">实际执行：${escapeHtml(AI_REVIEW_METHODS[p.modeId])}</h3>`;
   if(p.modeId==='cloze')content+=workbenchClozeHtml(p,pending);
   else content+=`<${p.modeId==='reading'?'article':'div'} class="${p.modeId==='reading'?'review-reading-body':'detail-content'}">${escapeHtml(m.prompt)}</${p.modeId==='reading'?'article':'div'}>`;
   if(p.stage==='question'){
@@ -511,8 +442,8 @@ function renderWorkbenchAttempt(){
   }else{
     if(p.result?.unanswered)content+='<p class="ai-help" data-unanswered>本轮未作答，按不会记录。可对照参考学习，再开始新一轮尝试；本轮不提供 AI 批改。</p>';
     if(p.modeId==='contrast'&&!p.result?.unanswered)content+=workbenchContrastHtml(m,p.firstAnswer,true);
-    else if(p.modeId!=='cloze')content+=workbenchResultField(p.modeId==='reading'?'阅读记录':'我的作答',escapeHtml(p.result?.unanswered?'（未作答）':p.firstAnswer||'（无）'));
-    if(!['cloze','reading'].includes(p.modeId))content+=workbenchResultField('参考解释 / 知识要点',escapeHtml(m.reference||''),'data-review-reference')+workbenchResultField('评分量规',escapeHtml(m.rubric||'未另设量规，请核对参考要点'))+(['self_explain','contrast'].includes(p.modeId)?workbenchCheckpoints(p):'');
+    else if(p.modeId!=='cloze')content+=`<h4>${p.modeId==='reading'?'阅读记录':'不可改写的首次作答'}</h4><div class="detail-content">${escapeHtml(p.result?.unanswered?'（未作答）':p.firstAnswer||'（无）')}</div>`;
+    if(!['cloze','reading'].includes(p.modeId))content+=`<h4>参考解释 / 知识要点</h4><div class="detail-content" data-review-reference>${escapeHtml(m.reference||'')}</div><h4>评分量规</h4><div class="detail-content">${escapeHtml(m.rubric||'未另设量规，请核对参考要点')}</div>`+(['self_explain','contrast'].includes(p.modeId)?workbenchCheckpoints(p):'');
     wb('Actions').innerHTML=p.stage==='answer'?'<p>本轮已查看参考答案，自评可选“未掌握”或“基本掌握”。</p><button onclick="submitWorkbenchAttempt(\'judge\',1)">未掌握</button><button onclick="submitWorkbenchAttempt(\'judge\',2)">基本掌握</button>':'';
     if(p.stage==='completed'){
       const gradeClass=p.grade===null?'is-neutral':p.grade>=2?'is-correct':'is-wrong';
@@ -577,20 +508,26 @@ async function finishWorkbenchAttempt(){
 async function runExistingReviewMode(){
   const s=reviewWorkbench;if(!s?.sessionItemId||s.busy)return;
   if(s.type==='mistake'&&(mistakeDetailState?.pending||mistakeStorageGet(mistakePendingKey(mistakeDetailState)))){wb('Error').textContent='原流程有提交待确认，请先返回重试。';return;}
-  if(s.mode==='retry'&&(s.type==='mistake'?s.lastExecutableMode:s.resourceRetryTarget)){
+  if(s.mode==='retry'&&s.lastExecutableMode){
     // A completed task must use the existing repeat-session action, not lose its restore pointer.
     if(s.sessionId){
       s.busy=true;
       try{const session=await(await requestApi(`${API}/courses/${s.courseId}/review-sessions/${s.sessionId}`)).json();if(reviewWorkbench!==s)return;if(session.items.find(item=>item.id===s.sessionItemId)?.status!=='pending'){wb('Error').textContent='本项目已处理。请返回队列，在复习记录点击“再次复习”创建新会话；旧轮次仍保留。';return;}}
       catch(err){wb('Error').textContent=err.message;return;}finally{if(reviewWorkbench===s)s.busy=false;}
     }
-    const target=s.type==='mistake'?s.lastExecutableMode:s.resourceRetryTarget,targetState={...s,mode:target};
+    const target=s.lastExecutableMode,targetState={...s,mode:target};
     if(mistakeStorageGet(reviewWorkbenchKey(targetState)+':pending')){wb('Error').textContent='旧轮次有待确认提交，请先返回该模式重试，不能丢弃。';return;}
-    s.retryExecution=s.type!=='mistake';s.mode=target;wb('Mode').value=target;mistakeStorageSet(reviewWorkbenchKey(s),null);
+    s.mode=target;wb('Mode').value=target;mistakeStorageSet(reviewWorkbenchKey(s),null);
     await loadReviewWorkbenchMode(target,false);if(s.version)await startWorkbenchAttempt();return;
   }
   if(s.type!=='mistake'){
-    await loadReviewWorkbenchMode('retry',false);
+    s.busy=true;let data;
+    try{data=await(await requestApi(reviewWorkbenchBase(s)+'/materials/standard?view=practice')).json();}
+    catch(err){if(reviewWorkbench===s)wb('Error').textContent=err.message;return;}
+    finally{if(reviewWorkbench===s)s.busy=false;}
+    if(reviewWorkbench!==s)return;
+    if(data.version&&data.material){await loadReviewWorkbenchMode('standard',false);if(s.version)await startWorkbenchAttempt();}
+    else {wb('Editor').textContent='尚无可重新作答的任务；请先手动准备标准复习任务，或返回原阅读。不会把阅读当作成功作答。';wb('Actions').innerHTML='<button onclick="loadReviewWorkbenchMode(\'standard\')">手动准备标准复习任务</button><button onclick="switchWorkbenchToAvailableMode()">返回原阅读流程</button>';}
     return;
   }
   s.busy=true;

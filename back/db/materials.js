@@ -6,6 +6,7 @@
  */
 
 const { db, nowText, sortByCreatedAtDesc } = require('./connection');
+const {typesFor,listResourceTypes,setResourceTypes}=require('./resourceTypes');
 const { findKnowledgeNode, SUBTREE_CTE } = require('./knowledge');
 
 // ==================== 资料 ====================
@@ -17,11 +18,11 @@ function listMaterials(courseId) {
   const rows = db
     .prepare(`SELECT ${MATERIAL_COLUMNS} FROM materials WHERE course_id = ? ORDER BY id`)
     .all(courseId);
-  return attachMaterialNodes(sortByCreatedAtDesc(rows), courseId);
+  return attachMaterialNodes(sortByCreatedAtDesc(rows), courseId).map(row=>typesFor(row,'material'));
 }
 
 function findMaterial(id) {
-  return db.prepare(`SELECT ${MATERIAL_COLUMNS} FROM materials WHERE id = ?`).get(id);
+  return typesFor(db.prepare(`SELECT ${MATERIAL_COLUMNS} FROM materials WHERE id = ?`).get(id),'material');
 }
 
 function setMaterialReviewStatus(id, courseId, status) {
@@ -57,7 +58,8 @@ function setMaterialFile(id, courseId, fileUrl, fileType) {
 
 // 新建资料；nodeIds 可选，不传就是原来那条“没有标签”的资料
 // content 是“手动输入”的正文；上传文件录入时传空字符串
-function createMaterial(courseId, title, fileUrl, fileType, nodeIds, content, outline, mindmapJson, mindmapImage) {
+function createMaterial(courseId, title, fileUrl, fileType, nodeIds, content, outline, mindmapJson, mindmapImage, typeIds) {
+  const availableTypes=listResourceTypes(courseId);
   db.exec('BEGIN');
   try {
     const info = db
@@ -72,6 +74,7 @@ function createMaterial(courseId, title, fileUrl, fileType, nodeIds, content, ou
     );
     for (const nodeId of nodeIds || []) insert.run(id, nodeId);
 
+    if(typeIds!==undefined) setResourceTypes(courseId,'material',id,typeIds);
     db.exec('COMMIT');
     return findMaterial(id);
   } catch (err) {
@@ -81,6 +84,7 @@ function createMaterial(courseId, title, fileUrl, fileType, nodeIds, content, ou
 }
 
 function deleteMaterial(id) {
+  db.prepare("DELETE FROM resource_type_links WHERE kind='material' AND resource_id=?").run(id);
   db.prepare('DELETE FROM materials WHERE id = ?').run(id);
 }
 

@@ -417,7 +417,7 @@ async function recognizeMistakeEditFile(kind) {
     const textBox = document.getElementById(isQuestion ? 'mistakeEditQuestionOcrText' : 'mistakeEditAnswerOcrText');
     const panel = document.getElementById(isQuestion ? 'mistakeEditQuestionOcrPanel' : 'mistakeEditAnswerOcrPanel');
     const meta = document.getElementById(isQuestion ? 'mistakeEditQuestionOcrMeta' : 'mistakeEditAnswerOcrMeta');
-    setOcrTextResult(textBox, result);
+    if (textBox) textBox.value = result.text || '';
     if (panel) panel.style.display = 'grid';
     if (meta) {
       const parts = [];
@@ -446,7 +446,7 @@ function closeMistakeEditOcr(kind) {
   const text = document.getElementById(isQuestion ? 'mistakeEditQuestionOcrText' : 'mistakeEditAnswerOcrText');
   const meta = document.getElementById(isQuestion ? 'mistakeEditQuestionOcrMeta' : 'mistakeEditAnswerOcrMeta');
   if (panel) panel.style.display = 'none';
-  setOcrTextResult(text, null);
+  if (text) text.value = '';
   if (meta) meta.textContent = '';
 }
 

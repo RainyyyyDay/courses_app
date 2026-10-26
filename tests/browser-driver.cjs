@@ -1,6 +1,7 @@
 // Set the document viewport explicitly: Chrome's native window minimum can exceed 390px.
 // Uses the browser's built-in DevTools protocol; no extra test dependency is required.
 const fs=require('node:fs');
+const path=require('node:path');
 const {spawn}=require('node:child_process');
 
 async function runBrowser({chrome,profile,url,viewport,screenshot,noSandbox,initScript,blockedUrls,timeoutMs=120000,returnOnTimeout=false}) {
@@ -37,6 +38,12 @@ async function runBrowser({chrome,profile,url,viewport,screenshot,noSandbox,init
     const deadline=Date.now()+timeoutMs;
     while(Date.now()<deadline) {
       try {
+        const capture=await page('Runtime.evaluate',{expression:'window.__regressionCapture || null',returnByValue:true});
+        if(screenshot && typeof capture.result.value==='string' && /^[a-zA-Z0-9_-]+$/.test(capture.result.value)){
+          const {data}=await page('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
+          fs.writeFileSync(path.join(path.dirname(screenshot),capture.result.value+'.png'),Buffer.from(data,'base64'));
+          await page('Runtime.evaluate',{expression:'window.__regressionCapture=null'});
+        }
         const {result}=await page('Runtime.evaluate',{expression:"document.getElementById('regressionResult') ? document.documentElement.outerHTML : null",returnByValue:true});
         if(typeof result.value==='string') {
           if(screenshot){const {data}=await page('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});fs.writeFileSync(screenshot,Buffer.from(data,'base64'));}

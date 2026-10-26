@@ -17,9 +17,11 @@ def stop(child):
         except subprocess.TimeoutExpired:child.kill();child.wait()
 
 def main():
+    port=int(os.environ.get('COURSES_LOCAL_AI_PORT','3002'))
+    if not 1 <= port <= 65535:raise ValueError('Invalid local AI port')
     child=None
     def start():
-        return subprocess.Popen([sys.executable,'-B','-m','uvicorn','test_app:app','--host','127.0.0.1','--port','3002','--no-proxy-headers'],
+        return subprocess.Popen([sys.executable,'-B','-m','uvicorn','test_app:app','--host','127.0.0.1','--port',str(port),'--no-proxy-headers'],
                                 cwd=ROOT,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
     try:
         version=revision();child=start()

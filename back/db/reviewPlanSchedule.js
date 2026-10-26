@@ -35,8 +35,4 @@ function planToday() {
   // 与用户所在时区一致；不从 UTC ISO 字符串截取“今天”。
   return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 }
-function planExcludedKeys(plan) {
-  try { return new Set(JSON.parse(plan.schedule_json || '{}').excludedKeys || []); }
-  catch { return new Set(); }
-}
-module.exports = {planError,dateNumber,planDates,schedulePlan,planToday,planExcludedKeys};
+module.exports = {planError,dateNumber,planDates,schedulePlan,planToday};

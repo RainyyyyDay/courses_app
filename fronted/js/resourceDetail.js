@@ -8,6 +8,20 @@
 
 /* ========== 资源详情（资料 / 笔记通用，不复制两套页面） ========== */
 let resourceDetailRequest = 0;
+let resourceDetailRow = null;
+
+async function openResourceDetailEditor(section = 'body', generate = '') {
+  const row = resourceDetailRow, view = currentView;
+  if (!row || view.type !== 'resource' || row.id !== view.id) return;
+  await openTagPicker('edit', view.resourceType, row.id);
+  const state = tagPickerState;
+  if (!state || state.mode !== 'edit' || state.resourceType !== view.resourceType || state.resourceId !== row.id) return;
+  const target = document.getElementById(section === 'outline' ? 'tagPickerOutlineBlock' : 'tagPickerResourceFields');
+  target?.scrollIntoView({ block: 'start', behavior: 'instant' });
+  const field = document.getElementById(section === 'outline' ? 'tagPickerOutline' : 'tagPickerResourceContent');
+  field?.focus({ preventScroll: true });
+  if (generate) await generatePickerOutline(generate);
+}
 
 async function openResourceDetail(resourceType, resourceId) {
   navStack.push(currentView);
@@ -18,18 +32,24 @@ async function openResourceDetail(resourceType, resourceId) {
 async function renderResourceDetailPage(resourceType, resourceId) {
   if(typeof resetResourceAi==='function')resetResourceAi();
   const request = ++resourceDetailRequest;
+  resourceDetailRow = null;
   const courseId = currentCourseId;
   const isCurrent = () => request === resourceDetailRequest && currentCourseId === courseId
     && currentView.type === 'resource' && currentView.resourceType === resourceType && currentView.id === resourceId;
   showPageOnly('resourceDetailPage');
 
-  const label = resourceType === 'note' ? '笔记' : '资料';
+  const label = '资料';
   document.getElementById('resourceDetailTitle').textContent = label + '详情';
   document.getElementById('resourceDetailName').textContent = '加载中…';
   document.getElementById('resourceDetailType').textContent = '';
   document.getElementById('resourceDetailMeta').textContent = '';
   document.getElementById('resourceDetailTags').innerHTML = '';
   document.getElementById('resourceDetailPreview').innerHTML = '';
+  document.getElementById('resourceDetailFileSection').hidden = true;
+  document.getElementById('resourceDetailEdit').disabled = true;
+  document.getElementById('resourceDetailOutlineSection').style.display = 'none';
+  document.getElementById('resourceDetailMindmapSection').style.display = 'none';
+  document.getElementById('resourceDetailReviewActions').replaceChildren();
   document.getElementById('resourceDetailContentSection').hidden = true;
   document.getElementById('resourceDetailContent').textContent = '';
   document.getElementById('resourceDetailOpen').href = '#';
@@ -45,9 +65,9 @@ async function renderResourceDetailPage(resourceType, resourceId) {
     if (!isCurrent()) return;
     if (row.course_id !== courseId) throw new Error('这条内容不属于当前课程');
     renderResourceDetail(resourceType, row);
-    if(typeof mountReviewPreparation==='function')mountReviewPreparation(document.getElementById('resourceDetailTags'),resourceType,row);
+    if(typeof mountReviewPreparation==='function')mountReviewPreparation(document.getElementById('resourceDetailReviewActions'),resourceType,row);
     if(globalThis.COURSES_SHOW_LEGACY_RESOURCE_AI===true&&typeof mountResourceAi==='function')mountResourceAi(document.getElementById('resourceDetailPreview').parentElement,resourceType,row);
-    if(typeof mountItemReviewHistory==='function')mountItemReviewHistory(document.getElementById('resourceDetailPreview').parentElement,resourceType,row.id);
+    if(typeof mountItemReviewHistory==='function')mountItemReviewHistory(document.getElementById('resourceDetailHistory'),resourceType,row.id);
   } catch (err) {
     if (!isCurrent()) return;
     console.warn('加载资源详情失败:', err.message);
@@ -57,12 +77,15 @@ async function renderResourceDetailPage(resourceType, resourceId) {
 }
 
 function renderResourceDetail(resourceType, item) {
-  const label = resourceType === 'note' ? '笔记' : '资料';
+  resourceDetailRow = item;
+  const label = '资料';
   const hasFile = !!item.file_url;
   const url = attachmentUrl(item.file_url||'');
 
   document.getElementById('resourceDetailTitle').textContent = label + '详情';
   document.getElementById('resourceDetailName').textContent = item.title || '（无标题）';
+  const edit = document.getElementById('resourceDetailEdit');
+  edit.disabled = false; edit.textContent = '编辑' + label;
   if (window.__mindmapTarget?.courseId === currentCourseId
     && window.__mindmapTarget.resourceType === (resourceType === 'note' ? 'note' : 'material')
     && window.__mindmapTarget.id === item.id) {
@@ -74,8 +97,9 @@ function renderResourceDetail(resourceType, item) {
   }
 
   const typeEl = document.getElementById('resourceDetailType');
-  typeEl.textContent = label;
-  typeEl.className = 'detail-type' + (resourceType === 'note' ? ' tag-knowledge' : ' tag-folder');
+  typeEl.className='resource-badge-row';
+  typeEl.innerHTML=resourceTypesHtml(item)+'<span class="material-review-badge">'+(item.review_status==='reviewed'?'已复习':'未复习')+'</span>';
+  const typeEdit=document.createElement('button');typeEdit.className='edit-mini-btn';typeEdit.textContent='修改类型';typeEdit.onclick=()=>editSelectedResourceTypes([{kind:resourceType,id:item.id}]);typeEl.append(typeEdit);
 
   const parts = [
     hasFile ? '文件类型：' + (item.file_type || '未知') : '✍ 手动输入',
@@ -89,8 +113,8 @@ function renderResourceDetail(resourceType, item) {
     ? nodes.map(k => tagChipHtml({ id: k.id, name: k.name, type: k.type }, false, true)).join('')
     : '<span class="tag-none">暂无标签</span>';
 
-  // 有文件才是“文件”区；手动输入的显示“内容”区
-  document.getElementById('resourceDetailSectionTitle').textContent = hasFile ? '文件' : '内容';
+  document.getElementById('resourceDetailSectionTitle').textContent = '附件';
+  document.getElementById('resourceDetailFileSection').hidden = !hasFile;
 
   const openEl = document.getElementById('resourceDetailOpen');
   if (hasFile) {
@@ -99,17 +123,21 @@ function renderResourceDetail(resourceType, item) {
     renderResourcePreview(item.file_type, url);
   } else {
     openEl.style.display = 'none';
-    document.getElementById('resourceDetailPreview').innerHTML = item.content
-      ? '<div class="detail-content">' + escapeHtml(item.content) + '</div>'
-      : '<div class="empty">这条' + label + '是手动输入的，但没有填内容。</div>';
+    document.getElementById('resourceDetailPreview').replaceChildren();
   }
 
   // 附件和正文可以同时存在；不能因为有附件而跳过已经保存的正文。
   const content = String(item.content || '');
   const contentSection = document.getElementById('resourceDetailContentSection');
   const contentBox = document.getElementById('resourceDetailContent');
-  contentSection.hidden = !hasFile || !content.trim();
-  contentBox.textContent = hasFile ? content : '';
+  contentSection.hidden = false;
+  courseRichText.render(contentBox,content,'尚未填写正文。可以手动编辑，也可以从附件识别文字后补充。');
+  contentBox.classList.toggle('is-empty', !content.trim());
+  const contentActions = document.getElementById('resourceDetailContentActions');
+  contentActions.replaceChildren();
+  const editBody = document.createElement('button');
+  editBody.type = 'button'; editBody.className = 'edit-mini-btn'; editBody.textContent = '编辑正文';
+  editBody.onclick = () => void openResourceDetailEditor('body'); contentActions.append(editBody);
   if (typeof mountResourceTextAction === 'function') mountResourceTextAction(resourceType, item);
 
   // 「重点总结 / 大纲」是文本输入，「思维导图」是独立产物，两者分开显示。
@@ -120,84 +148,39 @@ function renderResourceDetail(resourceType, item) {
   if (outlineSection) outlineSection.style.display = '';
   const outlineText = document.getElementById('resourceDetailOutlineText');
   if (outlineText) {
-    outlineText.textContent = savedOutline || '还没有填写重点总结或大纲。';
+    courseRichText.render(outlineText,savedOutline,'还没有填写重点总结或大纲。');
     outlineText.classList.toggle('is-empty', !savedOutline);
   }
-
-  let mindmapText = '';
-  if (item.mindmap_json) {
-    try { mindmapText = mindmapToOutline(JSON.parse(item.mindmap_json)); } catch { mindmapText = ''; }
+  const outlineActions = document.getElementById('resourceDetailOutlineActions');
+  outlineActions.replaceChildren();
+  for (const [text, action, aiOnly] of [
+    ['编辑大纲', () => openResourceDetailEditor('outline'), false],
+    ['AI 根据正文生成', () => openResourceDetailEditor('outline', 'body'), true],
+    ...(hasFile ? [['AI 从附件生成', () => openResourceDetailEditor('outline', 'attachment'), true]] : []),
+    ['AI 设置', () => coursesAiSettings.open(), false]
+  ]) {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'edit-mini-btn'; button.textContent = text;
+    button.onclick = () => void action();
+    if (aiOnly) button.dataset.resourceOutlineAi = '';
+    outlineActions.append(button);
   }
+
   if (mindmapSection) mindmapSection.style.display = '';
-  const hasMindmap = renderOutlineMap(document.getElementById('resourceDetailOutlineMap'), mindmapText, { rootTitle: item.title || '' });
   const mapBox = document.getElementById('resourceDetailOutlineMap');
-  if (mapBox && item.mindmap_image) {
-    mapBox.innerHTML = `<img src="${item.mindmap_image}" alt="思维导图" style="max-width:100%;border-radius:10px;display:block;" />`;
-  }
-  if (!hasMindmap && !item.mindmap_image) {
-    if (mapBox) mapBox.innerHTML = '<div class="empty">还没有思维导图。可以先填写上方大纲，再使用基础生成或 AI 润色。</div>';
-  }
-  // 导图入口：基础规则始终可用；AI 润色只有真实 API 可用时才能点击。
-  const actionHost = document.getElementById('resourceDetailMindmapActions');
-  if (actionHost) {
-    const sourceOutline = savedOutline;
-    const makeButton = (className, text) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = `edit-btn ${className}`;
-      button.textContent = text;
-      button.dataset.mindmapGenerate = className.startsWith('ai-') ? 'ai' : 'basic';
-      return button;
-    };
-    const basic = makeButton('open-mindmap-btn', '基础生成');
-    basic.disabled = !sourceOutline;
-    basic.title = sourceOutline ? '按固定规则切成适合导图的层级，不调用 AI' : '请先填写大纲';
-    const ai = makeButton('ai-mindmap-btn', 'AI 润色生成');
-    const editExisting = item.mindmap_json
-      ? Object.assign(document.createElement('button'), {
-          type: 'button',
-          className: 'edit-btn edit-existing-mindmap-btn',
-          textContent: '继续编辑',
-        })
-      : null;
-    const back = Object.assign(document.createElement('button'), {
-      type: 'button',
-      className: 'edit-btn reupload-mindmap-btn',
-      textContent: '上传导图',
-    });
-    actionHost.replaceChildren(basic, ai, ...(editExisting ? [editExisting] : []), back);
-
-    window.__mindmapTarget = {
-      courseId: currentCourseId,
-      resourceType,
-      id: item.id,
-      label: item.title || '',
-      baseline: {mindmap_json:item.mindmap_json||'',mindmap_image:item.mindmap_image||'',outline:item.outline||''}
-    };
-    const openGenerated = async (mode, button) => {
-      if (!sourceOutline) { showToast('请先填写大纲'); return; }
-      const original = button.textContent;
-      let editorWindow = null;
-      try { editorWindow = window.open('', '_blank'); } catch {}
-      button.textContent = mode === 'ai' ? 'AI 润色中…' : '切分中…';
-      setMindmapGenerationBusy(true);
-      try {
-        const generated = await generateMindmapOutline(sourceOutline, item.title || '', mode);
-        await openMindmapEditor(item.mindmap_json, generated.title || item.title || '', generated.outline,
-          { startNew: true, targetWindow: editorWindow });
-      } catch (err) {
-        try { if (editorWindow && !editorWindow.closed) editorWindow.close(); } catch {}
-        showToast(err.message);
-      } finally {
-        button.textContent = original;
-        setMindmapGenerationBusy(false);
-      }
-    };
-    basic.onclick = () => void openGenerated('basic', basic);
-    ai.onclick = () => void openGenerated('ai', ai);
-    if (editExisting) editExisting.onclick = () => void openMindmapEditor(item.mindmap_json, item.title, item.outline);
-    back.onclick = () => reuploadMindmap(resourceType, item.id);
-  }
+  if(item.mindmap_json)previewCourseMindmap(mapBox,item.mindmap_json);
+  else if(item.mindmap_image){const img=document.createElement('img');img.src=item.mindmap_image;img.alt='思维导图';img.style.maxWidth='100%';mapBox.replaceChildren(img);}
+  else mapBox.innerHTML='<div class="empty">还没有思维导图。可直接使用正文、大纲或附件，在导图工作台中生成。</div>';
+  window.__mindmapTarget={courseId:currentCourseId,resourceType,id:item.id,label:item.title||'',baseline:{mindmap_json:item.mindmap_json||'',mindmap_image:item.mindmap_image||'',outline:item.outline||''}};
+  const actionHost=document.getElementById('resourceDetailMindmapActions');actionHost.replaceChildren();
+  const source={text:item.content||'',attachment:item.file_url?{url:item.file_url,type:item.file_type||'',name:item.title}:null};
+  const hasMindmap=!!(item.mindmap_json||item.mindmap_image);
+  for(const [label,action] of [
+    ...(item.mindmap_json||!hasMindmap?[[item.mindmap_json?'编辑导图':'生成导图',()=>openMindmapEditor(item.mindmap_json,item.title,savedOutline,{...source,generate:!item.mindmap_json})]]:[]),
+    ...(hasMindmap?[['重新生成',()=>openMindmapEditor('',item.title,savedOutline,{...source,generate:true,regenerate:true})]]:[]),
+    ['上传导图',()=>reuploadMindmap(resourceType,item.id)]
+  ]){const button=document.createElement('button');button.type='button';button.className='edit-btn';button.textContent=label;button.onclick=()=>void action();actionHost.append(button);}
+  if(hasMindmap){const more=document.createElement('details');more.className='course-map-more';const summary=document.createElement('summary');summary.className='edit-btn';summary.textContent='更多';const remove=document.createElement('button');remove.type='button';remove.className='edit-btn edit-btn-danger';remove.textContent='移除导图';remove.onclick=()=>void removeResourceMindmap(resourceType,item,remove);more.append(summary,remove);actionHost.append(more);}
   refreshMindmapAiAvailability();
 }
 

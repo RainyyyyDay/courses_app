@@ -17,7 +17,7 @@ def parse_input(value):
     if not isinstance(title, str) or not isinstance(text, str):
         raise AIError(400, 'INVALID_INPUT')
     title, text = _trim(title), _trim(text)
-    if _length(title) > 200 or not text or _length(text) > 20000:
+    if _length(title) > 200 or not text or _length(text) > 500000:
         raise AIError(400, 'INVALID_INPUT')
     return {'title': title, 'text': text}
 
@@ -134,7 +134,7 @@ def register(app, *, dependencies=None):
                    'X-Request-ID': str(uuid4())}
         try:
             gate.check_rate()
-            body = await _read_body(request, max_bytes=32768)
+            body = await _read_body(request, max_bytes=2 * 1024 * 1024)
             if (not isinstance(body, dict)
                     or set(body) - {'provider', 'api_key', 'model', 'confirm_cost',
                                     'base_url', 'workspace_id', 'input', 'purpose'}

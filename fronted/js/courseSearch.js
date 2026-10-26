@@ -1,5 +1,5 @@
 // 仅对接课程搜索 API；搜索摘要不加载附件，不修改各模块列表或复习状态。
-const COURSE_SEARCH_LABELS = { material: '资料', note: '笔记', mistake: '错题' };
+const COURSE_SEARCH_LABELS = { material: '资料', note: '资料', mistake: '错题' };
 const COURSE_SEARCH_PLURALS = { material: 'materials', note: 'notes', mistake: 'mistakes' };
 const COURSE_SEARCH_PAGE_SIZE = 20;
 let courseSearchState = null;
@@ -52,6 +52,7 @@ function changeCourseSearchQuery(value, composing = false) {
   scheduleCourseSearch();
 }
 function changeCourseSearchType(type, checked) {
+  if(type==='materials'&&courseSearchState){if(checked)courseSearchState.types.add('notes');else courseSearchState.types.delete('notes');}
   if (!courseSearchState || !Object.values(COURSE_SEARCH_PLURALS).includes(type)) return;
   if (checked) courseSearchState.types.add(type); else courseSearchState.types.delete(type);
   scheduleCourseSearch();
@@ -141,7 +142,7 @@ function renderCourseSearchResults() {
   more.textContent = state.loading ? '加载中…' : '加载更多';
   let message = '';
   if (!state.types.size) message = '请至少选择一种内容类型';
-  else if (!state.q.trim()) message = '输入关键词，搜索本课程的资料、笔记和错题';
+  else if (!state.q.trim()) message = '输入关键词，搜索本课程的资料和错题';
   else if (!state.loading && !state.error && state.loaded && !state.rows.length) message = '没有找到匹配的内容，请试试其他关键词';
   else if (state.timer) message = '等待搜索…';
   else if (state.composing) message = '输入完成后自动搜索';

@@ -4,9 +4,20 @@ function mountResourceTextAction(type, row) {
   if (!row.file_url) return;
   const button = document.createElement('button');
   button.type = 'button'; button.className = 'edit-mini-btn resource-text-entry';
-  button.textContent = '识别附件／补充正文';
-  button.onclick = () => void openResourceTextEditor(type, row.id);
-  document.getElementById('resourceDetailSectionTitle').append(button);
+  button.textContent = '从附件识别文字';
+  button.onclick = () => void openResourceTextEditor(type, row.id, { autoStart: false });
+  document.getElementById('resourceDetailContentActions').append(button);
+}
+
+async function fetchResourceAttachmentFile(row, signal) {
+  const url = attachmentUrl(row.file_url || row.url || '');
+  if (!url) throw new Error('没有可识别的附件，请先上传附件');
+  const response = await fetch(url, { signal });
+  if (!response.ok) throw new Error('附件读取失败，请确认文件仍存在');
+  const blob = await response.blob();
+  const ext = extname(row.file_url || row.url || ''), title = row.title || row.name || '附件';
+  const name = ext && !title.toLowerCase().endsWith(ext.toLowerCase()) ? title + ext : title;
+  return new File([blob], name, { type: row.file_type || row.type || blob.type });
 }
 function resourceTextIsCurrent(state) {
   return state === resourceTextEditor && currentCourseId === state.courseId && currentView.type === 'resource'
@@ -27,6 +38,7 @@ function resourceTextControls(state) {
   dialog.querySelector('[data-text-append]').textContent = state.original.trim() ? '追加并保存' : '保存正文';
   dialog.querySelector('[data-text-replace]').hidden = !state.original.trim();
   dialog.querySelector('[data-text-replace]').disabled = busy || !draft || !state.row;
+  refreshVisionOcrOptions();
 }
 async function refreshResourceTextOriginal(state) {
   const response = await requestApi(`${API}/${state.type === 'note' ? 'notes' : 'materials'}/${state.id}`, { signal: state.controller.signal });
@@ -38,7 +50,7 @@ async function refreshResourceTextOriginal(state) {
   state.dialog.querySelector('[data-text-name]').textContent = row.title || '附件';
   return true;
 }
-async function openResourceTextEditor(type, id) {
+async function openResourceTextEditor(type, id, options = {}) {
   closeResourceTextEditor();
   const dialog = document.createElement('dialog'); dialog.className = 'resource-text-dialog';
   dialog.setAttribute('aria-labelledby', 'resourceTextTitle');
@@ -46,7 +58,8 @@ async function openResourceTextEditor(type, id) {
     <div class="resource-text-body"><p class="resource-text-note">直接读取已上传的附件。识别后请校对，选择保存方式；原附件保持不变。</p>
     <div class="resource-text-heading"><h3>已有正文</h3><button type="button" class="edit-mini-btn" data-text-refresh>刷新已有正文</button></div>
     <div class="detail-content" data-text-original>正在读取…</div>
-    <div class="resource-text-heading"><h3>待补充文字（可编辑）</h3><button type="button" class="edit-btn" data-text-scan>从附件识别文字</button></div>
+    <div class="resource-text-heading"><h3>待补充文字（可编辑）</h3><button type="button" id="resourceTextScan" class="edit-btn" data-text-scan>从附件识别文字</button></div>
+    ${recognitionOptionsHtml('resourceTextRecognitionMethod', 'resourceTextScan')}
     <div data-text-result><textarea data-text-draft aria-label="待补充文字" rows="9" placeholder="识别结果会显示在这里，也可以手动输入补充文字"></textarea></div>
     <p data-text-status role="status" aria-live="polite"></p></div>
     <footer><button type="button" class="btn-cancel" data-text-cancel>取消</button><button type="button" class="edit-btn" data-text-replace>替换并保存</button><button type="button" class="btn-confirm" data-text-append>保存正文</button></footer>`;
@@ -70,7 +83,8 @@ async function openResourceTextEditor(type, id) {
   try {
     if (!await refreshResourceTextOriginal(state)) return;
     state.busy = false; resourceTextControls(state);
-    await recognizeExistingResourceText();
+    if (options.autoStart !== false) await recognizeExistingResourceText();
+    else dialog.querySelector('[data-text-status]').textContent = '选择识别方式后点击识别；也可以直接在下方输入补充文字。';
   } catch (err) {
     if (resourceTextIsCurrent(state)) { state.busy = false; dialog.querySelector('[data-text-status]').textContent = err.message; resourceTextControls(state); }
   }
@@ -94,11 +108,12 @@ async function recognizeExistingResourceText() {
     const ext = extname(state.row.file_url), title = state.row.title || '附件';
     const name = ext && !title.toLowerCase().endsWith(ext.toLowerCase()) ? title + ext : title;
     const file = new File([blob], name, { type: state.row.file_type || blob.type });
-    const result = await recognizeUploadedFile(file, message => { if (resourceTextIsCurrent(state)) status.textContent = message; }, { signal: state.controller.signal });
+    const recognitionMethod = dialog.querySelector('#resourceTextRecognitionMethod').value;
+    const result = await recognizeUploadedFile(file, message => { if (resourceTextIsCurrent(state)) status.textContent = message; }, { signal: state.controller.signal, recognitionMethod });
     if (!resourceTextIsCurrent(state)) return;
     if (result.provider === 'mock') throw new Error('当前服务返回模拟结果，未填入；请检查识别服务');
     if (!String(result.text || '').trim()) throw new Error('没有识别到文字，原正文和已有草稿保留');
-    setOcrTextResult(dialog.querySelector('[data-text-draft]'), result);
+    dialog.querySelector('[data-text-draft]').value = result.text;
     status.textContent = (result.warnings || []).join('；');
     notifyTextRecognitionSuccess(result, dialog.querySelector('[data-text-result]'));
   } catch (err) {

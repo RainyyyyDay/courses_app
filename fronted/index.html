@@ -4,7 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>课内</title>
-  <link rel="stylesheet" href="style.css?v=20261026-ocr-paragraphs-63" />
+  <link rel="stylesheet" href="style.css?v=20261026-mindmap-2" />
+<link rel="stylesheet" href="/mindmap/vendor/katex/katex.min.css">
+<link rel="stylesheet" href="/mindmap/css/node-content.css">
+<link rel="stylesheet" href="css/resource-rich-text.css?v=20261026-rich-1">
 </head>
 <body>
 
@@ -105,7 +108,6 @@
     <div class="header-left">
       <button class="back-btn" onclick="backToList()">←</button>
       <h1 id="detailTitle">课程</h1>
-      <button type="button" class="course-title-edit" onclick="openCourseRename()" aria-label="修改课程名称" title="修改课程名称">编辑</button>
     </div>
     <div class="course-header-actions">
       <button class="course-search-entry" id="totalReviewOpen" type="button" onclick="openTotalReview()">复习</button>
@@ -116,7 +118,7 @@
 
   <div class="detail-tabs">
     <div class="dtab active" onclick="switchTab('materials', this)">资料</div>
-    <div class="dtab" onclick="switchTab('notes', this)">笔记</div>
+
     <div class="dtab" onclick="switchTab('mistakes', this)">错题</div>
     <div class="dtab" onclick="switchTab('reviewPlans', this)">复习</div>
     <div class="dtab" onclick="switchTab('assessments', this)">考核</div>
@@ -186,7 +188,7 @@
         <section class="review-center-panel" aria-labelledby="reviewPlansHeading">
           <header class="review-panel-heading">
             <div class="review-panel-title"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 11h18m-13 4h2m4 0h2"/></svg><div><h2 id="reviewPlansHeading">复习计划</h2><p>管理考前安排与每日任务</p></div></div>
-            <div class="review-plan-header-actions"><button id="reviewPlanViewAll" type="button" class="review-panel-action" onclick="openAllReviewPlans()">查看全部</button><button type="button" class="review-panel-action" onclick="openReviewPlanCreate()">＋ 创建计划</button></div>
+            <button type="button" class="review-panel-action" onclick="openReviewPlanCreate()">＋ 创建计划</button>
           </header>
           <div id="reviewPlanList"></div>
         </section>
@@ -221,7 +223,7 @@
         <fieldset class="course-search-types">
           <legend>内容类型</legend>
           <label><input type="checkbox" value="materials" checked onchange="changeCourseSearchType(this.value,this.checked)" />资料</label>
-          <label><input type="checkbox" value="notes" checked onchange="changeCourseSearchType(this.value,this.checked)" />笔记</label>
+          <label hidden><input type="checkbox" value="notes" checked onchange="changeCourseSearchType(this.value,this.checked)" />笔记</label>
           <label><input type="checkbox" value="mistakes" checked onchange="changeCourseSearchType(this.value,this.checked)" />错题</label>
         </fieldset>
       </form>
@@ -252,8 +254,8 @@
       <div id="nodeDetailMistakeList"></div>
       <div class="detail-section-title" id="nodeDetailMaterialTitle">关联资料</div>
       <div id="nodeDetailMaterialList"></div>
-      <div class="detail-section-title" id="nodeDetailNoteTitle">关联笔记</div>
-      <div id="nodeDetailNoteList"></div>
+      <div class="detail-section-title" id="nodeDetailNoteTitle" hidden>关联笔记</div>
+      <div id="nodeDetailNoteList" hidden></div>
     </div>
   </div>
 
@@ -297,12 +299,21 @@
         <span id="mistakeAiHome" hidden></span>
         <section id="mistakeAiPanel" class="mistake-ai-panel" aria-labelledby="mistakeAiTitle" hidden>
           <h2 id="mistakeAiTitle">AI 分类 · 复习方式建议</h2>
-          <p class="mistake-ai-note">使用共用 AI 设置，可选择平台 AI 或自己的 API。结果需人工复核，不会自动修改原错题分类。只发送下方文字，不上传附件；请勿填写个人敏感信息。</p>
+          <p class="mistake-ai-note">使用共用 AI 设置；也可明确选择 DeepSeek 官方并填写本次 Key。结果需人工复核，不会自动修改原错题分类。只发送下方文字，不上传附件；请勿填写个人敏感信息。</p>
           <form id="mistakeAiForm" class="edit-card" onsubmit="event.preventDefault();requestMistakeAi()">
             <h3 class="tag-sheet-section-title">题目信息</h3>
             <fieldset id="mistakeAiInputs">
-              <p id="mistakeAiSource" data-ai-settings-source class="mistake-ai-note">共用 AI 设置：尚未配置</p>
-              <button type="button" onclick="coursesAiSettings.open()">AI 设置（平台 AI / 自带 API）</button>
+              <label for="mistakeAiProvider">本次 AI 来源</label>
+              <button type="button" onclick="coursesAiSettings.open()">打开共用 AI 设置</button>
+              <select id="mistakeAiProvider" onchange="changeMistakeAiProvider('mistakeAi')"><option value="shared">共用 AI 设置（顶栏可配置）</option></select>
+              <div id="mistakeAiKeySettings" class="mistake-ai-key-settings" hidden>
+                <label for="mistakeAiApiKey">本次 API Key（不保存）</label>
+                <input id="mistakeAiApiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512">
+                <label for="mistakeAiModel">DeepSeek 模型</label>
+                <select id="mistakeAiModel"><option>deepseek-flash</option><option>deepseek-v4-pro</option></select>
+                <label><input id="mistakeAiCost" type="checkbox">同意本次将下方文字发送至 DeepSeek 官方，知晓可能产生费用。</label>
+                <p class="mistake-ai-note">Key 经过本网站后端，仅用于本次请求，发送后清空；重试需重新填写并确认。不自动重试或回退 Mock。不保证浏览器插件不会保存输入。</p>
+              </div>
               <label for="mistakeAiQuestion">题目文字（必填；图片题请补充文字）</label>
               <textarea id="mistakeAiQuestion" maxlength="4000" required rows="3"></textarea>
               <label for="mistakeAiStudentAnswer">学生作答（必填，不是参考答案）</label>
@@ -356,12 +367,13 @@
   </div>
 
   <!-- 资源详情页（资料 / 笔记通用） -->
-  <div id="resourceDetailPage">
+  <div id="resourceDetailPage" class="resource-detail-page">
     <div class="header">
       <div class="header-left">
         <button class="back-btn" onclick="backFromDetail()">←</button>
         <h1 id="resourceDetailTitle">资源详情</h1>
       </div>
+      <button type="button" id="resourceDetailEdit" class="edit-btn" onclick="openResourceDetailEditor('body')" disabled>编辑内容</button>
     </div>
     <div class="tab-content">
       <div class="detail-card">
@@ -369,18 +381,28 @@
         <div class="detail-type" id="resourceDetailType"></div>
         <div class="detail-meta" id="resourceDetailMeta"></div>
         <div class="mistake-tags" id="resourceDetailTags"></div>
+        <div id="resourceDetailReviewActions" class="resource-review-actions"></div>
       </div>
-      <div class="detail-section-title" id="resourceDetailSectionTitle">文件</div>
-      <div id="resourceDetailPreview"></div>
-      <section id="resourceDetailContentSection" hidden aria-labelledby="resourceDetailContentTitle">
-        <div class="detail-section-title" id="resourceDetailContentTitle">正文</div>
+      <section id="resourceDetailFileSection" class="resource-detail-topic resource-section" hidden>
+        <div class="resource-section-head"><h2 class="detail-section-title" id="resourceDetailSectionTitle">附件</h2></div>
+        <div id="resourceDetailPreview"></div>
+      </section>
+      <section id="resourceDetailContentSection" class="resource-detail-topic resource-section" hidden aria-labelledby="resourceDetailContentTitle">
+        <div class="resource-section-head">
+          <div><h2 class="detail-section-title" id="resourceDetailContentTitle">正文</h2><p class="resource-section-hint">保存的文字内容，可手动编辑或从附件识别后补充。</p></div>
+          <div id="resourceDetailContentActions" class="resource-section-actions"></div>
+        </div>
         <div class="detail-content" id="resourceDetailContent"></div>
       </section>
-      <section id="resourceDetailOutlineSection" class="resource-detail-topic" style="display:none;">
-        <div class="detail-section-title">重点总结 / 大纲</div>
-        <pre id="resourceDetailOutlineText" class="resource-detail-outline-text"></pre>
+      <section id="resourceDetailOutlineSection" class="resource-detail-topic resource-section" style="display:none;">
+        <div class="resource-section-head">
+          <div><h2 class="detail-section-title">重点总结 / 大纲</h2><p class="resource-section-hint">从正文或附件生成，核对后保存；与正文分别管理。</p></div>
+          <div id="resourceDetailOutlineActions" class="resource-section-actions"></div>
+        </div>
+        <p id="resourceDetailOutlineStatus" class="resource-section-hint" role="status"></p>
+        <div id="resourceDetailOutlineText" class="resource-detail-outline-text"></div>
       </section>
-      <section id="resourceDetailMindmapSection" class="resource-detail-topic" style="display:none;">
+      <section id="resourceDetailMindmapSection" class="resource-detail-topic resource-section" style="display:none;">
         <div class="detail-section-title">思维导图
           <button type="button" class="edit-mini-btn" onclick="openOutlineFullscreen()">全屏查看</button>
         </div>
@@ -388,6 +410,7 @@
         <p id="resourceDetailMindmapAiNote" class="mindmap-generation-note" role="status"></p>
         <div id="resourceDetailOutlineMap" class="outline-map"></div>
       </section>
+      <div id="resourceDetailHistory"></div>
       <div class="detail-actions">
         <a id="resourceDetailOpen" class="detail-link" href="#" target="_blank">打开文件</a>
       </div>
@@ -408,7 +431,7 @@
   <!-- 添加课程弹窗 -->
   <div class="modal-mask" id="courseModal">
     <div class="modal">
-      <h3 id="courseModalTitle">添加课程</h3>
+      <h3>添加课程</h3>
       <input id="courseNameInput" placeholder="输入课程名称" />
       <div class="modal-actions">
         <button class="btn-cancel" onclick="closeCourseModal()">取消</button>
@@ -472,7 +495,6 @@
           <label>可选编辑要求<input id="assessmentChartInstruction" maxlength="500" placeholder="如：保留已有占比，只精简内容说明" /></label>
           <p id="assessmentChartAiState" class="ai-help"></p>
           <div class="assessment-chart-ai-actions">
-            <button type="button" onclick="coursesAiSettings.open()">AI 设置（平台 AI / 自带 API）</button>
             <button type="button" id="assessmentChartAiBody">AI 从以上文字提取</button>
             <button type="button" id="assessmentChartAiFile">AI 读取附件并生成</button>
             <button type="button" id="assessmentChartAiEdit">AI 整理当前图表</button>
@@ -595,7 +617,7 @@
       <div class="modal-actions">
         <button type="button" id="reviewCompleteReplay" onclick="replayReviewComplete()">再来一遍</button>
         <button type="button" id="mistakeCompletePreview" onclick="openReviewCompletePreview()" hidden>查看作答预览</button>
-        <button type="button" id="reviewCompleteStartNew" class="btn-primary" onclick="startNewReviewComplete()">开始新复习</button>
+        <button type="button" class="btn-primary" onclick="startNewReviewComplete()">开始新复习</button>
       </div>
     </div>
   </div>
@@ -822,22 +844,28 @@
         <section id="tagPickerResourceFields" class="edit-card" style="display:none;">
           <div class="edit-card-head">
             <span class="edit-card-icon">📄</span>
-            <div class="edit-card-titles"><b id="tagPickerResourceTitle">资料</b><small>可上传附件，也可直接录入正文；两者至少填一个</small></div>
-            <button type="button" class="edit-mini-btn" id="tagPickerResourceClear" style="display:none;" onclick="clearPickerResourceContent()">清空</button>
+            <div class="edit-card-titles"><b id="tagPickerResourceTitle">正文与附件</b><small>先整理正文，再生成大纲；正文和附件至少保留一项</small></div>
           </div>
           <div class="edit-card-body">
-            <div id="tagPickerResourceFileSummary" class="mistake-create-file" style="display:none;"></div>
-            <div class="edit-file-actions">
-              <button type="button" class="edit-btn" onclick="document.getElementById('tagPickerResourceUpload').click()">上传附件</button>
-              <button type="button" class="edit-btn" id="tagPickerResourceOcrBtn" style="display:none;" onclick="recognizePickerResourceFile()">从附件提取正文</button>
-              <button type="button" class="edit-btn edit-btn-danger" id="tagPickerResourceRemove" style="display:none;" onclick="clearPickerResourceFile()">移除附件</button>
+            <div class="resource-form-attachment">
+              <div class="resource-field-head"><label>附件</label><span class="resource-field-hint">用于预览、下载和提取文字</span></div>
+              <div id="tagPickerResourceFileSummary" class="mistake-create-file" style="display:none;"></div>
+              <div class="edit-file-actions">
+                <button type="button" class="edit-btn" id="tagPickerResourceUploadBtn" onclick="document.getElementById('tagPickerResourceUpload').click()">上传附件</button>
+                <button type="button" class="edit-btn edit-btn-danger" id="tagPickerResourceRemove" style="display:none;" onclick="clearPickerResourceFile()">移除附件</button>
+              </div>
             </div>
             <input type="file" id="tagPickerResourceUpload" style="display:none" onchange="choosePickerResourceFile(this)" />
-            <label for="tagPickerResourceContent"><b>正文内容（可编辑）</b></label>
-            <p id="tagPickerResourceContentHelp" class="muted">可手动填写，也可从附件提取文字；下方 AI 大纲根据这里的正文生成。提取结果校对后选择替换或追加，点击底部保存后生效。</p>
-            <textarea id="tagPickerResourceContent" rows="5" aria-describedby="tagPickerResourceContentHelp" placeholder="在这里填写正文或重点内容；也可只保留附件" oninput="updatePickerResourceClear()"></textarea>
-            <p id="tagPickerResourceExtractHint" class="muted">支持 PDF、图片、Word 和 PPT；文字提取不调用大模型。</p>
-            <p id="tagPickerResourceExtractStatus" class="muted" role="status" aria-live="polite"></p>
+            <div class="resource-field-head resource-body-heading">
+              <label for="tagPickerResourceContent">正文</label>
+              <div class="resource-section-actions">
+                <button type="button" class="edit-mini-btn" id="tagPickerResourceOcrBtn" style="display:none;" onclick="recognizePickerResourceFile()">从附件识别文字</button>
+                <button type="button" class="edit-mini-btn" id="tagPickerResourceClear" style="display:none;" onclick="clearPickerResourceContent()">清空正文</button>
+              </div>
+            </div>
+            <p class="resource-field-hint">直接编辑下方正文；附件识别结果需校对并选择替换或追加，保存后生效。</p>
+            <div id="tagPickerRecognitionOptions"></div>
+            <textarea id="tagPickerResourceContent" rows="7" placeholder="输入或整理正文，也可以从上方附件识别后填入" oninput="updatePickerResourceClear()"></textarea>
             <section id="tagPickerResourceOcrPanel" class="mistake-ocr-panel" style="display:none;">
               <div class="mistake-ocr-head"><b>识别结果</b><span>先校对，再填入正文</span></div>
               <textarea id="tagPickerResourceOcrText" rows="5"></textarea>
@@ -858,26 +886,27 @@
           </div>
           <div class="edit-card-body">
             <div class="outline-ai-actions">
-            <button type="button" class="edit-mini-btn" id="tagPickerOutlineGen" onclick="generatePickerOutline()">AI 一键生成大纲</button>
+            <button type="button" class="edit-mini-btn ai-primary" id="tagPickerOutlineGen" onclick="generatePickerOutline()">AI 根据正文生成</button>
+            <button type="button" class="edit-mini-btn" id="tagPickerOutlineFileGen" onclick="generatePickerOutline('attachment')">AI 从附件生成</button>
             <button type="button" class="edit-mini-btn" onclick="coursesAiSettings.open()">AI 设置</button>
             </div>
-            <p id="tagPickerOutlineStatus" class="muted" role="status" aria-live="polite">使用共用 AI 设置，根据正文生成；可能计费，生成后可修改。</p>
-            <textarea id="tagPickerOutline" rows="6" placeholder="- 第一章&#10;  - 1.1 极限&#10;  - 1.2 连续"></textarea>
+            <p id="tagPickerOutlineStatus" class="resource-field-hint" role="status" aria-live="polite">可根据正文生成，或先识别附件再生成；可能计费，核对后保存。</p>
+            <label class="resource-field-label" for="tagPickerOutline">大纲内容</label>
+            <textarea id="tagPickerOutline" rows="10" placeholder="- 第一章&#10;  - 1.1 极限&#10;  - 1.2 连续"></textarea>
           </div>
         </section>
         <section id="tagPickerReviewModeHost" class="edit-card review-method-card" style="display:none;"></section>
         <section id="tagPickerMindmapBlock" class="edit-card" style="display:none;">
           <div class="edit-card-head">
             <span class="edit-card-icon">🗺️</span>
-            <div class="edit-card-titles"><b>思维导图</b><small>可以导入导图功能导出的 JSON，也可以直接用上面的大纲生成</small></div>
+            <div class="edit-card-titles"><b>思维导图</b><small>在导图工作台生成、分组和编辑，保存后关联到本资料</small></div>
           </div>
           <div class="edit-card-body">
             <div class="edit-file-actions mindmap-generation-actions">
               <button type="button" class="edit-btn" onclick="document.getElementById('tagPickerMindmapFile').click()">上传导图</button>
-              <button type="button" class="edit-btn" data-mindmap-generate="basic" id="tagPickerMindmapBasic" onclick="generatePickerMindmap('basic')">基础生成</button>
-              <button type="button" class="edit-btn" data-mindmap-generate="ai" id="tagPickerMindmapAi" onclick="generatePickerMindmap('ai')" disabled>AI 润色生成</button>
-              <button type="button" class="edit-btn" onclick="coursesAiSettings.open()">AI 设置</button>
-              <button type="button" class="edit-btn edit-btn-danger" id="tagPickerMindmapClear" style="display:none;" onclick="clearPickerMindmap()">删除导图</button>
+              <button type="button" class="edit-btn" id="tagPickerMindmapWorkspace" onclick="generatePickerMindmap()">打开导图工作台</button>
+              <button type="button" class="edit-btn" id="tagPickerMindmapRegenerate" hidden onclick="generatePickerMindmap(true)">重新生成</button>
+              <button type="button" class="edit-btn edit-btn-danger" id="tagPickerMindmapClear" style="display:none;" onclick="clearPickerMindmap()">移除导图</button>
             </div>
             <p id="tagPickerMindmapAiNote" class="mindmap-generation-note" role="status"></p>
             <p id="tagPickerMindmapStatus" class="mindmap-generation-note" role="status" aria-live="polite"></p>
@@ -1016,8 +1045,17 @@
             <summary>AI 复习建议（可选）</summary>
             <p class="mistake-ai-note">不使用也可以直接添加错题。仅主动获取时请求 AI；本地 mock 返回演示结果。选择复习方式不会改变错题分类或实际复习流程。</p>
             <fieldset id="mistakeCreateAiFields" class="edit-card-body">
-              <p id="mistakeCreateAiSource" data-ai-settings-source class="mistake-ai-note">共用 AI 设置：尚未配置</p>
-              <button type="button" onclick="coursesAiSettings.open()">AI 设置（平台 AI / 自带 API）</button>
+              <label for="mistakeCreateAiProvider">本次 AI 来源</label>
+              <button type="button" onclick="coursesAiSettings.open()">打开共用 AI 设置</button>
+              <select id="mistakeCreateAiProvider" onchange="changeMistakeAiProvider('mistakeCreateAi')"><option value="shared">共用 AI 设置（顶栏可配置）</option></select>
+              <div id="mistakeCreateAiKeySettings" class="mistake-ai-key-settings" hidden>
+                <label for="mistakeCreateAiApiKey">本次 API Key（不保存）</label>
+                <input id="mistakeCreateAiApiKey" type="password" autocomplete="off" spellcheck="false" maxlength="512">
+                <label for="mistakeCreateAiModel">DeepSeek 模型</label>
+                <select id="mistakeCreateAiModel"><option>deepseek-flash</option><option>deepseek-v4-pro</option></select>
+                <label><input id="mistakeCreateAiCost" type="checkbox">同意本次将题目和作答发送至 DeepSeek 官方，知晓可能产生费用。</label>
+                <p class="mistake-ai-note">Key 仅本次使用，发送后清空；取消或关闭也会清空。不保存、不自动重试或回退 Mock。</p>
+              </div>
               <label for="mistakeCreateAiStudentAnswer">学生作答（仅获取建议时填写）</label>
               <textarea id="mistakeCreateAiStudentAnswer" rows="2" placeholder="填写当时的实际作答，不要填参考答案"></textarea>
               <label for="mistakeCreateAiSteps">解题过程（可选）</label>
@@ -1091,7 +1129,7 @@
   -->
 
   <div id="reviewPlanDetailPage" style="display:none;">
-    <div class="header"><div class="header-left"><button class="back-btn" onclick="backFromReviewPlan()">←</button><h1 id="reviewPlanDetailTitle">考前复习计划</h1></div></div>
+    <div class="header"><div class="header-left"><button class="back-btn" onclick="backToReviewPlans()">←</button><h1 id="reviewPlanDetailTitle">考前复习计划</h1></div></div>
     <div id="reviewPlanDetailBody" class="tab-content"></div>
   </div>
   <div id="reviewPlanModal" class="modal-mask review-picker" onclick="if(event.target===this){if(reviewPlanCreate?.preview)closeReviewPlanPreview();else closeReviewPlanCreate()}" onkeydown="handleReviewPlanPickerKey(event)">
@@ -1107,7 +1145,7 @@
         <h4 class="review-plan-selection-title">选择复习内容</h4>
         <div id="reviewPlanModules" class="total-review-tabs" role="tablist" aria-label="计划内容模块">
           <button id="reviewPlanTab-material" type="button" role="tab" aria-controls="reviewPlanPanel" aria-selected="true" onclick="switchReviewPlanTab('material')">资料</button>
-          <button id="reviewPlanTab-note" type="button" role="tab" aria-controls="reviewPlanPanel" aria-selected="false" tabindex="-1" onclick="switchReviewPlanTab('note')">笔记</button>
+          <button hidden id="reviewPlanTab-note" type="button" role="tab" aria-controls="reviewPlanPanel" aria-selected="false" tabindex="-1" onclick="switchReviewPlanTab('note')">笔记</button>
           <button id="reviewPlanTab-mistake" type="button" role="tab" aria-controls="reviewPlanPanel" aria-selected="false" tabindex="-1" onclick="switchReviewPlanTab('mistake')">错题</button>
         </div>
         <section id="reviewPlanPanel" class="total-review-panel" role="tabpanel" aria-labelledby="reviewPlanTab-material">
@@ -1148,7 +1186,6 @@
     </div>
   </div>
 
-  <div id="reviewPlanListPage" style="display:none"><div class="header"><div class="header-left"><button class="back-btn" type="button" onclick="backToReviewPlans()" aria-label="返回课程复习页">←</button><h1>全部复习计划</h1></div><button type="button" class="btn-confirm" onclick="openReviewPlanCreate()">＋ 创建计划</button></div><div class="tab-content"><p id="reviewPlanAllCount" class="detail-meta" role="status"></p><div id="reviewPlanAllList" class="review-plan-all-list"></div></div></div>
   <div id="reviewHistoryPage" style="display:none"><div class="header"><div class="header-left"><button class="back-btn" onclick="backToReviewPlans()">←</button><h1>全部复习记录</h1></div></div><div class="tab-content">
     <div class="reading-browse-controls"><select id="reviewHistoryStatus" aria-label="记录状态" onchange="loadReviewHistory()"><option value="all">全部状态</option><option value="ongoing">进行中</option><option value="completed">已完成</option></select><select id="reviewHistorySource" aria-label="复习来源" onchange="loadReviewHistory()"><option value="all">全部来源</option><option value="plan">考前计划</option><option value="total">复习</option><option value="material">资料</option><option value="note">笔记</option><option value="mistake">错题</option></select></div>
     <div id="reviewHistoryList"></div><button id="reviewHistoryMore" type="button" onclick="loadReviewHistory(true)" hidden>加载更多</button>
@@ -1161,7 +1198,7 @@
         <header class="total-review-head"><h3 id="totalReviewTitle" tabindex="-1">复习 · 当前课程</h3><button type="button" class="total-review-close" onclick="closeTotalReview()" aria-label="关闭复习">×</button></header>
         <div id="totalReviewModules" class="total-review-tabs" role="tablist" aria-label="复习模块">
           <button id="totalReviewTab-material" type="button" role="tab" aria-controls="totalReviewPanel" aria-selected="true" onclick="switchTotalReviewTab('material')">资料</button>
-          <button id="totalReviewTab-note" type="button" role="tab" aria-controls="totalReviewPanel" aria-selected="false" tabindex="-1" onclick="switchTotalReviewTab('note')">笔记</button>
+          <button hidden id="totalReviewTab-note" type="button" role="tab" aria-controls="totalReviewPanel" aria-selected="false" tabindex="-1" onclick="switchTotalReviewTab('note')">笔记</button>
           <button id="totalReviewTab-mistake" type="button" role="tab" aria-controls="totalReviewPanel" aria-selected="false" tabindex="-1" onclick="switchTotalReviewTab('mistake')">错题</button>
         </div>
         <section id="totalReviewPanel" class="total-review-panel" role="tabpanel" aria-labelledby="totalReviewTab-material">
@@ -1200,50 +1237,53 @@
   <script src="vendor/chartjs/chart.umd.js"></script>
   <script src="js/config.js"></script>
   <script src="js/state.js"></script>
-  <script src="js/utils.js?v=20261026-ocr-bullets-65"></script>
-  <script src="js/ai.js?v=20261024-platform-ai-52"></script>
-  <script src="js/aiSettings.js?v=20261025-unified-ai-entry-53"></script>
+  <script src="js/utils.js?v=20261026-unified-1"></script>
+  <script src="js/ai.js?v=20261026-unified-1"></script>
+  <script src="js/aiSettings.js?v=20261026-header-service-2"></script>
 
-  <script src="js/attachmentPreview.js?v=20261024-office-preview-40"></script>
+  <script src="js/attachmentPreview.js?v=20261026-unified-1"></script>
 
   <!-- 课程 -->
   <script src="js/courses.js"></script>
-  <script src="js/courseDetail.js?v=20261024-header-add-23"></script>
+  <script src="js/courseDetail.js?v=20261026-unified-1"></script>
 
   <!-- 四类资源（列表页） -->
   <script src="js/tags.js"></script>
   <script src="js/readingBrowse.js"></script>
-  <script src="js/materials.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/notes.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/assessments.js?v=20261026-ocr-paragraphs-63"></script>
-  <script src="js/assessmentCharts.js?v=20261026-ocr-paragraphs-63"></script>
-  <script src="js/ocrBrowser.js?v=20261026-ocr-paragraphs-64"></script>
-  <script src="js/outlineMap.js?v=20261024-outline-draft-37"></script>
-  <script src="js/officeText.js?v=20261024-legacy-office-text-41"></script>
-  <script src="js/mistakes.js?v=20261026-ocr-paragraphs-63"></script>
+  <script src="js/resourceTypes.js?v=20261026-unified-1"></script>
+  <script src="js/materials.js?v=20261026-unified-1"></script>
+  <script src="js/notes.js?v=20261026-unified-1"></script>
+  <script src="js/assessments.js?v=20261026-unified-1"></script>
+  <script src="js/assessmentCharts.js?v=20261026-unified-1"></script>
+  <script src="js/ocrBrowser.js?v=20261026-unified-1"></script>
+  <script src="js/visionOcr.js?v=20261026-unified-1"></script>
+  <script src="js/mindmapEmbed.js?v=20261026-mindmap-2"></script>
+  <script src="js/outlineMap.js?v=20261026-mindmap-2"></script>
+  <script src="js/officeText.js?v=20261026-unified-1"></script>
+  <script src="js/mistakes.js?v=20261026-unified-1"></script>
 
   <!-- 录入流程：手动输入 + 选标签 -->
-  <script src="js/manualEntry.js?v=20261024-outline-save-39"></script>
-  <script src="js/tagPicker.js?v=20261026-ocr-paragraphs-63"></script>
-  <script src="js/tagPickerView.js?v=20261024-tree-root-collapse-34"></script>
+  <script src="js/manualEntry.js?v=20261026-unified-1"></script>
+  <script src="js/tagPicker.js?v=20261026-rich-1"></script>
+  <script src="js/tagPickerView.js?v=20261026-unified-1"></script>
 
   <!-- 详情页 -->
-  <script src="js/page.js?v=20261026-plan-list-page-62"></script>
-  <script src="js/itemReviewHistory.js?v=20261024-empty-review-43"></script>
+  <script src="js/page.js?v=20261026-header-service-2"></script>
+  <script src="js/itemReviewHistory.js?v=20261026-unified-1"></script>
   <script src="js/nodeDetail.js"></script>
-  <script src="js/resourceDetail.js?v=20261024-office-preview-40"></script>
-  <script src="js/resourceText.js?v=20261026-ocr-paragraphs-63"></script>
-  <script src="js/materialReview.js?v=20261025-resource-retry-57"></script>
+  <script src="js/resourceDetail.js?v=20261026-rich-1"></script>
+  <script src="js/resourceText.js?v=20261026-unified-1"></script>
+  <script src="js/materialReview.js?v=20261026-unified-1"></script>
   <script src="js/noteReview.js"></script>
-  <script src="js/mistakeDetail.js?v=20261026-ocr-paragraphs-63"></script>
-  <script src="js/mistakeAi.js?v=20261025-unified-ai-entry-53"></script>
-  <script src="js/mistakeAnswerAi.js?v=20261025-unified-ai-entry-53"></script>
-  <script src="js/resourceAi.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/reviewMethodChoice.js?v=20261025-resource-retry-57"></script>
-  <script src="js/clozeEditor.js?v=20261024-merged-attachment-review-31"></script>
-  <script src="js/reviewWorkbench.js?v=20261025-retry-dialog-59"></script>
-  <script src="js/reviewFeedback.js?v=20261024-review-flow-merge-46"></script>
-  <script src="js/reviewMaterialAi.js?v=20261024-merged-attachment-review-31"></script>
+  <script src="js/mistakeDetail.js?v=20261026-unified-1"></script>
+  <script src="js/mistakeAi.js?v=20261026-unified-1"></script>
+  <script src="js/mistakeAnswerAi.js?v=20261026-unified-1"></script>
+  <script src="js/resourceAi.js?v=20261026-unified-1"></script>
+  <script src="js/reviewMethodChoice.js?v=20261026-unified-1"></script>
+  <script src="js/clozeEditor.js?v=20261026-unified-1"></script>
+  <script src="js/reviewWorkbench.js?v=20261026-unified-1"></script>
+  <script src="js/reviewFeedback.js?v=20261026-unified-1"></script>
+  <script src="js/reviewMaterialAi.js?v=20261026-unified-1"></script>
   <dialog id="mistakeAiDialog" aria-labelledby="mistakeAiDialogTitle" oncancel="event.preventDefault();resetMistakeAi()" onclick="if(event.target===this)resetMistakeAi()">
     <header class="mistake-ai-dialog-head"><div><h2 id="mistakeAiDialogTitle" tabindex="-1">AI 复习建议</h2><p id="mistakeAiDialogQuestionTitle" class="mistake-ai-note"></p></div><button type="button" class="tag-sheet-close" onclick="resetMistakeAi()" aria-label="关闭 AI 复习建议">×</button></header>
     <div id="mistakeAiDialogBody" class="tag-sheet-body"></div>
@@ -1280,11 +1320,11 @@
       <div class="modal-actions"><button type="button" class="btn-cancel" onclick="closeCreationReviewSuggestion()">关闭</button><button type="button" id="creationModeAdviceRetry" onclick="retryCreationReviewSuggestion()" hidden>重新读取</button><button type="button" class="btn-primary" id="creationModeAdviceAnalyze" onclick="analyzeCreationReviewAdvice()" hidden>分析复习方式</button><button type="button" class="btn-primary" id="creationModeAdviceAdopt" onclick="adoptCreationReviewSuggestion()" hidden>采用建议</button></div>
     </footer>
   </dialog>
-  <script src="js/mistakeQueue.js?v=20261024-empty-answer-read-48"></script>
+  <script src="js/mistakeQueue.js?v=20261026-unified-1"></script>
   <script src="js/courseSearch.js"></script>
-  <script src="js/reviewPicker.js?v=20261024-attachment-preview-24"></script>
-  <script src="js/reviewPlans.js?v=20261026-plan-list-page-62"></script>
-  <script src="js/reviewCenter.js?v=20261025-resource-retry-57"></script>
+  <script src="js/reviewPicker.js?v=20261026-unified-1"></script>
+  <script src="js/reviewPlans.js?v=20261026-unified-1"></script>
+  <script src="js/reviewCenter.js?v=20261026-unified-1"></script>
 
   <!-- 知识框架 -->
   <script src="js/knowledgeTree.js"></script>
@@ -1294,6 +1334,11 @@
   <script src="js/dropPreview.js"></script>
   <script src="js/knowledgeSort.js"></script>
 
+  <script src="/mindmap/vendor/markdown-it/markdown-it.min.js"></script>
+  <script src="/mindmap/vendor/katex/katex.min.js"></script>
+  <script src="/mindmap/js/math-completion.js"></script>
+  <script src="/mindmap/js/node-content.js"></script>
+  <script src="js/resourceRichText.js?v=20261026-rich-1"></script>
   <!-- 入口：放最后，它负责绑定事件并启动 -->
   <script src="app.js"></script>
 </body>

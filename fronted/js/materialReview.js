@@ -168,8 +168,7 @@ function createReadingReview(kind, label, resumeId, options = {}) {
     try{
       const context={courseId:state.queue.courseId,type:kind==='notes'?'note':'material',
         id:row.id,row,sessionId:state.queue.sessionId,sessionItemId:state.queue.sessionItems?.[row.id]};
-      const active=readReviewActive(context);
-      return active?.viaRetry?'retry':active?.mode||workbenchSelection(context).mode;
+      return readReviewActive(context)?.mode||workbenchSelection(context).mode;
     }catch{return 'standard';}
   };
   const reviewProgressText = row => {

@@ -195,7 +195,7 @@ class Config:
     def __post_init__(self):
         if self.provider not in {"mock", "deepseek", "compatible"} or (self.provider != "compatible" and self.model not in {"deepseek-flash", "deepseek-v4-pro"}):
             raise ValueError("Invalid AI configuration")
-        for value, maximum in [(self.timeout_ms, 120000), (self.max_concurrent, 100),
+        for value, maximum in [(self.timeout_ms, 1800000), (self.max_concurrent, 100),
                                (self.rate_max, 10000), (self.rate_window_ms, 3600000)]:
             if type(value) is not int or not 1 <= value <= maximum:
                 raise ValueError("Invalid AI configuration")
@@ -258,7 +258,7 @@ class DeepSeekProvider:
     async def classify(self, data, rules):
         return await self.complete_json(data, analysis_prompt())
 
-    async def complete_json(self, data, prompt):
+    async def complete_json(self, data, prompt, *, images=None, max_tokens=None):
         import httpx
         url = "https://api.deepseek.com/chat/completions"
         headers = {"Authorization": "Bearer " + self.config.api_key, "Content-Type": "application/json"}
@@ -266,6 +266,12 @@ class DeepSeekProvider:
         extensions = {}
         from .ai_provider import completion_options
         options = completion_options(self.config)
+        if max_tokens is not None:
+            options['max_completion_tokens' if 'max_completion_tokens' in options else 'max_tokens'] = max_tokens
+        user_content = json.dumps(data, ensure_ascii=False)
+        if images:
+            user_content = [{'type': 'text', 'text': user_content}] + [
+                {'type': 'image_url', 'image_url': {'url': image}} for image in images]
         if self.config.provider == 'compatible':
             from .ai_provider import public_target
             url, host_headers, extensions = await public_target(self.config.base_url)
@@ -274,7 +280,7 @@ class DeepSeekProvider:
             async with client.stream("POST", url, headers=headers, extensions=extensions,
                                      json={"model": self.config.model, "stream": False, **options,
                                            "messages": [{"role": "system", "content": prompt + "\n必须输出合法 JSON 对象，键名和字符串使用双引号，不添加 Markdown 代码围栏或说明。"},
-                                                        {"role": "user", "content": json.dumps(data, ensure_ascii=False)}]}) as response:
+                                                        {"role": "user", "content": user_content}]}) as response:
                 if self.config.provider != "compatible" and not 200 <= response.status_code < 300 and response.status_code not in (400, 403, 404):
                     code, status = {401: ("AI_AUTH_FAILED", 502), 402: ("AI_BALANCE_UNAVAILABLE", 503),
                                     429: ("AI_UPSTREAM_RATE_LIMITED", 503)}.get(response.status_code, ("AI_UNAVAILABLE", 502))
@@ -282,7 +288,7 @@ class DeepSeekProvider:
                 chunks, size = [], 0
                 async for chunk in response.aiter_bytes(chunk_size=4096):
                     size += len(chunk)
-                    if size > 65536:
+                    if size > getattr(self, "response_limit", 65536):
                         raise AIError(502, "AI_UNAVAILABLE", source="error")
                     chunks.append(chunk)
                 if self.config.provider == "compatible":

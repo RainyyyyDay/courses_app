@@ -26,7 +26,7 @@ test('mind-map AI generation stays disabled until a real API is configured',()=>
     document:{
       visibilityState:'visible',
       addEventListener(){},
-      querySelectorAll(){return [basic,ai];},
+      querySelectorAll(selector){return selector==='[data-mindmap-generate]'?[basic,ai]:[];},
       getElementById(id){return notes[id]||null;},
     },
     window:{addEventListener(){}},

@@ -96,91 +96,20 @@ function showToast(msg, duration = 2000, kind = 'info') {
   }, duration);
 }
 
-// Opt-in experiment: normalize clear line-leading bullets; infer missing ones
-// only in a numbered run with at least three items and an observed bullet.
-function ocrBulletTrialText(value) {
-  const rows = String(value || '').split('\n');
-  const numeral = value => /^\d+$/.test(value) ? Number(value) :
-    ({一:1,二:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9,十:10})[value];
-  const item = text => {
-    const match = text.match(/^(\s*)([•●◦‣▪·∙‧・]?)[ \t]*(第([一二三四五六七八九十\d]+)(场|节|章|题|幕)[^\n:：]{0,24}[:：].*)$/);
-    return match ? { indent: match[1], bullet: match[2], body: match[3], number: numeral(match[4]), kind: match[5] } : null;
-  };
-  let run = [];
-  const finish = () => {
-    if (run.length >= 3 && run.some(entry => entry.item.bullet)) {
-      for (const entry of run) rows[entry.index] = entry.item.indent + '• ' + entry.item.body;
-    }
-    run = [];
-  };
-  for (let index = 0; index < rows.length; index += 1) {
-    const parsed = item(rows[index]);
-    if (parsed) {
-      const previous = run[run.length - 1];
-      if (previous && (parsed.kind !== previous.item.kind || parsed.number !== previous.item.number + 1 || index - previous.index > 3)) finish();
-      if (Number.isFinite(parsed.number)) run.push({ index, item: parsed });
-      else finish();
-      if (parsed.bullet) rows[index] = parsed.indent + '• ' + parsed.body;
-    } else {
-      // Preserve ambiguous dots, mathematical operators, standalone noise and
-      // ordinary numbered/lettered items. Only clear bullet glyphs are replaced.
-      rows[index] = rows[index].replace(/^(\s*)[•●◦‣▪][ \t]*(?=\S)/, '$1• ');
-      if (!rows[index].trim() || /^【第\s*\d+\s*页】/.test(rows[index])) finish();
-    }
-  }
-  finish();
-  return rows.join('\n');
-}
-
-// Each display mode keeps its own editable draft. Replacing/clearing a result
-// removes the previous control so reopening an editor cannot restore old text.
-function setOcrTextResult(textarea, result) {
-  if (!textarea) return;
-  textarea._ocrModeControl?.remove();
-  textarea._ocrModeControl = null;
-  textarea.value = result?.text || '';
-  if (typeof result?.rawText !== 'string') return;
-  const control = document.createElement('div');
-  control.className = 'ocr-paragraph-control';
-  const title = document.createElement('span'); title.textContent = '文字排版';
-  const select = document.createElement('select'); select.setAttribute('aria-label', '识别结果文字排版');
-  for (const [value, label] of [['smart', '智能合并段落'], ['raw', '保留原始换行'], ['bullets', '试验：统一列表圆点']]) {
-    const option = document.createElement('option'); option.value = value; option.textContent = label; select.append(option);
-  }
-  const hint = document.createElement('small');
-  const baseHint = result.text === result.rawText ? '未发现可安全合并的换行，请校对。' : '已保守合并段内折行，请校对；每种排版分别保留手工修改。';
-  hint.textContent = baseHint;
-  const trial = ocrBulletTrialText(result.text);
-  const drafts = { smart: result.text, raw: result.rawText, bullets: trial };
-  let mode = 'smart';
-  select.onchange = () => {
-    if (textarea.disabled || textarea.readOnly) { select.value = mode; return; }
-    drafts[mode] = textarea.value;
-    mode = select.value;
-    textarea.value = drafts[mode];
-    hint.textContent = mode === 'bullets' ? (trial === result.text ? '试验模式：未找到可确认的圆点调整；原文保留。' : '试验模式：统一列表圆点，并在有圆点依据的连续条目中补齐漏识别项。请校对；不会清理独立乱码。') : baseHint;
-    const adoptionPanel = textarea.closest('[data-pending-adoption]');
-    if (adoptionPanel) adoptionPanel.dataset.pendingAdoption = 'true';
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-  };
-  control.append(title, select, hint);
-  textarea.before(control);
-  textarea._ocrModeControl = control;
-}
-
 function notifyTextRecognitionSuccess(result, panel) {
   const extracted = result?.provider === 'office-browser' || (result?.textPages > 0 && result?.scannedPages === 0);
   const pages = Number.isInteger(result?.totalPages) && result.pages > 0 ? `，已处理 ${result.pages} 页` : '';
-  const message = `${extracted ? '提取成功' : '识别成功'}${pages}！请校对下方结果，再选择填入正文或答案。`;
+  const message = result?.partial ? `部分识别完成${pages}，未完成的页码见下方说明；已成功结果保留，请校对后填入。`
+    : `${extracted ? '提取成功' : '识别成功'}${pages}！请校对下方结果，再选择填入正文或答案。`;
   if (panel) {
     let notice = panel.querySelector('.recognition-success');
     if (!notice) {
       notice = document.createElement('div'); notice.className = 'recognition-success'; notice.setAttribute('role', 'note'); panel.prepend(notice);
     }
-    notice.textContent = `✓ ${message}`;
+    notice.textContent = `${result?.partial ? '⚠' : '✓'} ${message}`;
     notice.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'nearest' });
   }
-  showToast(`✓ ${message}`, 4500, 'success');
+  showToast(`${result?.partial ? '⚠' : '✓'} ${message}`, 4500, result?.partial ? 'info' : 'success');
 }
 // 取扩展名：'/uploads/12-34.pdf' → '.pdf'，没有就是空字符串
 function extname(name) {
