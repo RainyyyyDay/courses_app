@@ -3,6 +3,7 @@ const PLAN_TYPE_LABELS = {mistake:'错题',material:'资料',note:'笔记'};
 let reviewPlanCreate = null;
 let reviewPlanDetail = null;
 let reviewPlanRequest = 0;
+let reviewPlanSurfaceLoading=0;
 let planReviewSession = null;
 let planReviewStarting = false;
 let reviewPlanCarousel = {courseId:null,plans:[],index:0};
@@ -229,6 +230,7 @@ function openReviewPlanCompletedAnswers(){
   return openPlanDayAnswersPreview(preview.planId,preview.date);
 }
 async function loadReviewPlans() {
+  reviewPlanSurfaceLoading++;
   if (typeof loadRecentReviews==='function') loadRecentReviews();
   const request = ++reviewPlanRequest, courseId = currentCourseId;
   const box = document.getElementById('reviewPlanList'); box.innerHTML = '<p class="loading-tip">加载中…</p>';
@@ -242,13 +244,14 @@ async function loadReviewPlans() {
     if (request===reviewPlanRequest && courseId===currentCourseId) {
       showListError(box,err); box.insertAdjacentHTML('beforeend','<button onclick="loadReviewPlans()">重试</button>');
     }
-  }
+  } finally {reviewPlanSurfaceLoading--;}
 }
 let planSurfaceRefreshTimer = null;
 function refreshReviewPlanSurface() {
   if (document.visibilityState === 'hidden') return;
   clearTimeout(planSurfaceRefreshTimer);
   planSurfaceRefreshTimer = setTimeout(() => {
+    if(reviewPlanSurfaceLoading||reviewPlanCreate)return;
     if (currentView.type === 'reviewPlan') void openReviewPlan(currentView.id);
     else if (currentView.type === 'course' && currentView.tab === 'reviewPlans') void loadReviewPlans();
   }, 250);
@@ -270,12 +273,17 @@ function renderReviewPlanCarousel() {
       <span class="material-review-badge">${{active:'进行中',completed:'已完成',expired:'已过期'}[plan.reviewState]}</span>
       <p>考试：${escapeHtml(plan.exam_date)} · ${plan.remainingDays ? `剩余 ${plan.remainingDays} 天` : '已到考试日期'}${plan.status==='archived' ? ' · 已归档' : ''}</p>
       ${planProgressHtml(plan)}<p>今日 ${plan.todayStats.pending} 项待复习</p>
-      <div class="mistake-toolbar"><button onclick="openReviewPlan(${plan.id})">查看计划</button><button onclick="startReviewPlanDay(${plan.id},'${plan.today}')" ${plan.status!=='active' || !plan.todayStats.pending ? 'disabled' : ''}>开始今日复习</button></div>
+      <div class="mistake-toolbar"><button onclick="openReviewPlan(${plan.id})">查看计划</button><button type="button" onclick="openReviewPlanEdit(${plan.id})">编辑计划</button><button onclick="startReviewPlanDay(${plan.id},'${plan.today}')" ${plan.status!=='active' || !plan.todayStats.pending ? 'disabled' : ''}>开始今日复习</button></div>
     </article>` : '<div class="review-center-empty"><p>还没有考前复习计划</p><span>点击右上角「创建计划」，安排每日复习任务。</span></div>';
 }
-function openReviewPlanCreate() {
+function openReviewPlanEdit(id) {return openReviewPlanCreate(id);}
+function openReviewPlanCreate(editId=null) {
   if(reviewPlanCreate?.busy)return;
-  reviewPlanCreate={courseId:currentCourseId,rows:[],ids:new Set(),tab:'material',filters:createReviewPickerFilters(),loading:true,busy:false,preview:null,validationTouched:false,returnFocus:document.activeElement};
+  reviewPlanCreate={courseId:currentCourseId,editId,originalIds:new Set(),rows:[],ids:new Set(),tab:'material',filters:createReviewPickerFilters(),loading:true,busy:false,preview:null,validationTouched:false,returnFocus:document.activeElement};
+  document.getElementById('reviewPlanCreateTitle').textContent=editId?'编辑复习计划':'创建考前复习计划';
+  document.querySelector('#reviewPlanSelector .total-review-close').setAttribute('aria-label',editId?'关闭编辑计划':'关闭创建计划');
+  document.querySelector('#reviewPlanContentPreview .total-review-preview-foot button').textContent=editId?'返回编辑计划':'返回创建计划';
+  document.querySelector('#reviewPlanContentPreview .total-review-close').setAttribute('aria-label',editId?'关闭预览，返回编辑计划':'关闭预览，返回创建计划');
   document.getElementById('reviewPlanForm').reset();document.getElementById('reviewPlanStart').value=planLocalDate();
   document.getElementById('reviewPlanBody').scrollTop=0;
   document.getElementById('reviewPlanCreateError').textContent='';
@@ -295,10 +303,16 @@ async function loadReviewPlanCandidates() {
   const state=reviewPlanCreate;if(!state)return;state.loading=true;renderReviewPlanSelection();
   try {
     // 原计划候选接口仍决定可选范围；现有复习候选补充直接关联标签/OCR，不请求知识树。
-    const [rows,tagged]=await Promise.all([requestList(reviewPlanApi('candidates')),requestList(reviewSessionApi('candidates',state.courseId))]);
+    const [rows,tagged,plan,items]=await Promise.all([requestList(reviewPlanApi('candidates')),requestList(reviewSessionApi('candidates',state.courseId)),
+      state.editId?requestApi(reviewPlanApi(state.editId)).then(r=>r.json()):null,state.editId?requestList(reviewPlanApi(state.editId+'/items')):[]]);
     if(reviewPlanCreate!==state || currentCourseId!==state.courseId)return;
     const byKey=new Map(tagged.map(row=>[row.type+':'+row.id,row]));
     state.rows=rows.map(row=>({...row,nodes:byKey.get(row.type+':'+row.id)?.nodes || [],ocr_text:byKey.get(row.type+':'+row.id)?.ocr_text || ''}));
+    if(plan&&!state.originalPlan){
+      state.originalPlan=plan;state.originalIds=new Set(items.map(item=>item.item_type+':'+item.item_id));state.ids=new Set(state.originalIds);
+      state.completedCount=items.filter(item=>item.status==='completed').length;
+      document.getElementById('reviewPlanName').value=plan.name;document.getElementById('reviewPlanStart').value=plan.start_date;document.getElementById('reviewPlanExam').value=plan.exam_date;
+    }
     state.loading=false;document.getElementById('reviewPlanCreateError').textContent='';renderReviewPlanSelection();
   }catch(err){if(reviewPlanCreate===state){state.loading=false;renderReviewPlanSelection();document.getElementById('reviewPlanCreateError').innerHTML=`${escapeHtml(err.message)}<button type="button" onclick="loadReviewPlanCandidates()">重试加载</button>`;}}
 }
@@ -342,7 +356,7 @@ function renderReviewPlanSelection() {
   document.getElementById('reviewPlanPanel').setAttribute('aria-labelledby','reviewPlanTab-'+s.tab);
   document.getElementById('reviewPlanListTitle').textContent=PLAN_TYPE_LABELS[s.tab]+'列表';
   renderReviewPickerTags(s,'reviewPlan','changeReviewPlanTag');
-  list.innerHTML=s.loading ? '<p class="loading-tip">加载中…</p>' : rows.length ? rows.map(row=>reviewPickerCard(row,s.ids.has(row.type+':'+row.id),s.busy,'data-plan-choice','selectReviewPlanItem','openReviewPlanPreview')).join('') : '<p class="empty">没有符合条件的内容。</p>';
+  list.innerHTML=s.loading ? '<p class="loading-tip">加载中…</p>' : rows.length ? rows.map(row=>reviewPickerCard({...row,reviewable:row.reviewable||s.originalIds.has(row.type+':'+row.id)},s.ids.has(row.type+':'+row.id),s.busy,'data-plan-choice','selectReviewPlanItem','openReviewPlanPreview')).join('') : '<p class="empty">没有符合条件的内容。</p>';
   list.scrollTop=scroll;const scrollBody=document.getElementById('reviewPlanBody');if(scrollBody)scrollBody.scrollTop=scroll;
   if(focused)list.querySelector(`[data-plan-choice="${focused}"]`)?.focus({preventScroll:true});
   const eligible=rows.filter(row=>row.reviewable),count=eligible.filter(row=>s.ids.has(row.type+':'+row.id)).length,all=document.getElementById('reviewPlanSelectAll');
@@ -350,10 +364,12 @@ function renderReviewPlanSelection() {
   document.getElementById('reviewPlanCount').textContent=`已选择 ${s.ids.size} 项`;
   document.getElementById('reviewPlanCounts').textContent=['material','note','mistake'].map(type=>`${PLAN_TYPE_LABELS[type]} ${[...s.ids].filter(key=>key.startsWith(type+':')).length}`).join(' · ');
   for(const id of ['reviewPlanName','reviewPlanStart','reviewPlanExam','reviewPlanSearch','reviewPlanFavorite','reviewPlanStatus','reviewPlanMistakeType','reviewPlanTagsToggle'])document.getElementById(id).disabled=s.busy;
+  document.getElementById('reviewPlanStart').disabled=s.busy||!!s.editId;
+  if(s.editId)document.getElementById('reviewPlanStart').title='开始日期保留原值；编辑只调整剩余任务';else document.getElementById('reviewPlanStart').removeAttribute('title');
   renderReviewPlanPreview();
 }
 function selectReviewPlanItem(key,checked) {
-  const s=reviewPlanCreate;if(!s || s.busy || s.loading || !s.rows.some(row=>row.type+':'+row.id===key && row.reviewable))return;
+  const s=reviewPlanCreate;if(!s || s.busy || s.loading || !s.rows.some(row=>row.type+':'+row.id===key && (row.reviewable||s.originalIds.has(key))))return;
   rememberReviewPlanScroll();if(checked)s.ids.add(key);else s.ids.delete(key);renderReviewPlanSelection();
 }
 function selectAllReviewPlanItems(checked) {
@@ -371,7 +387,14 @@ function reviewPlanInputError() {
   const days=(Date.parse(exam+'T00:00:00Z')-Date.parse(start+'T00:00:00Z'))/86400000;
   if(days<=0)return '考试日期必须晚于开始日期，考试当天不安排复习';
   if(days>3660)return '复习计划不能超过 3660 天';
+  if(reviewPlanCreate?.editId&&reviewPlanEditChanges().reschedule&&exam<=planLocalDate())return '调整排期时，考试日期必须晚于今天';
   return '';
+}
+function reviewPlanEditChanges(){
+  const s=reviewPlanCreate;
+  if(!s?.originalPlan)return {added:0,removed:0,reschedule:false};
+  const added=[...s.ids].filter(key=>!s.originalIds.has(key)).length,removed=[...s.originalIds].filter(key=>!s.ids.has(key)).length;
+  return {added,removed,reschedule:!!(added||removed||document.getElementById('reviewPlanExam').value!==s.originalPlan.exam_date)};
 }
 function renderReviewPlanPreview() {
   const s=reviewPlanCreate;if(!s)return;
@@ -381,6 +404,14 @@ function renderReviewPlanPreview() {
   document.getElementById('reviewPlanGenerate').disabled=s.busy || s.loading || !count || !!error;
   document.getElementById('reviewPlanPreview').textContent=`共选择 ${count} 项。`+(Number.isFinite(days) && days>0 && days<=3660
     ? `复习 ${days} 天，每天约 ${Math.floor(count/days)}～${Math.ceil(count/days)} 项。考试当天不排任务。` : '请选择开始日期和考试日期，考试当天不排任务。');
+  if(s.editId){
+    const changes=reviewPlanEditChanges();
+    document.getElementById('reviewPlanGenerate').textContent=changes.reschedule?'保存并调整剩余排期':'保存修改';
+    document.getElementById('reviewPlanGenerate').disabled ||= !s.originalPlan;
+    document.getElementById('reviewPlanPreview').textContent=`已选择 ${count} 项；新增 ${changes.added} 项，移除 ${changes.removed} 项。`+(changes.reschedule
+      ? `保存后将调整剩余排期；已完成任务 ${s.completedCount||0} 项及历史作答保留。考试当天不排任务。`
+      :'仅修改名称不会重新排期，复习进度和历史作答保留。');
+  }else document.getElementById('reviewPlanGenerate').textContent='创建计划';
 }
 async function openReviewPlanPreview(key,trigger=document.activeElement) {
   const s=reviewPlanCreate;if(!s || s.busy || s.loading)return;
@@ -405,13 +436,15 @@ async function createReviewPlan() {
     examDate:document.getElementById('reviewPlanExam').value,selectedItems:[...state.ids].map(key=>{const [type,id]=key.split(':');return {type,id:Number(id)};})};
   state.busy=true;renderReviewPlanSelection();document.getElementById('reviewPlanCreateError').textContent='';
   try {
-    const response=await requestApi(reviewPlanApi(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),plan=await response.json();
+    if(state.editId){delete body.startDate;body.expectedVersion=state.originalPlan.editVersion;}
+    const response=await requestApi(reviewPlanApi(state.editId||''),{method:state.editId?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),plan=await response.json();
     if(state!==reviewPlanCreate || state.courseId!==currentCourseId)return;
-    state.busy=false;closeReviewPlanCreate();await openReviewPlan(plan.id);
+    state.busy=false;closeReviewPlanCreate();if(state.editId)showToast('计划修改已保存');await openReviewPlan(plan.id);
   }catch(err){if(state===reviewPlanCreate)document.getElementById('reviewPlanCreateError').textContent=err.message;}
   finally{state.busy=false;renderReviewPlanSelection();}
 }
 async function openReviewPlan(id) {
+  reviewPlanSurfaceLoading++;
   const request = ++reviewPlanRequest, courseId = currentCourseId;
   currentView = {type:'reviewPlan',id}; showPageOnly('reviewPlanDetailPage'); rememberPlanPage(id);
   const box = document.getElementById('reviewPlanDetailBody'); box.innerHTML = '<p class="loading-tip">加载中…</p>';
@@ -426,7 +459,7 @@ async function openReviewPlan(id) {
     if (request===reviewPlanRequest && courseId===currentCourseId) {
       showListError(box,err); box.insertAdjacentHTML('beforeend',`<button onclick="openReviewPlan(${id})">重试</button><button onclick="backToReviewPlans()">返回计划列表</button>`);
     }
-  }
+  } finally {reviewPlanSurfaceLoading--;}
 }
 function backToReviewPlans() { ++reviewPlanRequest; reviewPlanCompletedPreview=null; if(typeof clearCenterReviewUi==='function')clearCenterReviewUi();rememberPlanPage(); currentView={type:'course',tab:'reviewPlans'}; showPageOnly('detailPage'); switchTab('reviewPlans'); }
 function renderReviewPlanDetail() {
@@ -436,9 +469,9 @@ function renderReviewPlanDetail() {
   const today = plan.todayStats;
   const todayText = !today.total ? '今日没有安排复习任务' : today.pending ? `今日 ${today.pending} 项待复习` : today.completed ? '今日复习已完成' : '今日任务均已跳过';
   document.getElementById('reviewPlanDetailBody').innerHTML = `<section class="detail-card"><h2>${escapeHtml(plan.name)}</h2><p>考试日期：${plan.exam_date} · 剩余 ${plan.remainingDays} 天${plan.status==='archived' ? ' · 已归档' : ''}</p>
-    ${planProgressHtml(plan)}<p>${todayText}</p><div class="mistake-toolbar"><button id="reviewPlanTodayStart" onclick="startReviewPlanDay(${plan.id},'${plan.today}')" ${!today.pending || plan.status!=='active' ? 'disabled' : ''}>开始今日复习</button>${reviewPlanCompletedPreview?.courseId===currentCourseId&&reviewPlanCompletedPreview.planId===plan.id?'<button type="button" onclick="openReviewPlanCompletedAnswers()">查看本轮作答预览</button>':''}</div>
+    ${planProgressHtml(plan)}<p>${todayText}</p><div class="mistake-toolbar"><button type="button" onclick="openReviewPlanEdit(${plan.id})">编辑计划</button><button id="reviewPlanTodayStart" onclick="startReviewPlanDay(${plan.id},'${plan.today}')" ${!today.pending || plan.status!=='active' ? 'disabled' : ''}>开始今日复习</button>${reviewPlanCompletedPreview?.courseId===currentCourseId&&reviewPlanCompletedPreview.planId===plan.id?'<button type="button" onclick="openReviewPlanCompletedAnswers()">查看本轮作答预览</button>':''}</div>
     <p class="detail-meta">错题 → 资料 → 笔记，按类型使用原有复习页面；点日历上的日期可以查看当天安排并开始复习。跳过阅读仍保留待完成任务。</p>
-    <details class="plan-settings"><summary>管理计划</summary><label>计划名称<input id="reviewPlanRename" maxlength="100" value="${escapeHtml(plan.name)}" /></label><div class="mistake-toolbar"><button onclick="saveReviewPlanName()">保存名称</button><button onclick="changeReviewPlanStatus()">${plan.status==='active' ? '归档计划' : '恢复计划'}</button><button onclick="deleteCurrentReviewPlan()">删除计划</button></div><p class="detail-meta">日期和复习范围创建后固定；需要调整时请重新生成计划。</p></details></section>
+    <details class="plan-settings"><summary>管理计划</summary><div class="mistake-toolbar"><button onclick="changeReviewPlanStatus()">${plan.status==='active' ? '归档计划' : '恢复计划'}</button><button onclick="deleteCurrentReviewPlan()">删除计划</button></div><p class="detail-meta">名称、考试日期和复习内容可通过“编辑计划”修改；已完成任务及历史作答保留。</p></details></section>
     ${planScheduleHtml(state.schedule)}`;
   bindPlanCalendarClicks();
 }
@@ -449,7 +482,6 @@ async function patchCurrentReviewPlan(body) {
   try { await requestApi(reviewPlanApi(state.plan.id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); if (state.courseId===currentCourseId) await openReviewPlan(state.plan.id); }
   catch(err) { showToast(err.message); } finally { state.busy = false; }
 }
-function saveReviewPlanName() { return patchCurrentReviewPlan({name:document.getElementById('reviewPlanRename').value}); }
 function changeReviewPlanStatus() { return patchCurrentReviewPlan({status:reviewPlanDetail.plan.status==='active' ? 'archived' : 'active'}); }
 async function deleteCurrentReviewPlan() {
   const state = reviewPlanDetail; if (!state || state.busy || !await showConfirm('删除计划及其排期任务？原有资料、笔记、错题会保留。','删除复习计划')) return;

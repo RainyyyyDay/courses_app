@@ -1,6 +1,7 @@
 const {db} = require('./connection');
-const {planError,dateNumber,planDates,schedulePlan,planToday} = require('./reviewPlanSchedule');
-const {getReviewPlanSchedule} = require('./reviewItems');
+const {planError,dateNumber,planDates,schedulePlan,planToday,planExcludedKeys} = require('./reviewPlanSchedule');
+const {getReviewPlanSchedule,rebuildEditedPlanSchedule} = require('./reviewItems');
+const {createHash}=require('node:crypto');
 const PLAN_SOURCES = {material:'materials',note:'notes',mistake:'mistakes'};
 
 // 迁移夹具会在 v12 旧表上建计划；旧表还没有选择题列时退回原来的答案条件。
@@ -48,7 +49,7 @@ function scheduleCounts(days) {
   return count;
 }
 function listPlanItems(courseId,planId,filters={}) {
-  scopedPlan(courseId,planId);
+  const excluded=planExcludedKeys(scopedPlan(courseId,planId));
   const where = ['i.plan_id = ?','i.source_deleted = 0'], args = [planId];
   if (filters.scheduledDate !== undefined) { dateNumber(filters.scheduledDate); where.push('i.scheduled_date = ?'); args.push(filters.scheduledDate); }
   if (filters.status !== undefined) {
@@ -59,7 +60,8 @@ function listPlanItems(courseId,planId,filters={}) {
     CASE WHEN i.source_deleted=1 THEN 0 WHEN i.item_type!='mistake' THEN 1
       ELSE ${mistakeReviewableSql('m')} END AS reviewable
     FROM review_plan_items i LEFT JOIN mistakes m ON i.item_type='mistake' AND m.id=i.item_id
-    WHERE ${where.join(' AND ')} ORDER BY i.scheduled_date,i.sort_order,i.id`).all(...args);
+    WHERE ${where.join(' AND ')} ORDER BY i.scheduled_date,i.sort_order,i.id`).all(...args)
+    .filter(item=>!excluded.has(item.item_type+':'+item.item_id));
 }
 function planSummary(plan, detailed=false) {
   const items = listPlanItems(plan.course_id,plan.id), today = planToday();
@@ -83,7 +85,16 @@ function planSummary(plan, detailed=false) {
 function listReviewPlans(courseId) {
   return db.prepare('SELECT * FROM review_plans WHERE course_id = ? ORDER BY id DESC').all(courseId).map(plan=>planSummary(plan));
 }
-function getReviewPlan(courseId,planId) { return planSummary(scopedPlan(courseId,planId),true); }
+function planEditVersion(courseId,planId) {
+  const plan=scopedPlan(courseId,planId);
+  const tasks=db.prepare('SELECT * FROM review_plan_items WHERE plan_id=? ORDER BY id').all(planId);
+  const sessions=db.prepare("SELECT id,updated_at FROM review_sessions WHERE source_type='plan' AND source_id=? ORDER BY id").all(planId);
+  return createHash('sha256').update(JSON.stringify({plan,tasks,sessions})).digest('hex');
+}
+function getReviewPlan(courseId,planId) {
+  const result=planSummary(scopedPlan(courseId,planId),true);
+  return {...result,editVersion:planEditVersion(courseId,planId)};
+}
 function planName(value) {
   if (typeof value !== 'string' || !value.trim() || value.trim().length>100) planError(400,'INVALID_ARGUMENT','计划名称须为 1～100 字');
   return value.trim();
@@ -118,27 +129,66 @@ function createReviewPlan(courseId,body) {
   } catch(err) { db.exec('ROLLBACK'); throw err; }
 }
 function updateReviewPlan(courseId,planId,body) {
-  scopedPlan(courseId,planId);
-  if (!body || typeof body!=='object' || Array.isArray(body) || !Object.keys(body).length || Object.keys(body).some(key=>!['name','status'].includes(key))) {
-    planError(400,'INVALID_ARGUMENT','只允许修改计划名称和 active / archived 状态，日期及范围需重新生成计划');
+  if (!body || typeof body!=='object' || Array.isArray(body) || !Object.keys(body).length || Object.keys(body).some(key=>!['name','status','examDate','selectedItems','expectedVersion'].includes(key))) {
+    planError(400,'INVALID_ARGUMENT','计划编辑参数不合法');
   }
-  const values = [], columns = [];
-  if (body.name !== undefined) { columns.push('name = ?'); values.push(planName(body.name)); }
-  if (body.status !== undefined) {
-    if (!['active','archived'].includes(body.status)) planError(400,'INVALID_ARGUMENT','计划状态不合法');
-    columns.push('status = ?'); values.push(body.status);
-  }
-  columns.push('updated_at = ?'); values.push(new Date().toISOString());
-  db.prepare(`UPDATE review_plans SET ${columns.join(',')} WHERE id = ?`).run(...values,planId);
-  return getReviewPlan(courseId,planId);
+  db.exec('BEGIN');
+  try {
+    const plan=scopedPlan(courseId,planId);
+    if(body.expectedVersion!==undefined && (typeof body.expectedVersion!=='string'||body.expectedVersion!==planEditVersion(courseId,planId)))
+      planError(409,'PLAN_VERSION_CONFLICT','计划或复习进度已发生变化，请重新打开编辑；当前输入不会覆盖新状态');
+    if((body.examDate!==undefined||body.selectedItems!==undefined)&&body.expectedVersion===undefined)
+      planError(400,'INVALID_ARGUMENT','编辑日期和内容需要当前计划版本，请重新打开编辑');
+    const name=body.name===undefined?plan.name:planName(body.name),exam=body.examDate===undefined?plan.exam_date:body.examDate;
+    const status=body.status===undefined?plan.status:body.status;
+    if(!['active','archived'].includes(status))planError(400,'INVALID_ARGUMENT','计划状态不合法');
+    planDates(plan.start_date,exam);
+    const original=listPlanItems(courseId,planId),selected=new Map();
+    if(body.selectedItems!==undefined){
+      if(!Array.isArray(body.selectedItems)||!body.selectedItems.length||body.selectedItems.length>2000)planError(400,'INVALID_ARGUMENT','请选择 1～2000 项复习内容');
+      for(const item of body.selectedItems){
+        if(!item||!Object.hasOwn(PLAN_SOURCES,item.type)||!Number.isSafeInteger(item.id)||item.id<1||Object.keys(item).some(key=>!['type','id'].includes(key)))planError(400,'INVALID_ARGUMENT','选择的内容类型或 ID 不合法');
+        const key=item.type+':'+item.id;
+        if(selected.has(key))planError(400,'INVALID_ARGUMENT','同一计划不能重复选择同一内容');
+        const row=db.prepare(`SELECT id,title,course_id FROM ${PLAN_SOURCES[item.type]} WHERE id=?`).get(item.id);
+        if(!row||row.course_id!==courseId)planError(400,'INVALID_ARGUMENT','选择的内容不存在或不属于当前课程');
+        selected.set(key,{...item,title_snapshot:row.title});
+      }
+    }else for(const item of original)selected.set(item.item_type+':'+item.item_id,{type:item.item_type,id:item.item_id,title_snapshot:item.title_snapshot});
+    const oldKeys=new Set(original.map(item=>item.item_type+':'+item.item_id));
+    const changed=exam!==plan.exam_date||oldKeys.size!==selected.size||[...selected.keys()].some(key=>!oldKeys.has(key));
+    if(changed&&exam<=planToday())planError(400,'INVALID_ARGUMENT','调整排期时，考试日期必须晚于今天');
+    const previous=changed?getReviewPlanSchedule(courseId,planId):null;
+    const now=new Date().toISOString();
+    db.prepare('UPDATE review_plans SET name=?,status=?,exam_date=?,updated_at=? WHERE id=?').run(name,status,exam,now,planId);
+    if(changed){
+      const all=db.prepare('SELECT * FROM review_plan_items WHERE plan_id=?').all(planId);
+      const byKey=new Map(all.map(item=>[item.item_type+':'+item.item_id,item]));
+      const excluded=all.filter(item=>!selected.has(item.item_type+':'+item.item_id)).map(item=>item.item_type+':'+item.item_id);
+      let snapshot={};try{snapshot=JSON.parse(plan.schedule_json||'{}');}catch{}
+      db.prepare('UPDATE review_plans SET schedule_json=? WHERE id=?').run(JSON.stringify({...snapshot,excludedKeys:excluded}),planId);
+      const floor=plan.start_date>planToday()?plan.start_date:planToday();
+      const pending=[...selected.values()].filter(item=>byKey.get(item.type+':'+item.id)?.status!=='completed');
+      const insert=db.prepare('INSERT INTO review_plan_items(plan_id,item_type,item_id,scheduled_date,sort_order,title_snapshot) VALUES (?,?,?,?,?,?)');
+      const update=db.prepare('UPDATE review_plan_items SET scheduled_date=?,sort_order=? WHERE id=?');
+      for(const item of schedulePlan(pending,floor,exam)){
+        const existing=byKey.get(item.type+':'+item.id);
+        if(existing)update.run(item.scheduled_date,item.sort_order,existing.id);
+        else insert.run(planId,item.type,item.id,item.scheduled_date,item.sort_order,item.title_snapshot);
+      }
+      rebuildEditedPlanSchedule(courseId,planId,previous);
+    }
+    const result=getReviewPlan(courseId,planId);db.exec('COMMIT');return result;
+  }catch(err){db.exec('ROLLBACK');throw err;}
 }
 function deleteReviewPlan(courseId,planId) { scopedPlan(courseId,planId); db.prepare('DELETE FROM review_plans WHERE id = ?').run(planId); }
 
 // 仅供复习写入调用，无“任意完成任务”API；归属来自数据库而非客户端 courseId。
 function reviewPlanContext(planItemId,courseId,type,itemId) {
-  const item = db.prepare(`SELECT i.*,p.course_id,p.status AS plan_status FROM review_plan_items i JOIN review_plans p ON p.id=i.plan_id WHERE i.id=?`).get(planItemId);
+  const item = db.prepare(`SELECT i.*,p.course_id,p.status AS plan_status,p.schedule_json FROM review_plan_items i JOIN review_plans p ON p.id=i.plan_id WHERE i.id=?`).get(planItemId);
   if (!item || item.course_id!==courseId || item.item_type!==type || item.item_id!==itemId) planError(404,'PLAN_ITEM_NOT_FOUND','任务不属于当前课程或复习对象');
   if (item.plan_status!=='active' || item.status==='skipped' || item.source_deleted) planError(409,'PLAN_UNAVAILABLE','计划已归档或内容已删除，请返回计划');
+  if(planExcludedKeys(item).has(type+':'+itemId))planError(409,'PLAN_ITEM_UNAVAILABLE','此内容已移出计划，历史作答仍保留，请返回计划');
   return item;
 }
 function completePlanItem(item) {
