@@ -15,7 +15,7 @@ function showPageOnly(pageId) {
   if(typeof resetItemReviewHistory==='function')resetItemReviewHistory();
   if(typeof resetResourceAi==='function')resetResourceAi();
   if (pageId !== 'mistakeDetailPage' && typeof resetMistakeAi === 'function') resetMistakeAi();
-  ['listPage', 'detailPage', 'courseSearchPage', 'nodeDetailPage', 'mistakeDetailPage', 'resourceDetailPage', 'materialReviewPage', 'reviewPlanDetailPage','reviewHistoryPage','reviewSessionDetailPage'].forEach(id => {
+  ['listPage', 'detailPage', 'courseSearchPage', 'nodeDetailPage', 'mistakeDetailPage', 'resourceDetailPage', 'materialReviewPage', 'reviewPlanDetailPage','reviewPlanListPage','reviewHistoryPage','reviewSessionDetailPage'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = (id === pageId) ? 'block' : 'none';
   });
