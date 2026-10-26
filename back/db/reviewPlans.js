@@ -72,7 +72,9 @@ function planSummary(plan, detailed=false) {
   try { schedule=getReviewPlanSchedule(plan.course_id,plan.id); result.scheduleStats=scheduleCounts(schedule.days); }
   catch { result.scheduleStats = null; }
   const todayDay=schedule?.days.find(day=>day.date===today);
-  if(todayDay)result.todayStats=scheduleCounts([todayDay]);
+  // Once an applied schedule exists it is the only source for today's action.
+  // Never fall back to the initial materialized task dates after rescheduling.
+  if(schedule)result.todayStats=scheduleCounts(todayDay?[todayDay]:[]);
   const sched = result.scheduleStats;
   const pending = sched && sched.total ? sched.pending : result.pending;
   result.reviewState = pending===0 ? 'completed' : plan.exam_date<=today ? 'expired' : 'active';

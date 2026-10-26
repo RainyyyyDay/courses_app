@@ -18,6 +18,26 @@ function scenario(){
  for(const item of session.items){store.saveSessionRecallReview(item.id,store.findMaterial(item.item_id),'material','clear',store.setMaterialReviewStatus);d.prepare('UPDATE review_session_items SET completed_at=? WHERE id=?').run(today+'T15:00:00+08:00',item.id)}
  assert.equal(read(onTime).days.find(day=>day.date===today).state,'done');reason(onTime,[]);assert.equal(snapshot(onTime),original,'all on-time progress preserves the same schedule');const beforeNoop=calculations;store.applyReviewPlanSchedule(course.id,onTime.plan.id);assert.equal(calculations,beforeNoop,'apply without trigger is a no-op');assert.equal(snapshot(onTime),original);
  store.deleteMaterial(onTime.rows[2].id);reason(onTime,['content_deleted']);store.applyReviewPlanSchedule(course.id,onTime.plan.id);reason(onTime,[]);assert.ok(read(onTime).days.every(day=>day.items.every(item=>item.id!==onTime.rows[2].id)));
+ // A materialized task today cannot light the start button after the applied snapshot has no today task.
+ const hiddenToday=make(1),hiddenSnapshot=JSON.parse(snapshot(hiddenToday));hiddenSnapshot.applied=true;hiddenSnapshot.appliedOn=today;
+ hiddenSnapshot.days=hiddenSnapshot.days.filter(day=>day.date>today);
+ d.prepare('UPDATE review_plans SET schedule_json=? WHERE id=?').run(JSON.stringify(hiddenSnapshot),hiddenToday.plan.id);
+ const hiddenSummary=store.getReviewPlan(course.id,hiddenToday.plan.id);
+ assert.equal(hiddenSummary.todayStats.total,0,'materialized fallback cannot invent today work');
+ assert.equal(hiddenSummary.todayStats.pending,0,'today start button is empty until a current snapshot schedules work');
+ // Applying on the next day freezes yesterday exactly as it was displayed, even
+ // when the old completion came from a direct plan task rather than a session.
+ today='2026-10-24';const historyPlan=make(1),pastTask=d.prepare('SELECT * FROM review_plan_items WHERE plan_id=? AND scheduled_date=?').get(historyPlan.plan.id,today);
+ finish(historyPlan,pastTask.id);assert.equal(read(historyPlan).days.find(day=>day.date===today).state,'done');
+ const futureOccurrence=read(historyPlan).days.find(day=>day.date>today);assert.ok(futureOccurrence);
+ const futureSession=store.createReviewSession(course.id,{requestId:'historical-preserve',sourceType:'plan',sourceId:historyPlan.plan.id,
+   scheduledDate:futureOccurrence.date,selectedItems:futureOccurrence.items.map(item=>({type:item.type,id:item.id}))});
+ for(const sessionItem of futureSession.items){store.saveSessionRecallReview(sessionItem.id,store.findMaterial(sessionItem.item_id),'material','clear',store.setMaterialReviewStatus);d.prepare('UPDATE review_session_items SET completed_at=? WHERE id=?').run(today+'T14:00:00+08:00',sessionItem.id);}
+ today='2026-10-25';reason(historyPlan,['completed_early']);store.applyReviewPlanSchedule(course.id,historyPlan.plan.id);
+ const preservedDay=read(historyPlan).days.find(day=>day.date==='2026-10-24');
+ assert.equal(preservedDay.state,'done','applying a new schedule preserves yesterday completed state');
+ assert.ok(preservedDay.items.every(item=>item.status==='completed'&&item.result==='passed'));
+ today='2026-10-24';
  const early=make(3),futureTask=d.prepare('SELECT * FROM review_plan_items WHERE plan_id=? AND scheduled_date>? ORDER BY scheduled_date LIMIT 1').get(early.plan.id,today);assert.ok(futureTask);finish(early,futureTask.id);reason(early,['completed_early']);const oldEarly=snapshot(early);read(early);assert.equal(snapshot(early),oldEarly,'preview never silently replaces old schedule');store.applyReviewPlanSchedule(course.id,early.plan.id);reason(early,[]);const ack=snapshot(early);store.applyReviewPlanSchedule(course.id,early.plan.id);assert.equal(snapshot(early),ack,'same early event is acknowledged once');
  const partialEarly=make(3),futureDay=read(partialEarly).days.find(day=>day.date>today&&day.items.length>=2);assert.ok(futureDay);
  const earlySession=store.createReviewSession(course.id,{requestId:'early-subset',sourceType:'plan',sourceId:partialEarly.plan.id,scheduledDate:futureDay.date,selectedItems:[{type:'material',id:partialEarly.rows[0].id}]});const si=earlySession.items[0];store.saveSessionRecallReview(si.id,store.findMaterial(si.item_id),'material','clear',store.setMaterialReviewStatus);d.prepare('UPDATE review_session_items SET completed_at=? WHERE id=?').run(today+'T12:00:00+08:00',si.id);assert.equal(read(partialEarly).days.find(day=>day.date===futureDay.date).state,'partial');reason(partialEarly,['completed_early']);
