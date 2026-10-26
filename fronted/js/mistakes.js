@@ -520,7 +520,7 @@ function closeMistakeAnswerOcr() {
   const text = document.getElementById('mistakeCreateAnswerOcrText');
   const meta = document.getElementById('mistakeCreateAnswerOcrMeta');
   if (panel) panel.style.display = 'none';
-  if (text) text.value = '';
+  setOcrTextResult(text, null);
   if (meta) meta.textContent = '';
 }
 
@@ -537,7 +537,7 @@ async function recognizeMistakeAnswerFile() {
     const text = document.getElementById('mistakeCreateAnswerOcrText');
     const panel = document.getElementById('mistakeCreateAnswerOcrPanel');
     const meta = document.getElementById('mistakeCreateAnswerOcrMeta');
-    if (text) text.value = result.text || '';
+    setOcrTextResult(text, result);
     if (panel) panel.style.display = 'grid';
     if (meta) {
       const parts = [];
@@ -615,7 +615,7 @@ function closeMistakeOcr() {
   const text = document.getElementById('mistakeCreateOcrText');
   const meta = document.getElementById('mistakeCreateOcrMeta');
   if (panel) panel.style.display = 'none';
-  if (text) text.value = '';
+  setOcrTextResult(text, null);
   if (meta) meta.textContent = '';
 }
 // 浏览器端优先；图片不可用时回退服务端，PDF 保留所选页码语义。
@@ -647,7 +647,7 @@ async function recognizeUploadedFile(file, onProgress, options = {}) {
     // 把回退原因留在校对面板的说明行里，别再被吞掉
     result.fallbackReason = reason;
     result.warnings = [...(result.warnings || []), intentional ? 'PDF 用服务端识别' : `浏览器端未使用：${reason}`];
-    return result;
+    return formatOcrParagraphs(result);
   }
 }
 
@@ -671,7 +671,7 @@ async function recognizeMistakeCreateFile() {
     const text = document.getElementById('mistakeCreateOcrText');
     const panel = document.getElementById('mistakeCreateOcrPanel');
     const meta = document.getElementById('mistakeCreateOcrMeta');
-    if (text) text.value = result.text || '';
+    setOcrTextResult(text, result);
     if (panel) panel.style.display = 'grid';
     if (meta) {
       const parts = [];

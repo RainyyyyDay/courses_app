@@ -20,6 +20,8 @@ function normalizeResult(payload, provider, file) {
     ? source.lines.map(line => ({
         text: normalizeText(line?.text ?? line),
         confidence: Number.isFinite(Number(line?.confidence)) ? Number(line.confidence) : null,
+        box: Array.isArray(line?.box) ? line.box : null,
+        page: Number.isInteger(line?.page) ? line.page : undefined,
       })).filter(line => line.text)
     : [];
   const text = normalizeText(source.text) || lines.map(line => line.text).join('\n');

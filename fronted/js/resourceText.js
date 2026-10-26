@@ -98,7 +98,7 @@ async function recognizeExistingResourceText() {
     if (!resourceTextIsCurrent(state)) return;
     if (result.provider === 'mock') throw new Error('当前服务返回模拟结果，未填入；请检查识别服务');
     if (!String(result.text || '').trim()) throw new Error('没有识别到文字，原正文和已有草稿保留');
-    dialog.querySelector('[data-text-draft]').value = result.text;
+    setOcrTextResult(dialog.querySelector('[data-text-draft]'), result);
     status.textContent = (result.warnings || []).join('；');
     notifyTextRecognitionSuccess(result, dialog.querySelector('[data-text-result]'));
   } catch (err) {

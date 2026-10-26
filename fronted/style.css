@@ -2764,3 +2764,7 @@ dialog.assessment-chart-editor {
 
 /* 大纲操作可在窄屏换行，避免挤压卡片标题。 */
 .outline-ai-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* OCR paragraph controls also fit narrow proofreading panels. */
+.ocr-paragraph-control { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:6px 0; font-size:13px; }
+.ocr-paragraph-control select { max-width:100%; padding:5px 8px; font:inherit; }
+.ocr-paragraph-control small { flex-basis:100%; color:#64748b; line-height:1.5; }

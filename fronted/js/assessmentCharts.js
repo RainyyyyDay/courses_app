@@ -320,7 +320,7 @@ function openAssessmentChartEditor(id, initialSource = null) {
     controller: null,
   };
   document.getElementById('assessmentChartTitle').value = assessmentChartEditorState.chart.title;
-  document.getElementById('assessmentChartSource').value = initialSource === null ? (row.requirement || '') : String(initialSource);
+  setOcrTextResult(document.getElementById('assessmentChartSource'), { text: initialSource === null ? (row.requirement || '') : String(initialSource) });
   document.getElementById('assessmentChartInstruction').value = '';
   document.getElementById('assessmentChartAiStatus').textContent = '';
   document.getElementById('assessmentChartError').textContent = '';
@@ -388,6 +388,7 @@ async function assessmentChartAttachmentText() {
   const name = ext && !base.toLowerCase().endsWith(ext.toLowerCase()) ? base + ext : base;
   const type = state.fileType || blob.type || '';
   if (/^text\//i.test(type) || /\.(txt|md|csv)$/i.test(state.fileUrl)) {
+    state.ocrResult = null;
     const text = await blob.text();
     if (!text.trim()) throw new Error('附件没有可用的文字。');
     return text;
@@ -396,6 +397,7 @@ async function assessmentChartAttachmentText() {
   const result = await recognizeUploadedFile(file, message => assessmentChartSetBusy(true, message), { signal: state.controller.signal });
   if (result.provider === 'mock') throw new Error('当前 OCR 返回模拟结果，未使用；请检查识别服务。');
   if (!String(result.text || '').trim()) throw new Error('没有从附件识别到文字。');
+  state.ocrResult = result;
   const warnings = (result.warnings || []).join('；');
   if (warnings) document.getElementById('assessmentChartAiStatus').textContent = warnings;
   return result.text;
@@ -501,7 +503,7 @@ async function assessmentChartAiFromFile() {
     const text = await assessmentChartAttachmentText();
     if (state !== assessmentChartEditorState) return;
     state.ocrText = text;
-    document.getElementById('assessmentChartSource').value = text;
+    setOcrTextResult(document.getElementById('assessmentChartSource'),state.ocrResult||{text});
     document.getElementById('assessmentChartBodyApply').hidden = false;
     assessmentChartSetBusy(false);
     await assessmentChartAiRequest('extract', text, true);

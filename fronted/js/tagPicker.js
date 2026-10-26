@@ -568,7 +568,7 @@ async function recognizePickerResourceFile() {
     const text = document.getElementById('tagPickerResourceOcrText');
     const panel = document.getElementById('tagPickerResourceOcrPanel');
     const meta = document.getElementById('tagPickerResourceOcrMeta');
-    if (text) text.value = result.text || '';
+    setOcrTextResult(text, result);
     if (panel) panel.style.display = 'grid';
     if (meta) {
       const parts = [];
@@ -609,7 +609,7 @@ function closePickerResourceOcr() {
   const text = document.getElementById('tagPickerResourceOcrText');
   const meta = document.getElementById('tagPickerResourceOcrMeta');
   if (panel) { panel.style.display = 'none'; panel.dataset.pendingAdoption = 'false'; }
-  if (text) text.value = '';
+  setOcrTextResult(text, null);
   if (meta) meta.textContent = '';
 }
 
