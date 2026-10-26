@@ -105,6 +105,7 @@
     <div class="header-left">
       <button class="back-btn" onclick="backToList()">←</button>
       <h1 id="detailTitle">课程</h1>
+      <button type="button" class="course-title-edit" onclick="openCourseRename()" aria-label="修改课程名称" title="修改课程名称">编辑</button>
     </div>
     <div class="course-header-actions">
       <button class="course-search-entry" id="totalReviewOpen" type="button" onclick="openTotalReview()">复习</button>
@@ -407,7 +408,7 @@
   <!-- 添加课程弹窗 -->
   <div class="modal-mask" id="courseModal">
     <div class="modal">
-      <h3>添加课程</h3>
+      <h3 id="courseModalTitle">添加课程</h3>
       <input id="courseNameInput" placeholder="输入课程名称" />
       <div class="modal-actions">
         <button class="btn-cancel" onclick="closeCourseModal()">取消</button>

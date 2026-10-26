@@ -773,6 +773,13 @@ button:is(.btn-danger,.edit-btn-danger) { background:#fff1f0; border-color:#f5c8
 .course-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 #detailPage .header-left { min-width: 0; flex: 1; }
 #detailTitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.course-title-edit {
+  flex: 0 0 auto; padding: 5px 9px; border: 1px solid #d8dfeb; border-radius: 7px;
+  background: #fff; color: #64718a; font: inherit; font-size: 12px; line-height: 1.4;
+  cursor: pointer;
+}
+.course-title-edit:hover { border-color: #aebde3; background: #f7f9ff; color: #4964a7; }
+.course-title-edit:focus-visible { outline: 2px solid #9fb2ef; outline-offset: 2px; }
 .course-search-entry, .course-search-submit { border: 0; border-radius: 8px; padding: 10px 14px; background: #4a6cf7; color: #fff; font: inherit; font-size: 14px; cursor: pointer; }
 .course-search-course { min-width: 0; max-width: 40%; font-size: 13px; color: #777; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .course-search-content { max-width: 900px; margin: 0 auto; padding: 16px 12px 28px; }
@@ -1057,6 +1064,27 @@ body.mistake-review-open { overflow: hidden; }
 .review-workbench .review-check { display:flex;align-items:flex-start;gap:10px; }
 .review-workbench .review-check input { width:auto;flex:0 0 auto;margin-top:3px; }
 .review-workbench fieldset { min-width:0;border:1px solid #dbe0ea; }
+.review-result-field { margin:16px 0; }
+.review-result-field > h4 {
+  display:flex; align-items:baseline; gap:6px; margin:0 0 8px;
+  color:#2f3a4d; font-size:15px; line-height:1.5;
+}
+.review-result-field > h4 small { color:#7b8799; font-size:12px; font-weight:400; }
+.review-workbench .review-checkpoint-card {
+  display:block; margin:0; padding:10px; border:1px solid #eef0f5;
+  border-radius:8px; background:#fafbfd; min-width:0;
+}
+.review-checkpoint-list { display:grid; gap:8px; }
+.review-workbench .review-checkpoint-card .review-check {
+  margin:0; padding:10px 12px; border:1px solid #e7ebf2; border-radius:8px;
+  background:#fff; color:#34415a; font-size:13px; line-height:1.55; cursor:pointer;
+  transition:border-color .16s ease,background-color .16s ease,box-shadow .16s ease;
+}
+.review-workbench .review-checkpoint-card .review-check:hover { border-color:#c7d3ef; background:#fbfcff; }
+.review-workbench .review-checkpoint-card .review-check:has(input:checked) {
+  border-color:#b9c8f5; background:#f4f7ff; box-shadow:0 0 0 2px rgba(74,108,247,.06);
+}
+.review-workbench .review-checkpoint-card .review-check input { margin-top:2px; }
 .review-workbench .sr-only { position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap; }
 .edit-choice-config > .mistake-format-confirm { flex-direction: row; }
 .mistake-choice-options { display: flex; flex-direction: column; gap: 9px; margin: 14px 0 10px; }

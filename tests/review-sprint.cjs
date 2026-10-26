@@ -131,7 +131,7 @@ function scenario(base,courseId){return `window.COURSES_API_BASE=${JSON.stringif
           else {check(wb('Answer')?.rows===(mode==='self_explain'?10:5),'distinct open answer size');wb('Answer').value='首次独立作答 '+mode;}
           check(!wb('Attempt').querySelector('[data-review-reference]'),'reference hidden before submitting');
           await submitWorkbenchAttempt('submit');check(reviewWorkbench.attempt.firstAnswer.includes('首次独立'),'open UI keeps first answer');
-          if(['contrast','self_explain'].includes(mode)){const points=wb('Attempt').querySelectorAll('[data-review-checkpoint]');check(points.length>=2,'reference and rubric become actionable checklist');points[0].click();}
+          if(['contrast','self_explain'].includes(mode)){const points=wb('Attempt').querySelectorAll('[data-review-checkpoint]');check(points.length>=2,'reference and rubric become actionable checklist');check(wb('Attempt').textContent.includes('我的作答')&&!wb('Attempt').textContent.includes('不可改写的首次作答'),'submitted answer uses the concise label');check(points[0].closest('.review-checkpoint-card')?.closest('.review-result-field')?.querySelector('h4')?.textContent.includes('逐项核对'),'checkpoints use the shared result-card layout');points[0].click();}
           await submitWorkbenchAttempt('judge',2);check(reviewWorkbench.attempt.grade===2,'open UI records Hard');
         }
         await finishWorkbenchAttempt();closeReviewCompleteModal();
@@ -194,7 +194,7 @@ for(const viewport of [[1280,960],[390,844]])test('sprint normal-page manual wor
   const chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].find(fs.existsSync);assert.ok(chrome);
   new (require('node:vm').Script)(scenario(base,ids.courseId));
   const screenshot=path.join(require('node:os').tmpdir(),'courses-review-inline-'+viewport.join('x')+'.png');
-  const html=await runBrowser({chrome,profile:path.join(temp,'sprint-profile'),url:await serve(),viewport,screenshot,blockedUrls:['http://localhost:3000/*','http://127.0.0.1:3000/*'],initScript:scenario(base,ids.courseId)});
+  const html=await runBrowser({chrome,profile:path.join(temp,'sprint-profile'),url:await serve(),viewport,screenshot,noSandbox:true,blockedUrls:['http://localhost:3000/*','http://127.0.0.1:3000/*'],initScript:scenario(base,ids.courseId)});
   console.log('INLINE_SCREENSHOT '+screenshot);
   const result=html.match(/<pre id="regressionResult"[^>]*>[\s\S]*?<\/pre>/)?.[0];assert.match(result||'',/data-result="passed"/,result||html.slice(-2000));
 },{legacy:false}));

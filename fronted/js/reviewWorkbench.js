@@ -481,10 +481,13 @@ function workbenchContrastHtml(m,answer='',readonly=false){
   const field=(key,label)=>`<label>${escapeHtml(label)}<textarea data-contrast-field="${key}" rows="3" maxlength="3000" ${readonly?'readonly':''}>${escapeHtml(values[key]||'')}</textarea></label>`;
   return `<section data-contrast-task><h4>比较对象：${escapeHtml(m.objects.join(' / '))}</h4><div class="review-contrast-scroll"><table><caption>逐维度独立比较</caption><thead><tr><th>维度</th>${m.objects.map(o=>'<th scope="col">'+escapeHtml(o)+'</th>').join('')}</tr></thead><tbody>${m.dimensions.map((d,i)=>`<tr><th scope="row">${escapeHtml(d)}</th>${m.objects.map((o,j)=>`<td>${field('d'+i+'o'+j,o+' · '+d)}</td>`).join('')}</tr>`).join('')}</tbody></table></div><div class="review-contrast-summary">${[['same','相同点'],['different','不同点'],['conditions','适用条件 / 反例'],['pitfalls','易混点 / 易错点']].map(([key,label])=>field(key,label)).join('')}</div>${readonly&&!Object.keys(values).length?'<p>旧版首次作答：'+escapeHtml(answer)+'</p>':''}</section>`;
 }
+function workbenchResultField(title,body,attributes=''){
+  return `<section class="review-result-field"><h4>${escapeHtml(title)}</h4><div class="detail-content" ${attributes}>${body}</div></section>`;
+}
 function workbenchCheckpoints(p){
   const points=(p.material.reference+'\n'+p.material.rubric).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
   const checked=mistakeStorageGet(reviewWorkbenchKey()+':checkpoints:'+p.id)||[];
-  return `<fieldset data-review-checkpoints><legend>逐项核对（不自动判分）</legend>${points.map((point,i)=>`<label class="review-check"><input type="checkbox" data-review-checkpoint="${i}" ${checked.includes(i)?'checked':''} onchange="saveWorkbenchCheckpoints()"><span>${escapeHtml(point)}</span></label>`).join('')}</fieldset>`;
+  return `<section class="review-result-field review-checkpoint-field"><h4>逐项核对 <small>（不自动判分）</small></h4><fieldset class="review-checkpoint-card" data-review-checkpoints aria-label="逐项核对，不自动判分"><div class="review-checkpoint-list">${points.map((point,i)=>`<label class="review-check"><input type="checkbox" data-review-checkpoint="${i}" ${checked.includes(i)?'checked':''} onchange="saveWorkbenchCheckpoints()"><span>${escapeHtml(point)}</span></label>`).join('')}</div></fieldset></section>`;
 }
 function saveWorkbenchCheckpoints(){const s=reviewWorkbench;if(s?.attempt)mistakeStorageSet(reviewWorkbenchKey(s)+':checkpoints:'+s.attempt.id,[...wb('Attempt').querySelectorAll('[data-review-checkpoint]:checked')].map(n=>Number(n.dataset.reviewCheckpoint)));}
 function renderWorkbenchAttempt(){
@@ -508,8 +511,8 @@ function renderWorkbenchAttempt(){
   }else{
     if(p.result?.unanswered)content+='<p class="ai-help" data-unanswered>本轮未作答，按不会记录。可对照参考学习，再开始新一轮尝试；本轮不提供 AI 批改。</p>';
     if(p.modeId==='contrast'&&!p.result?.unanswered)content+=workbenchContrastHtml(m,p.firstAnswer,true);
-    else if(p.modeId!=='cloze')content+=`<h4>${p.modeId==='reading'?'阅读记录':'不可改写的首次作答'}</h4><div class="detail-content">${escapeHtml(p.result?.unanswered?'（未作答）':p.firstAnswer||'（无）')}</div>`;
-    if(!['cloze','reading'].includes(p.modeId))content+=`<h4>参考解释 / 知识要点</h4><div class="detail-content" data-review-reference>${escapeHtml(m.reference||'')}</div><h4>评分量规</h4><div class="detail-content">${escapeHtml(m.rubric||'未另设量规，请核对参考要点')}</div>`+(['self_explain','contrast'].includes(p.modeId)?workbenchCheckpoints(p):'');
+    else if(p.modeId!=='cloze')content+=workbenchResultField(p.modeId==='reading'?'阅读记录':'我的作答',escapeHtml(p.result?.unanswered?'（未作答）':p.firstAnswer||'（无）'));
+    if(!['cloze','reading'].includes(p.modeId))content+=workbenchResultField('参考解释 / 知识要点',escapeHtml(m.reference||''),'data-review-reference')+workbenchResultField('评分量规',escapeHtml(m.rubric||'未另设量规，请核对参考要点'))+(['self_explain','contrast'].includes(p.modeId)?workbenchCheckpoints(p):'');
     wb('Actions').innerHTML=p.stage==='answer'?'<p>本轮已查看参考答案，自评可选“未掌握”或“基本掌握”。</p><button onclick="submitWorkbenchAttempt(\'judge\',1)">未掌握</button><button onclick="submitWorkbenchAttempt(\'judge\',2)">基本掌握</button>':'';
     if(p.stage==='completed'){
       const gradeClass=p.grade===null?'is-neutral':p.grade>=2?'is-correct':'is-wrong';
