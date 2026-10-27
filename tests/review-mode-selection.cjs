@@ -92,11 +92,21 @@ test('upload/edit default mode, AI adoption, and total-review weak recall UI', {
         check(adviceButton.disabled&&adviceButton.getAttribute('aria-disabled')==='true','AI advice disabled without real API');
         openCreationReviewSuggestion('tagPicker');
         check(!document.getElementById('creationModeAdviceDialog').open,'AI advice cannot open without real API');
+        const connectionFetch=window.fetch;
+        window.fetch=async(url,options)=>String(url).includes('/ai/test')
+          ?new Response(JSON.stringify({ok:true,provider:'deepseek',model:'deepseek-flash',action:'connection'}),{status:200,headers:{'Content-Type':'application/json'}})
+          :connectionFetch.call(window,url,options);
         coursesAiSettings.configure({provider:'deepseek',model:'deepseek-flash',apiKey:'synthetic-mode-key',retain:true,consent:true,auto:false});
-        check(!document.querySelector('#tagPickerReviewMethod option[value="self_explain"]').disabled
-          &&!document.querySelector('#tagPickerReviewMethod option[value="contrast"]').disabled
-          &&document.getElementById('tagPickerReviewApiNote').hidden
-          &&!adviceButton.disabled,'manual modes stay available and AI advice enables with real API');
+        check(adviceButton.disabled&&getComputedStyle(adviceButton).backgroundColor!=='rgb(74, 108, 247)','saved key alone does not light the AI advice button');
+        coursesAiSettings.open();
+        document.getElementById('coursesAiTest').click();
+        await wait(()=>coursesAiSettings.connectedReady(),'AI connection test');
+        document.getElementById('coursesAiClose').click();
+        await wait(()=>!adviceButton.disabled&&getComputedStyle(adviceButton).backgroundColor==='rgb(74, 108, 247)','AI advice highlight');
+        check(!document.querySelector('#tagPickerReviewMethod option[value="self_explain"]').disabled,'self explanation remains available');
+        check(!document.querySelector('#tagPickerReviewMethod option[value="contrast"]').disabled,'contrast remains available');
+        check(document.getElementById('tagPickerReviewApiNote').hidden,'AI connection note hides after connection test');
+        check(!adviceButton.disabled,'AI advice enables after connection test');
         document.getElementById('tagPickerName').value='上传方式测试';
         document.getElementById('tagPickerResourceContent').value='光合作用把光能转成化学能。';
         pendingUploadFile=new File(['fake image bytes'],'photosynthesis.png',{type:'image/png'});

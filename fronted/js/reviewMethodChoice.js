@@ -11,8 +11,10 @@ const REVIEW_METHOD_GUIDE = Object.freeze({
 const AI_DEPENDENT_REVIEW_METHODS = new Set();
 function reviewMethodRequiresRealAi(method){return AI_DEPENDENT_REVIEW_METHODS.has(method);}
 function reviewAdviceAiReady(){
-  return typeof coursesAiSettings!=='undefined'&&typeof coursesAiSettings.realReady==='function'
-    &&coursesAiSettings.realReady();
+  if(typeof coursesAiSettings==='undefined')return false;
+  if(typeof coursesAiSettings.connectedReady==='function')return coursesAiSettings.connectedReady();
+  return typeof coursesAiSettings.realReady==='function'&&coursesAiSettings.realReady()
+    &&coursesAiSettings.status?.().connectionState==='passed';
 }
 function reviewMethodIsAvailable(method){
   if(!Object.hasOwn(AI_SELECTABLE_METHODS,method))return false;
@@ -63,8 +65,8 @@ function mountReviewMethodEditor(prefix, type, id = null) {
           </select>
         </label><button type="button" class="review-mode-setup" id="${prefix}ClozeSetup" onclick="openClozeModeSetup('${prefix}')" hidden>设置挖空</button>
       </div>
-      <div class="ai-action-row"><button type="button" class="ai-primary" id="${prefix}ReviewModeAdvice" onclick="openCreationReviewSuggestion('${prefix}')" ${aiReady?'':'disabled aria-disabled="true"'} title="${aiReady?'读取正文和附件后建议复习方式':'请先在 AI 设置中接入真实 API'}">AI 建议复习方式</button></div>
-      <p class="review-api-note" id="${prefix}ReviewApiNote" ${aiReady?'hidden':''}>未接入 AI 仍可手动选择复习方式、准备材料并作答。只有 AI 建议、AI 生成材料及 AI 批改需要配置 AI。</p>
+      <div class="ai-action-row"><button type="button" class="ai-primary" id="${prefix}ReviewModeAdvice" onclick="openCreationReviewSuggestion('${prefix}')" ${aiReady?'':'disabled aria-disabled="true"'} title="${aiReady?'读取正文和附件后建议复习方式':'请先在 AI 设置中完成连接测试'}">AI 建议复习方式</button></div>
+      <p class="review-api-note" id="${prefix}ReviewApiNote" ${aiReady?'hidden':''}>AI 尚未连接成功；仍可手动选择复习方式、准备材料并作答。连接测试通过后，AI 建议按钮才会启用。</p>
       <p class="review-method-status" id="${prefix}ReviewMethodStatus" role="status" aria-live="polite"></p>
       <p class="mistake-ai-note">未手动选择且未采用 AI 建议时，将按标准复习保存。标准复习是固定兜底，不交给 AI 选择。</p>
     </div>`;
@@ -86,7 +88,7 @@ function updateReviewMethodChoiceStatus(prefix,message='') {
   status.dataset.method = method || 'standard';
   status.classList.toggle('is-default',!method);
   const apiNote=reviewModeField(prefix,'ReviewApiNote');
-  if(apiNote)apiNote.hidden=typeof coursesAiSettings!=='undefined'&&typeof coursesAiSettings.realReady==='function'&&coursesAiSettings.realReady();
+  if(apiNote)apiNote.hidden=reviewAdviceAiReady();
   const clozeSetup=reviewModeField(prefix,'ClozeSetup');
   if(clozeSetup){
     clozeSetup.hidden=method!=='cloze';
@@ -109,7 +111,7 @@ function refreshReviewMethodApiAvailability() {
     if(advice){
       advice.disabled=!ready;
       advice.setAttribute('aria-disabled',String(!ready));
-      advice.title=ready?'读取正文和附件后建议复习方式':'请先在 AI 设置中接入真实 API';
+      advice.title=ready?'读取正文和附件后建议复习方式':'请先在 AI 设置中完成连接测试';
     }
   }
   for(const id of ['mistakeAiMethod','mistakeCreateAiMethod']){

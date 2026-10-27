@@ -24,6 +24,9 @@ test('mistake question and answer reuse recognition choices and Markdown/LaTeX p
       check(document.getElementById('mistakeDetailContent').querySelector('.katex'),'question detail renders LaTeX');
       check(document.getElementById('mistakeAnswerText').querySelector('.katex'),'answer detail renders LaTeX');
       await openMistakeEdit();
+      const advice=document.getElementById('mistakeEditReviewModeAdvice');
+      check(advice?.disabled&&advice.getAttribute('aria-disabled')==='true','edit AI advice stays disabled before connection');
+      check(getComputedStyle(advice).backgroundColor!=='rgb(74, 108, 247)','edit AI advice is not highlighted before connection');
       check(document.getElementById('mistakeEditQuestionRecognitionMethod')?.querySelectorAll('option').length===2,'question recognition choices');
       check(document.getElementById('mistakeEditAnswerRecognitionMethod')?.querySelectorAll('option').length===2,'answer recognition choices');
       check(document.getElementById('mistakeCreateQuestionRecognitionMethod')?.querySelectorAll('option').length===2,'create question recognition choices');
