@@ -9,7 +9,7 @@ function reviewPickerCard(row,selected,busy,choiceAttribute,selectAction,preview
 }
 function renderReviewPickerTags(state,prefix,changeAction) {
   const f=state.filters[state.tab],tags=new Map();
-  state.rows.filter(row=>row.type===state.tab).forEach(row=>(row.nodes || []).forEach(tag=>tags.set(tag.id,tag.name)));
+  state.rows.filter(row=>row.type===state.tab||state.tab==='material'&&row.type==='note').forEach(row=>(row.nodes || []).forEach(tag=>tags.set(tag.id,tag.name)));
   const host=document.getElementById(prefix+'Tags'),toggle=document.getElementById(prefix+'TagsToggle');
   host.hidden=!f.tagsOpen;toggle.setAttribute('aria-expanded',String(f.tagsOpen));
   toggle.querySelector('span').textContent='知识点标签'+(f.tags.size ? ` (${f.tags.size})` : '');

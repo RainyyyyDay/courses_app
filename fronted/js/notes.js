@@ -9,6 +9,7 @@
 /* ========== 笔记 ========== */
 let noteListRequest = 0;
 async function loadNotes() {
+  if(currentView.type==='course'&&['materials','notes'].includes(currentView.tab))return loadMaterials();
   const courseId = currentCourseId;
   const request = ++noteListRequest;
   const box = document.getElementById('noteList');
@@ -70,6 +71,7 @@ async function doUploadNote(file, nodeIds, title, content = '') {
   if (content) fd.append('content', content);
   fd.append('source', '手动上传');
   fd.append('nodeIds', JSON.stringify(nodeIds));
+  fd.append('typeIds',JSON.stringify(selectedPickerResourceTypes()));
   const outline = document.getElementById('tagPickerOutline')?.value || '';
   if (outline.trim()) fd.append('outline', outline);
   if (pendingMindmapJson) fd.append('mindmapJson', pendingMindmapJson);

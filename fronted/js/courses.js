@@ -7,7 +7,6 @@
  */
 
 /* ========== 课程列表 ========== */
-let courseModalEditId=null;
 
 // 1. 负责向后端要数据
 async function loadCourses() {
@@ -109,46 +108,24 @@ async function editCourseName(id, el) {
 
 /* ========== 添加课程 ========== */
 function openCourseModal() {
-  courseModalEditId=null;
   document.getElementById('courseModal').classList.add('show');
-  document.getElementById('courseModalTitle').textContent='添加课程';
   document.getElementById('courseNameInput').value = '';
   document.getElementById('courseNameInput').focus();
 }
-function openCourseRename(){
-  const course=allcourses.find(item=>item.id===currentCourseId);
-  const name=currentCourseName||course?.name||'';
-  if(!name)return;
-  courseModalEditId=currentCourseId;
-  document.getElementById('courseModal').classList.add('show');
-  document.getElementById('courseModalTitle').textContent='编辑课程名';
-  const input=document.getElementById('courseNameInput');input.value=name;input.focus();input.select();
-}
 function closeCourseModal() {
   document.getElementById('courseModal').classList.remove('show');
-  courseModalEditId=null;
 }
 async function addCourse() {
   const name = document.getElementById('courseNameInput').value.trim();
   if (!name) { showToast('请输入课程名'); return; }
   try {
-    const editId=courseModalEditId;
-    const response=await requestApi(editId?`${API}/courses/${editId}`:`${API}/courses`, {
-      method: editId?'PUT':'POST',
+    await requestApi(`${API}/courses`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name })
     });
-    const saved=await response.json();
     closeCourseModal();
-    if(editId){
-      const course=allcourses.find(item=>item.id===editId);if(course)course.name=saved.name;
-      if(editId===currentCourseId){
-        currentCourseName=saved.name;
-        document.getElementById('detailTitle').textContent=saved.name;
-        localStorage.setItem('currentCourseName',saved.name);
-      }
-      showToast('课程名已修改');
-    }else showToast('添加成功');
+    showToast('添加成功');
     await loadCourses();
   } catch (err) { showToast(err.message || '添加失败'); }
 }

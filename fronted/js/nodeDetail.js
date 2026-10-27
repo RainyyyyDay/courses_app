@@ -99,7 +99,7 @@ function renderNodeDetail(node) {
   renderNodeResourceSection(
     'Material',
     '关联资料',
-    Array.isArray(node.materials) ? node.materials : [],
+    [...(node.materials||[]).map(row=>({...row,resourceKind:'material'})),...(node.notes||[]).map(row=>({...row,resourceKind:'note'}))],
     '暂无关联资料',
     'material'
   );
@@ -126,7 +126,7 @@ function renderNodeResourceSection(key, label, items, emptyText, resourceType) {
   box.innerHTML = items
     .map(
       r => `
-    <div class="item-row detail-link-row" onclick="openResourceDetail('${resourceType}', ${r.id})">
+    <div class="item-row detail-link-row" onclick="openResourceDetail('${r.resourceKind||resourceType}', ${r.id})">
       <div class="info">
         <div class="title">${escapeHtml(r.title)}</div>
         <div class="meta">${escapeHtml(r.created_at || '')}</div>

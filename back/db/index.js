@@ -26,6 +26,7 @@ module.exports = {
   db: connection.db,
 
   ...require('./courses'),
+  ...require('./resourceTypes'),
   ...require('./knowledge'),
   ...require('./materials'),
   ...require('./notes'),

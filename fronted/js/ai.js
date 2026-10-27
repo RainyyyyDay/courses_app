@@ -58,6 +58,11 @@ function mistakeAiError(code, status = 0) {
     OUTLINE_EMPTY: '模型返回的大纲为空，本次未填入。',
     OUTLINE_TOO_LONG: '模型返回的大纲超过 12000 字或 160 行，请分段生成。',
     AI_UNAVAILABLE: 'AI 服务未能完成请求，请根据上游 HTTP 状态或稍后重试；这不一定是 Key 错误。',
+    AI_VISION_UNSUPPORTED: '当前模型不支持图片输入，请切换为 deepseek-flash 或支持视觉的兼容模型；没有回退到本地 OCR。',
+    AI_OCR_IMAGE_TOO_LARGE: '页面图片过大，请裁剪或缩小后重试；未发送模型请求。',
+    AI_OCR_IMAGE_FORMAT: '页面图片格式无效，请使用图片或 PDF 重新识别。',
+    AI_OCR_INCOMPLETE: '模型回复缺少所选页面，未取得完整转录；原正文保留。请增加输出容量或缩小文档范围。',
+    LOCAL_SETTINGS_CHANGED: '本机 AI 配置已改变或清除，请重新打开页面或应用当前配置。',
     AI_UPSTREAM_ERROR: '服务商返回错误，具体状态见上游 HTTP 状态。',
     AI_OUTPUT_LIMIT: '模型输出达到 token 上限后被截断，尚未取得完整结果；不会自动重试。',
     AI_EMPTY_RESPONSE: '模型请求已返回，但没有最终回答内容。',
@@ -76,7 +81,8 @@ function mistakeAiError(code, status = 0) {
     AI_AUTH_FAILED: 'API Key 无效或已失效，请检查服务商控制台；不会回退 Mock。',
     AI_BALANCE_UNAVAILABLE: 'AI 服务账户余额不足或不可用，请检查服务商账户。',
     AI_UPSTREAM_RATE_LIMITED: 'AI 服务暂时限流，请稍后手动重试。',
-    LOCAL_AI_UNAVAILABLE: '本机 AI 服务尚未启动。请重新运行启动课程网站，或启动 127.0.0.1:3002 的 FastAPI 服务后重试。',
+    LOCAL_AI_UNAVAILABLE: '本机 AI 服务尚未启动。请重新运行启动课程网站，并查看启动提示或 local-ai.stderr.log 后重试。',
+    LOCAL_AI_INCOMPATIBLE: '本机 AI 服务版本不匹配，缺少当前网站需要的接口。请重新运行启动课程网站；若网站后端已运行，请先停止后端再启动。',
     AI_LOCAL_ONLY: '本机 AI 接口仅允许本机页面访问，请使用 http://127.0.0.1:3000/。',
     AI_TEMP_KEY_ORIGIN: '页面与 AI 接口地址不一致。localhost 与 127.0.0.1、不同端口均属于不同来源；请从同一网站入口使用。'
   };

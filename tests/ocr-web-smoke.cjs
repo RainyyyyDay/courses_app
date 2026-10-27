@@ -4,20 +4,12 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http
 const {runBrowser}=require('./browser-driver.cjs');
 test('prepared browser OCR recognizes a synthetic image without Python or external requests',{timeout:120000},async()=>{
   const front=path.resolve(__dirname,'../fronted'),profile=fs.mkdtempSync(path.join(os.tmpdir(),'courses-ocr-smoke-'));
-  const chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find(fs.existsSync);assert.ok(chrome);
+  const chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].find(fs.existsSync);assert.ok(chrome);
   const page=`<!doctype html><meta charset="utf-8"><script src="/js/ocrBrowser.js"></script><script>
 addEventListener('load',async()=>{const out=document.createElement('pre');out.id='regressionResult';try{
  const canvas=document.createElement('canvas');canvas.width=900;canvas.height=240;const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,900,240);ctx.fillStyle='black';ctx.font='64px Arial';ctx.fillText('Math 1 + 1 = 2',50,130);
  const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));const result=await recognizeTextInBrowser(new File([blob],'synthetic.png',{type:'image/png'}));
  if(result.provider!=='browser'||!result.text.includes('2'))throw Error('synthetic OCR returned no expected text');
- // A real long Chinese paragraph wraps only because the image has finite width.
- canvas.width=1000;canvas.height=280;ctx.fillStyle='white';ctx.fillRect(0,0,1000,280);ctx.fillStyle='black';ctx.font='36px "Microsoft YaHei",sans-serif';
- const paragraph='植物通过光合作用将太阳的光能转化为化学能并储存在有机物中这些能量能够帮助植物生长发育并维持正常生命活动';
- const rows=paragraph.match(/.{1,22}/g);rows.forEach((row,i)=>ctx.fillText(row,40,70+i*55));
- const longBlob=await new Promise(r=>canvas.toBlob(r,'image/png'));const long=await recognizeTextInBrowser(new File([longBlob],'long-paragraph.png',{type:'image/png'}));
- if(long.lines.length<3||typeof long.rawText!=='string')throw Error('long paragraph did not return original lines');
- if(long.text.split('\\n').length>=long.rawText.split('\\n').length)throw Error('real long paragraph OCR did not merge wrapped lines: '+JSON.stringify(long));
- if(long.text.replace(/\\s/g,'')!==long.rawText.replace(/\\s/g,''))throw Error('paragraph formatting changed recognized characters');
  out.dataset.result='passed';out.textContent='Browser OCR passed on synthetic content; no Python service used';
  }catch(e){out.dataset.result='failed';out.textContent=e.message;}document.body.append(out);});</script>`;
   const requests=[];

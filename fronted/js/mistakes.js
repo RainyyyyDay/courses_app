@@ -520,7 +520,7 @@ function closeMistakeAnswerOcr() {
   const text = document.getElementById('mistakeCreateAnswerOcrText');
   const meta = document.getElementById('mistakeCreateAnswerOcrMeta');
   if (panel) panel.style.display = 'none';
-  setOcrTextResult(text, null);
+  if (text) text.value = '';
   if (meta) meta.textContent = '';
 }
 
@@ -537,7 +537,7 @@ async function recognizeMistakeAnswerFile() {
     const text = document.getElementById('mistakeCreateAnswerOcrText');
     const panel = document.getElementById('mistakeCreateAnswerOcrPanel');
     const meta = document.getElementById('mistakeCreateAnswerOcrMeta');
-    setOcrTextResult(text, result);
+    if (text) text.value = result.text || '';
     if (panel) panel.style.display = 'grid';
     if (meta) {
       const parts = [];
@@ -615,11 +615,12 @@ function closeMistakeOcr() {
   const text = document.getElementById('mistakeCreateOcrText');
   const meta = document.getElementById('mistakeCreateOcrMeta');
   if (panel) panel.style.display = 'none';
-  setOcrTextResult(text, null);
+  if (text) text.value = '';
   if (meta) meta.textContent = '';
 }
 // 浏览器端优先；图片不可用时回退服务端，PDF 保留所选页码语义。
 async function recognizeUploadedFile(file, onProgress, options = {}) {
+  if (options.recognitionMethod === 'vision') return recognizeVisionText(file, onProgress, { interactive: true, ...options });
   if (typeof officeFileKind === 'function' && officeFileKind(file)) {
     return recognizeOfficeText(file, onProgress, { interactive: true, ...options });
   }
@@ -647,11 +648,12 @@ async function recognizeUploadedFile(file, onProgress, options = {}) {
     // 把回退原因留在校对面板的说明行里，别再被吞掉
     result.fallbackReason = reason;
     result.warnings = [...(result.warnings || []), intentional ? 'PDF 用服务端识别' : `浏览器端未使用：${reason}`];
-    return formatOcrParagraphs(result);
+    return result;
   }
 }
 
 function ocrProviderLabel(provider) {
+  if (provider === 'vision') return '共用大模型（公式 / LaTeX）';
   if (provider === 'browser') return '浏览器端';
   if (provider === 'office-browser') return '浏览器端文字提取';
   if (provider === 'paddle') return '服务端';
@@ -671,7 +673,7 @@ async function recognizeMistakeCreateFile() {
     const text = document.getElementById('mistakeCreateOcrText');
     const panel = document.getElementById('mistakeCreateOcrPanel');
     const meta = document.getElementById('mistakeCreateOcrMeta');
-    setOcrTextResult(text, result);
+    if (text) text.value = result.text || '';
     if (panel) panel.style.display = 'grid';
     if (meta) {
       const parts = [];
@@ -708,29 +710,6 @@ function extractMistakeOcrAnswer(text) {
   return picked.join('\n').trim();
 }
 
-// OCR may keep each option on its own line, or place the whole answer row on one
-// line. Parse explicit A/B/C markers from both layouts and ignore earlier stem text.
-function parseMistakeOcrChoiceOptions(text) {
-  const source = String(text || '').normalize('NFKC');
-  const marker = /(?:^|[\s,，;；])(?:\(([A-Za-z])\)|([A-Za-z])[.)、:：])\s*/g;
-  const matches = [];
-  let match;
-  while ((match = marker.exec(source)) !== null) {
-    matches.push({ label: (match[1] || match[2]).toUpperCase(), start: match.index, end: marker.lastIndex });
-  }
-  const values = [];
-  for (let index = 0; index < matches.length && values.length < 26; index += 1) {
-    const current = matches[index];
-    const expected = choiceLetters(values.length + 1).at(-1);
-    if (current.label !== expected) continue;
-    const next = matches[index + 1];
-    const value = source.slice(current.end, next ? next.start : source.length)
-      .replace(/^[\s,，;；]+/, '').replace(/[\s,，;；]+$/, '').trim();
-    if (value) values.push(value);
-  }
-  return values;
-}
-
 function applyMistakeOcr(target, mode = 'replace') {
   const text = (document.getElementById('mistakeCreateOcrText')?.value || '').trim();
   if (!text) { showToast('识别结果为空'); return; }
@@ -745,8 +724,14 @@ function applyMistakeOcr(target, mode = 'replace') {
   }
   if (target === 'options') {
     if (format !== 'choice') return;
-    const values = parseMistakeOcrChoiceOptions(text);
-    if (values.length < 2) { showToast('没有识别到 A)/B)/C) 或 A./B./C. 形式的选项，请手动校对'); return; }
+    const values = [];
+    for (const rawLine of text.split('\n')) {
+      // OCR 常输出全角字母、全角标点、（A）这类写法，先归一化再解析。
+      const line = rawLine.normalize('NFKC');
+      const match = line.match(/^\s*[（(]?\s*([A-Za-z])\s*(?:[）)]\s*|[.、,:：;；)）]\s*|\s+)(.+)$/);
+      if (match) values.push(match[2].trim());
+    }
+    if (values.length < 2) { showToast('没有识别到 A./B./C. 形式的选项行，请手动校对'); return; }
     renderMistakeChoiceOptionRows('Create', values, []);
     showToast('已填入选项，请核对编号和内容');
     return;

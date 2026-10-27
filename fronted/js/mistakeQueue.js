@@ -344,8 +344,7 @@ function showMistakeQueueComplete() {
 }
 
 // ===== 复习完成弹窗 =====
-// 过完全部所选题后弹出。普通复习保留重新开始和自由选题；考前计划只
-// 提供计划内重复/继续与作答预览，主操作使用蓝色。
+// 过完全部所选题后弹出：正确率 100% 飘彩带 + 恭喜；三个去向 —— 取消（回错题大页）/ 再来一遍 / 开始新复习。
 function mistakeConfettiHtml() {
   // 尊重系统「减少动态效果」偏好：关掉动画就什么都不放。
   if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) return '';
@@ -530,13 +529,6 @@ function reviewCompleteSummary(session) {
   if (counts.material) parts.push(`${counts.material} 份资料`);
   return parts.join('、');
 }
-function configureReviewCompleteActions(type) {
-  const plan = type === 'plan';
-  const replay = document.getElementById('reviewCompleteReplay');
-  const startNew = document.getElementById('reviewCompleteStartNew');
-  if (replay) replay.classList.toggle('btn-primary', plan);
-  if (startNew) startNew.hidden = plan;
-}
 async function openReviewCompleteModal(session, options={}) {
   const box = document.getElementById('mistakeCompleteModal');
   if (!box || !session) return;
@@ -553,7 +545,6 @@ async function openReviewCompleteModal(session, options={}) {
     : `本轮共 ${session.total} 项${summary ? `：${summary}` : ''}。通过 ${session.passed || 0} 项，未通过 ${session.failed || 0} 项，仅阅读曝光 ${session.exposed || 0} 项，跳过 ${session.skipped || 0} 项。`;
   const replay=document.getElementById('reviewCompleteReplay');
   if(replay)replay.textContent=reviewCompleteState.type==='plan'&&!perfect?'继续复习':'再来一遍';
-  configureReviewCompleteActions(reviewCompleteState.type);
   box.classList.add('show');
   document.body.classList.add('mistake-review-open');
   document.getElementById('mistakeCompleteTitle').focus();
@@ -570,7 +561,6 @@ async function openMistakeCompleteModal() {
   reviewCompleteState = { type: 'mistake', session, sessionId: session?.id || mistakeQueue?.sessionId || null };
   if(typeof configureReviewCompletePreview==='function')configureReviewCompletePreview(session);
   const replay=document.getElementById('reviewCompleteReplay');if(replay)replay.textContent='再来一遍';
-  configureReviewCompleteActions('mistake');
   const score = await mistakeQueueRoundScore();
   const perfect = !!score && score.correct === score.total;
   document.getElementById('mistakeCompleteTitle').textContent = perfect ? '恭喜你！你成功复习了所有所选题' : '本轮复习完成';

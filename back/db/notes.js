@@ -6,6 +6,7 @@
  */
 
 const { db, nowText, sortByCreatedAtDesc } = require('./connection');
+const {typesFor,listResourceTypes,setResourceTypes}=require('./resourceTypes');
 const { findKnowledgeNode, SUBTREE_CTE } = require('./knowledge');
 
 // ==================== 笔记 ====================
@@ -17,11 +18,11 @@ function listNotes(courseId) {
   const rows = db
     .prepare(`SELECT ${NOTE_COLUMNS} FROM notes WHERE course_id = ? ORDER BY id`)
     .all(courseId);
-  return attachNoteNodes(sortByCreatedAtDesc(rows), courseId);
+  return attachNoteNodes(sortByCreatedAtDesc(rows), courseId).map(row=>typesFor(row,'note'));
 }
 
 function findNote(id) {
-  return db.prepare(`SELECT ${NOTE_COLUMNS} FROM notes WHERE id = ?`).get(id);
+  return typesFor(db.prepare(`SELECT ${NOTE_COLUMNS} FROM notes WHERE id = ?`).get(id),'note');
 }
 
 function setNoteReviewStatus(id, courseId, status) {
@@ -56,7 +57,8 @@ function setNoteFile(id, courseId, fileUrl, fileType) {
 
 // 新建笔记；nodeIds 可选，不传就是原来那条“没有标签”的笔记
 // content 是“手动输入”的正文；上传文件录入时传空字符串
-function createNote(courseId, title, fileUrl, fileType, source, nodeIds, content, outline, mindmapJson, mindmapImage) {
+function createNote(courseId, title, fileUrl, fileType, source, nodeIds, content, outline, mindmapJson, mindmapImage, typeIds) {
+  const availableTypes=listResourceTypes(courseId);
   db.exec('BEGIN');
   try {
     const info = db
@@ -71,6 +73,8 @@ function createNote(courseId, title, fileUrl, fileType, source, nodeIds, content
     );
     for (const nodeId of nodeIds || []) insert.run(id, nodeId);
 
+    if(typeIds!==undefined) setResourceTypes(courseId,'note',id,typeIds);
+    else {const note=availableTypes.find(type=>type.name==='笔记');if(note)setResourceTypes(courseId,'note',id,[note.id]);}
     db.exec('COMMIT');
     return findNote(id);
   } catch (err) {
@@ -80,6 +84,7 @@ function createNote(courseId, title, fileUrl, fileType, source, nodeIds, content
 }
 
 function deleteNote(id) {
+  db.prepare("DELETE FROM resource_type_links WHERE kind='note' AND resource_id=?").run(id);
   db.prepare('DELETE FROM notes WHERE id = ?').run(id);
 }
 

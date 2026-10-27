@@ -13,7 +13,8 @@ function currentResourceRow(resourceType, resourceId) {
   const list =
     resourceType === 'material' ? currentMaterials :
     resourceType === 'note' ? currentNotes : currentMistakes;
-  return (list || []).find(x => x.id === resourceId) || null;
+  return (list || []).find(x => x.id === resourceId)
+    || (typeof resourceDetailRow !== 'undefined' && currentView?.resourceType === resourceType && resourceDetailRow?.id === resourceId ? resourceDetailRow : null);
 }
 
 // 取某条资源当前的标签 id
@@ -30,15 +31,28 @@ function cancelPickerResourceText() {
   if (request.button) { request.button.disabled = false; request.button.textContent = request.original; }
   recognizePickerResourceFile.request = null;
 }
+let tagPickerOpenRequest = 0;
 async function openTagPicker(mode, resourceType, resourceId) {
+  const opening = ++tagPickerOpenRequest, openingCourse = currentCourseId;
+  let originalRow = null;
+  if (mode === 'edit' && ['material', 'note'].includes(resourceType)) {
+    try {
+      const response = await requestApi(`${API}/${resourceType === 'note' ? 'notes' : 'materials'}/${resourceId}`);
+      originalRow = await response.json();
+      if (opening !== tagPickerOpenRequest || openingCourse !== currentCourseId) return;
+      if (originalRow.course_id !== openingCourse) throw new Error('内容不属于当前课程');
+      const rows = resourceType === 'note' ? currentNotes : currentMaterials;
+      const index = rows.findIndex(row => row.id === resourceId);
+      if (index < 0) rows.push(originalRow); else rows[index] = originalRow;
+    } catch (error) { showToast('无法打开编辑窗口：' + error.message); return; }
+  }
   cancelPickerResourceText();
-  const extractStatus=document.getElementById('tagPickerResourceExtractStatus');
-  if(extractStatus)extractStatus.textContent='';
   cancelPickerOutline();
+  closePickerResourceOcr();
   const mapStatus = document.getElementById('tagPickerMindmapStatus');
   if (mapStatus) mapStatus.textContent = '';
   const outlineStatus = document.getElementById('tagPickerOutlineStatus');
-  if (outlineStatus) outlineStatus.textContent = '使用共用 AI 设置，根据正文生成；可能计费，生成后可修改。';
+  if (outlineStatus) outlineStatus.textContent = '可根据正文生成，或先识别附件再生成；可能计费，核对后保存。';
   // 脚本加载顺序可能让这个函数晚到，缺失时跳过即可
   if (typeof cancelMistakeCreateAi === 'function') cancelMistakeCreateAi();
   if(typeof resetPendingCreationCloze==='function')resetPendingCreationCloze('tagPicker');
@@ -48,6 +62,7 @@ async function openTagPicker(mode, resourceType, resourceId) {
   }
   // 每次打开都新建一份独立状态，避免残留上一门课 / 上一条资源的选择与展开状态
   tagPickerState = {
+    originalRow,
     mode: mode,
     resourceType: resourceType,
     resourceId: resourceId,
@@ -62,6 +77,8 @@ async function openTagPicker(mode, resourceType, resourceId) {
     tree: []
   };
 
+  await mountResourceTypesPicker(tagPickerState);
+  if(opening!==tagPickerOpenRequest||currentCourseId!==openingCourse)return;
   // 编辑模式：用这条资源现有的标签回显（folder / knowledge 都要勾上）
   if (mode === 'edit') {
     currentResourceNodes(resourceType, resourceId)
@@ -69,21 +86,27 @@ async function openTagPicker(mode, resourceType, resourceId) {
   }
 
   const resourceLabel =
-    resourceType === 'material' ? '资料' : (resourceType === 'note' ? '笔记' : '错题');
+    ['material','note'].includes(resourceType) ? '资料' : '错题';
   const isMistakeCreate = resourceType === 'mistake' && mode !== 'edit';
   document.getElementById('tagPickerTitle').textContent = isMistakeCreate
     ? '添加错题'
-    : (mode === 'edit' ? '编辑' : '选择') + resourceLabel + '标签';
+    : (['material', 'note'].includes(resourceType) ? (mode === 'edit' ? '编辑' : '添加') + resourceLabel : (mode === 'edit' ? '编辑' : '选择') + resourceLabel + '标签');
   document.getElementById('tagPickerConfirm').textContent =
     (mode === 'edit' || mode === 'manual' || isMistakeCreate) ? '保存' : '上传';
   document.getElementById('tagPickerConfirm').disabled = false;
+  const recognitionHost = document.getElementById('tagPickerRecognitionOptions');
+  if (recognitionHost) recognitionHost.innerHTML = recognitionOptionsHtml('tagPickerRecognitionMethod', 'tagPickerResourceOcrBtn');
 
   const tagPickerBody = document.getElementById('tagPickerBody');
-  if (tagPickerBody) tagPickerBody.classList.toggle('mistake-create-body', isMistakeCreate);
+  document.getElementById('tagPickerModal').classList.toggle('resource-editor', ['material', 'note'].includes(resourceType));
+  if (tagPickerBody) {
+    tagPickerBody.classList.toggle('mistake-create-body', isMistakeCreate);
+    tagPickerBody.classList.toggle('resource-edit-body', ['material', 'note'].includes(resourceType));
+  }
   const tagBlock = document.getElementById('tagPickerTagBlock');
   if (tagBlock) tagBlock.classList.toggle('mistake-create-card', isMistakeCreate);
   const tagHeading = document.getElementById('tagPickerTagHeading');
-  if (tagHeading) tagHeading.style.display = isMistakeCreate ? 'flex' : 'none';
+  if (tagHeading) tagHeading.style.display = isMistakeCreate || ['material', 'note'].includes(resourceType) ? 'flex' : 'none';
   const nameHeading = document.getElementById('tagPickerNameHeading');
   if (nameHeading) nameHeading.style.display = isMistakeCreate ? 'flex' : 'none';
   const mistakeTypeField = document.getElementById('tagPickerMistakeTypeField');
@@ -153,13 +176,12 @@ async function openTagPicker(mode, resourceType, resourceId) {
     resourceFields.style.display = isResourceForm ? 'block' : 'none';
     if (isResourceForm) {
       const titleEl = document.getElementById('tagPickerResourceTitle');
-      if (titleEl) titleEl.textContent = resourceType === 'note' ? '笔记' : '资料';
+      if (titleEl) titleEl.textContent = '正文与附件';
       const contentEl = document.getElementById('tagPickerResourceContent');
       if (contentEl && mode === 'manual' && pendingManual) contentEl.value = pendingManual.content || '';
       if (mode === 'edit') {
         const row = currentResourceRow(resourceType, resourceId) || {};
         if (contentEl) contentEl.value = row.content || '';
-        tagPickerState.originalResourceContent=row.content||'';
         pendingUploadFile = null;
         pendingResourceRemoveFile = false;
         pickerExistingFile = row.file_url
@@ -176,6 +198,8 @@ async function openTagPicker(mode, resourceType, resourceId) {
     const outlineInput = document.getElementById('tagPickerOutline');
     if (outlineInput) outlineInput.value = row.outline || '';
     if (mode === 'edit') pendingMindmapJson = row.mindmap_json || '';
+    pendingMindmapImage = row.mindmap_image || '';
+    pendingMindmapSource = '';
     const titleInput = document.getElementById('tagPickerMindmapTitle');
     if (titleInput) {
       let mapTitle = '';
@@ -185,6 +209,9 @@ async function openTagPicker(mode, resourceType, resourceId) {
     // 上面先渲染过一次摘要，这里补一次，确保删除键和预览按已有导图显示
     renderPickerMindmapSummary();
   }
+  if (isResource && mode !== 'edit') pendingMindmapImage = '';
+  if (isResource) updatePickerResourceClear();
+  refreshVisionOcrOptions();
   const nameInput = document.getElementById('tagPickerName');
   const extChip = document.getElementById('tagPickerNameExt');
   const nameTip = document.getElementById('tagPickerNameTip');
@@ -250,6 +277,8 @@ async function openTagPicker(mode, resourceType, resourceId) {
   bindTagPickerKeys();
 
   document.getElementById('tagPickerModal').classList.add('show');
+  if(typeof courseRichText!=='undefined')courseRichText.reset();
+  const openedState = tagPickerState;
 
   try {
     // 只加载当前课程的知识树，保证看不到其它课程的知识点
@@ -258,7 +287,7 @@ async function openTagPicker(mode, resourceType, resourceId) {
     const tree = await res.json();
 
     // 请求期间用户可能已经切走了课程，这时放弃这次结果
-    if (!tagPickerState || tagPickerState.courseId !== currentCourseId) return;
+    if (tagPickerState !== openedState || tagPickerState.courseId !== currentCourseId) return;
 
     tagPickerState.tree = Array.isArray(tree) ? tree : [];
     // “未分类”不是标签，不出现在选择器里（它只负责收纳“一个标签都没勾”的资源）
@@ -267,6 +296,7 @@ async function openTagPicker(mode, resourceType, resourceId) {
     initTagPickerExpanded();
     renderTagPicker();
   } catch (err) {
+    if (tagPickerState !== openedState) return;
     console.error('加载标签失败:', err);
     document.getElementById('tagPickerTree').innerHTML =
       '<div class="empty">加载标签失败，请检查后端是否运行。</div>';
@@ -291,6 +321,8 @@ function initTagPickerExpanded() {
 
 // 关闭选择器（取消时不会提交任何东西）
 function closeTagPicker() {
+  if (tagPickerState?.saving) { showToast('正在保存，请稍候'); return; }
+  ++tagPickerOpenRequest;
   cancelPickerResourceText();
   cancelPickerOutline();
   cancelMistakeCreateAi();
@@ -315,6 +347,7 @@ function closeTagPicker() {
   const outlineInput = document.getElementById('tagPickerOutline');
   if (outlineInput) outlineInput.value = '';
   pendingMindmapJson = '';
+  pendingMindmapImage = '';
   pendingMindmapSource = '';
   const resourceContent = document.getElementById('tagPickerResourceContent');
   if (resourceContent) resourceContent.value = '';
@@ -369,6 +402,8 @@ function uploadPickerMindmap(input) {
 function renderPickerMindmapSummary() {
   const box = document.getElementById('tagPickerMindmapSummary');
   const clear = document.getElementById('tagPickerMindmapClear');
+  const regenerate = document.getElementById('tagPickerMindmapRegenerate');
+  if(regenerate)regenerate.hidden=!pendingMindmapJson&&!pendingMindmapImage;
   if (!box) return;
   if (!pendingMindmapJson && !pendingMindmapImage) {
     box.style.display = 'none';
@@ -398,12 +433,8 @@ function renderPickerMindmapPreview() {
   let map = null;
   try { map = JSON.parse(pendingMindmapJson); } catch { map = null; }
   if (!map) { host.style.display = 'none'; host.innerHTML = ''; return; }
-  const outline = mindmapToOutline(map);
-  host.style.display = 'block';
-  host.innerHTML = outline
-    ? renderOutlineSvg(outline, { boxWidth: 150, fontSize: 11, maxLines: 6, fit: true, fitHeight: 180 })
-    : '<div class="empty">这张导图没有可预览的文字节点</div>';
-  if (outline) bindOutlineNodeClick(host);
+  host.style.display='block';previewCourseMindmap(host,map);
+  const button=document.createElement('button');button.type='button';button.className='edit-mini-btn';button.textContent='编辑导图';button.onclick=()=>void generatePickerMindmap();host.append(button);
 }
 
 function importPickerMindmap(input) {
@@ -429,48 +460,13 @@ function importPickerMindmap(input) {
   input.value = '';
 }
 
-async function generatePickerMindmap(mode = 'basic') {
-  const outline = (document.getElementById('tagPickerOutline')?.value || '').trim();
-  if (!outline) { showToast('先在上面填写大纲，或者先自动生成大纲'); return; }
-  if (mode === 'ai' && !mindmapAiReady()) {
-    showToast('AI 润色需要先接入真实 API；现在可以使用基础生成');
-    return;
-  }
-  let title = (document.getElementById('tagPickerMindmapTitle')?.value || '').trim()
-    || (document.getElementById('tagPickerName')?.value || '').trim() || '思维导图';
-  const button = document.getElementById(mode === 'ai' ? 'tagPickerMindmapAi' : 'tagPickerMindmapBasic');
-  const original = button?.textContent || '';
-  if (button) button.textContent = mode === 'ai' ? 'AI 润色中…' : '切分中…';
-  setMindmapGenerationBusy(true);
-  const state = tagPickerState;
-  const status = document.getElementById('tagPickerMindmapStatus');
-  if (status) status.textContent = mode === 'ai' ? 'AI 正在润色并生成导图，请稍候…' : '正在生成导图…';
-  try {
-    const generated = await generateMindmapOutline(outline, title, mode);
-    if (tagPickerState !== state) return;
-    const outlineInput = document.getElementById('tagPickerOutline');
-    if (outlineInput && outlineInput.value.trim() !== outline) {
-      if (status) status.textContent = '大纲已修改，本次结果未填入，请按最新大纲重新生成。';
-      return;
-    }
-    title = (document.getElementById('tagPickerMindmapTitle')?.value || '').trim() || generated.title || title;
-    const map = outlineToMindmap(generated.outline, title);
-    const mapJson = JSON.stringify(map);
-    if (outlineInput) outlineInput.value = generated.outline;
-    pendingMindmapJson = mapJson;
-    pendingMindmapImage = '';
-    pendingMindmapSource = mode === 'ai' ? 'AI 润色' : '基础规则切分';
-    renderPickerMindmapSummary();
-    if (status) status.textContent = '导图草稿已生成，可预览和修改；确认保存后生效。';
-    showToast(`${mode === 'ai' ? 'AI 已润色' : '已按基础规则切分'}，共 ${countMindmapNodes(map)} 个节点，可继续修改`);
-  } catch (err) {
-    if (tagPickerState !== state) return;
-    if (status) status.textContent = '导图未生成：' + err.message;
-    showToast(err.message);
-  } finally {
-    if (button) button.textContent = original;
-    setMindmapGenerationBusy(false);
-  }
+async function generatePickerMindmap(regenerate=false) {
+ const state=tagPickerState,title=document.getElementById('tagPickerMindmapTitle')?.value.trim()||document.getElementById('tagPickerName')?.value.trim()||'思维导图';
+ const source={title,text:document.getElementById('tagPickerResourceContent')?.value||'',outline:document.getElementById('tagPickerOutline')?.value||'',file:pendingUploadFile||null,attachment:!pendingResourceRemoveFile?pickerExistingFile:null,generate:regenerate||!pendingMindmapJson};
+ showCourseMindmap(!regenerate&&pendingMindmapJson?JSON.parse(pendingMindmapJson):null,{title,source,replacing:regenerate,onSave:async value=>{
+  if(tagPickerState!==state)throw Error('资料编辑窗口已变化，导图仍保留在工作台草稿中');
+  pendingMindmapJson=JSON.stringify(value);pendingMindmapImage='';pendingMindmapSource='导图工作台';renderPickerMindmapSummary();showToast('导图已关联，保存资料后生效');
+ }});
 }
 
 // 中心主题可编辑：改了就把导图根节点的文字一起改掉
@@ -508,67 +504,51 @@ function renderPickerResourceSummary() {
     box.innerHTML = '';
     if (remove) remove.style.display = 'none';
     if (ocr) ocr.style.display = 'none';
-    const hint=document.getElementById('tagPickerResourceExtractHint');
-    if(hint)hint.textContent='支持 PDF、图片、Word 和 PPT；文字提取不调用大模型。';
     closePickerResourceOcr();
+    const upload = document.getElementById('tagPickerResourceUploadBtn');
+    if (upload) upload.textContent = '上传附件';
+    refreshPickerOutlineAvailability();
     return;
   }
   const file = pendingUploadFile || existing;
   box.style.display = 'flex';
   box.innerHTML = `<span class="mistake-create-file-icon">📎</span><div><strong>${escapeHtml(file.name || '附件')}</strong><small>${escapeHtml(file.type || '附件')} · ${pendingUploadFile ? '保存后上传' : '已保存'}</small></div>`;
   if (remove) remove.style.display = 'inline-flex';
-  const info={name:pendingUploadFile?.name||existing?.url||file.name,type:file.type};
-  const supported=!!officeFileKind(info)||ocrWebIsPdf(info)||/^image\//i.test(info.type||'')||/\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(info.name||'');
-  if (ocr) {
-    ocr.style.display='inline-flex';ocr.disabled=!supported||!!recognizePickerResourceFile.request;
-    ocr.title=supported?'读取附件文字，校对后可替换或追加正文':'此附件格式暂不支持文字提取，请手动填写正文';
-  }
-  const hint=document.getElementById('tagPickerResourceExtractHint');
-  if(hint)hint.textContent=!supported?'此附件格式暂不支持文字提取，可手动填写正文。':ocrWebIsPdf(info)?'PDF 优先提取原有文字，扫描页再进行 OCR；可选择全文或指定页。':officeFileKind(info)?'提取 Word / PPT 中的文字，旧版文件先转换；不调用大模型。':'识别图片中的文字，结果需人工校对；不调用大模型。';
+  if (ocr) ocr.style.display = 'inline-flex';
+  const upload = document.getElementById('tagPickerResourceUploadBtn');
+  if (upload) upload.textContent = '更换附件';
+  refreshPickerOutlineAvailability();
+}
+
+async function pickerResourceFile(signal) {
+  if (pendingUploadFile) return pendingUploadFile;
+  if (!pendingResourceRemoveFile && pickerExistingFile) return fetchResourceAttachmentFile(pickerExistingFile, signal);
+  throw new Error('请先上传附件');
 }
 
 async function recognizePickerResourceFile() {
-  const selected=pendingUploadFile,existing=!selected&&!pendingResourceRemoveFile?pickerExistingFile:null;
-  if (!selected&&!existing) { showToast('请先选择附件'); return; }
+  if (!pendingUploadFile && (pendingResourceRemoveFile || !pickerExistingFile)) { showToast('请先上传附件'); return; }
   const button = document.getElementById('tagPickerResourceOcrBtn');
   if (button?.disabled) return;
   const original = button ? button.textContent : '';
-  const state = tagPickerState;
-  if(!state||state.saving)return;
-  const status=document.getElementById('tagPickerResourceExtractStatus');
+  const selectedFile = pendingUploadFile, existingFile = pickerExistingFile, state = tagPickerState;
   const request = { controller: new AbortController(), button, original };
   recognizePickerResourceFile.request = request;
   const isCurrent = () => recognizePickerResourceFile.request === request && !request.controller.signal.aborted
-    && tagPickerState === state && currentCourseId===state.courseId && pendingUploadFile === selected
-    && (!existing||pickerExistingFile===existing&&!pendingResourceRemoveFile);
+    && tagPickerState === state && pendingUploadFile === selectedFile && pickerExistingFile === existingFile;
   if (button) { button.disabled = true; button.textContent = '识别中…'; }
+  refreshVisionOcrOptions();
   try {
-    if(status)status.textContent=selected?'正在提取附件文字…':'正在读取已保存的附件…';
-    let file=selected;
-    if(!file){
-      const url=attachmentUrl(existing.url);
-      if(!url)throw new Error('附件地址不可用，请重新打开资料或笔记。');
-      const response=await fetch(url,{signal:request.controller.signal});
-      if(!isCurrent())return;
-      if(!response.ok)throw new Error('附件读取失败，请确认原文件仍存在。原正文已保留。');
-      if(Number(response.headers.get('content-length'))>50*1024*1024)throw new Error('附件超过 50 MB，请拆分后再提取。');
-      const blob=await response.blob();
-      if(!isCurrent())return;
-      if(blob.size>50*1024*1024)throw new Error('附件超过 50 MB，请拆分后再提取。');
-      const ext=extname(existing.url),name=existing.name||'附件';
-      file=new File([blob],ext&&!name.toLowerCase().endsWith(ext.toLowerCase())?name+ext:name,{type:existing.type||blob.type});
-    }
+    const file = await pickerResourceFile(request.controller.signal);
+    if (!isCurrent()) return;
     const result = await recognizeUploadedFile(file, (message) => {
       if (isCurrent() && button) button.textContent = message;
-      if (isCurrent() && status) status.textContent = message;
-    }, { signal: request.controller.signal });
+    }, { signal: request.controller.signal, recognitionMethod: document.getElementById('tagPickerRecognitionMethod')?.value || 'local' });
     if (!isCurrent()) return;
-    if(result.provider==='mock')throw new Error('当前服务返回模拟结果，未采用；请检查文字识别服务。');
-    if(!String(result.text||'').trim())throw new Error('没有提取到文字，原正文和已有识别草稿已保留。');
     const text = document.getElementById('tagPickerResourceOcrText');
     const panel = document.getElementById('tagPickerResourceOcrPanel');
     const meta = document.getElementById('tagPickerResourceOcrMeta');
-    setOcrTextResult(text, result);
+    if (text) text.value = result.text || '';
     if (panel) panel.style.display = 'grid';
     if (meta) {
       const parts = [];
@@ -577,15 +557,20 @@ async function recognizePickerResourceFile() {
       if (result.warnings?.length) parts.push(result.warnings.join('；'));
       meta.textContent = parts.join(' · ');
     }
+    if (result.provider === 'mock') {
+      if (meta) meta.textContent = '⚠ 这是 mock 样例数据，不是真实识别。';
+      showToast('当前是 mock 样例数据，不是真实识别');
+      return;
+    }
     if (panel) panel.dataset.pendingAdoption = 'true';
-    if(status)status.textContent='文字已提取，请校对后点击“替换正文”或“追加正文”，再点击底部保存。';
     notifyTextRecognitionSuccess(result, panel);
   } catch (err) {
-    if (isCurrent()) {if(status)status.textContent=err.name==='AbortError'?'已取消提取，原正文已保留。':'提取失败：'+err.message;showToast(err.message);}
+    if (isCurrent()) showToast(err.message);
   } finally {
     if (recognizePickerResourceFile.request === request) {
       recognizePickerResourceFile.request = null;
       if (button) { button.disabled = false; button.textContent = original; }
+      refreshVisionOcrOptions();
     }
   }
 }
@@ -599,8 +584,6 @@ function applyPickerResourceOcr(mode) {
   const panel = document.getElementById('tagPickerResourceOcrPanel');
   if (panel) panel.dataset.pendingAdoption = 'false';
   updatePickerResourceClear();
-  const status=document.getElementById('tagPickerResourceExtractStatus');
-  if(status)status.textContent=(mode==='append'?'已追加到正文':'已替换正文')+'，点击底部保存后生效。';
   showToast(mode === 'append' ? '已追加到正文' : '已替换正文');
 }
 
@@ -609,29 +592,31 @@ function closePickerResourceOcr() {
   const text = document.getElementById('tagPickerResourceOcrText');
   const meta = document.getElementById('tagPickerResourceOcrMeta');
   if (panel) { panel.style.display = 'none'; panel.dataset.pendingAdoption = 'false'; }
-  setOcrTextResult(text, null);
+  if (text) text.value = '';
   if (meta) meta.textContent = '';
 }
 
 function choosePickerResourceFile(input) {
   cancelPickerResourceText();
-  closePickerResourceOcr();
-  const status=document.getElementById('tagPickerResourceExtractStatus');if(status)status.textContent='';
-  pendingUploadFile = input.files?.[0] || null;
+  const file = input.files?.[0];
+  if (!file) return;
+  cancelPickerOutline(); closePickerResourceOcr();
+  pendingUploadFile = file;
+  pendingResourceRemoveFile = false;
   renderPickerResourceSummary();
   const nameInput = document.getElementById('tagPickerName');
-  if (pendingUploadFile && nameInput && !nameInput.value.trim()) {
+  if (pendingUploadFile && nameInput) {
     const parts = splitNameExt(pendingUploadFile.name || '');
-    nameInput.value = parts.base;
+    if (!nameInput.value.trim()) nameInput.value = parts.base;
     const chip = document.getElementById('tagPickerNameExt');
     if (chip) { chip.textContent = parts.ext || ''; chip.style.display = parts.ext ? 'inline-block' : 'none'; }
+    document.getElementById('tagPickerNameTip').style.display = parts.ext ? 'block' : 'none';
   }
 }
 
 function clearPickerResourceFile() {
   cancelPickerResourceText();
-  closePickerResourceOcr();
-  const status=document.getElementById('tagPickerResourceExtractStatus');if(status)status.textContent='';
+  cancelPickerOutline(); closePickerResourceOcr();
   if (!pendingUploadFile && pickerExistingFile) {
     // 编辑既有资料：标记为"保存后删除原附件"
     pendingResourceRemoveFile = true;
@@ -643,6 +628,7 @@ function clearPickerResourceFile() {
 }
 
 function updatePickerResourceClear() {
+  if(typeof courseRichText!=='undefined')courseRichText.refresh('tagPickerResourceContent');
   const button = document.getElementById('tagPickerResourceClear');
   const content = document.getElementById('tagPickerResourceContent');
   if (button) button.style.display = content?.value.trim() ? 'inline-flex' : 'none';
@@ -661,43 +647,61 @@ function refreshPickerOutlineAvailability() {
   if (!button) return;
   const ready = typeof mindmapAiReady === 'function' && mindmapAiReady();
   button.disabled = !!pickerOutlineRequest || !ready;
-  button.textContent = pickerOutlineRequest ? '正在生成大纲…' : 'AI 一键生成大纲';
+  button.textContent = pickerOutlineRequest ? '正在生成大纲…' : 'AI 根据正文生成';
   button.setAttribute('aria-busy', String(!!pickerOutlineRequest));
   button.title = ready ? '使用当前正文生成大纲，可能计费' : '请先在 AI 设置中配置服务、Key 并同意费用';
+  const fromFile = document.getElementById('tagPickerOutlineFileGen');
+  if (fromFile) {
+    const hasFile = !!pendingUploadFile || (!pendingResourceRemoveFile && !!pickerExistingFile);
+    fromFile.disabled = !!pickerOutlineRequest || !ready || !hasFile;
+    fromFile.title = !ready ? '请先配置 AI 服务和 Key' : !hasFile ? '请先上传附件' : '先在本机提取附件文字，再交给 AI 生成大纲；不会替换正文';
+  }
 }
 function cancelPickerOutline() {
   if (pickerOutlineRequest) pickerOutlineRequest.controller.abort();
   pickerOutlineRequest = null;
   refreshPickerOutlineAvailability();
 }
-async function generatePickerOutline() {
+async function generatePickerOutline(source = 'body') {
   if (pickerOutlineRequest || !tagPickerState) return;
   const status = document.getElementById('tagPickerOutlineStatus');
   const report = message => { if (status) status.textContent = message; };
   if (!mindmapAiReady()) { report('请先在 AI 设置中配置服务和 Key，并同意发送正文及可能产生的费用。'); return; }
   const contentInput = document.getElementById('tagPickerResourceContent');
   const input = document.getElementById('tagPickerOutline');
-  const content = (contentInput?.value || '').trim();
-  if (!content) { report('请先填写正文；如已识别附件，请先点击“替换正文”或“追加正文”。'); return; }
-  if (content.length > 20000) { report('正文超过 20000 字，请分段整理后生成大纲；本次未发送请求。'); return; }
+  const bodySnapshot = contentInput?.value || '';
+  let content = bodySnapshot.trim();
+  if (source !== 'attachment' && !content) { report('正文为空。请先填写正文，或选择“AI 从附件生成”。'); return; }
   const previous = input.value;
   if (previous.trim() && !confirm('生成成功后将替换当前大纲，是否继续？')) return;
   const state = tagPickerState;
+  const selectedFile = pendingUploadFile, existingFile = pickerExistingFile;
   const request = { controller: new AbortController() };
   pickerOutlineRequest = request;
   refreshPickerOutlineAvailability();
-  report('AI 正在生成大纲，请稍候…');
+  report(source === 'attachment' ? '正在本机读取附件，识别后交给 AI 生成大纲…' : 'AI 正在根据正文生成大纲，请稍候…');
   try {
+    if (source === 'attachment') {
+      const file = await pickerResourceFile(request.controller.signal);
+      const result = await recognizeUploadedFile(file, message => report(message), { signal: request.controller.signal, recognitionMethod: document.getElementById('tagPickerRecognitionMethod')?.value || 'local', reservedCalls: 1 });
+      if (result.provider === 'mock') throw new Error('附件返回模拟识别结果，未发送给 AI');
+      if (result.partial) throw new Error('附件仅完成部分识别，请先使用“从附件识别文字”校对并补齐正文，再根据正文生成大纲');
+      content = String(result.text || '').trim();
+      if (!content) throw new Error('附件没有识别到文字');
+    }
+    if (pickerOutlineRequest !== request || tagPickerState !== state || request.controller.signal.aborted) return;
+    if (content.length > 500000) throw new Error('正文超过当前接口可接收的 50 万字符，请缩小范围；原内容保留');
+    report('AI 正在根据' + (source === 'attachment' ? '附件识别文字' : '正文') + '生成大纲，请稍候…');
     const title = (document.getElementById('tagPickerName')?.value || '').trim().slice(0, 200);
     const result = await requestAiMindmapOutline(content, title, { signal: request.controller.signal, purpose: 'outline_draft' });
     if (pickerOutlineRequest !== request || tagPickerState !== state || currentCourseId !== state.courseId) return;
-    if (input.value !== previous || (contentInput.value || '').trim() !== content) {
+    if (input.value !== previous || contentInput.value !== bodySnapshot || pendingUploadFile !== selectedFile || pickerExistingFile !== existingFile) {
       report('正文或大纲已修改，本次结果未填入，以保留你的修改。请重新生成。');
       return;
     }
     input.value = result.outline;
     input.dispatchEvent(new Event('input', { bubbles: true }));
-    report('大纲已生成，可继续编辑；点击上传或保存后生效，请先核对内容。');
+    report('大纲已根据' + (source === 'attachment' ? '附件' : '正文') + '生成，正文未改动；可继续编辑，保存后生效。');
     showToast('AI 大纲已生成，尚未保存', 4000, 'success');
   } catch (error) {
     if (pickerOutlineRequest === request && tagPickerState === state) report('大纲未生成：' + error.message.replace(/[。；;\s]+$/, '') + '。原大纲已保留。');
@@ -711,7 +715,7 @@ async function generatePickerOutline() {
 
 function clearPickerOutline() {
   const input = document.getElementById('tagPickerOutline');
-  if (input) input.value = '';
+  if (input) { input.value = ''; input.dispatchEvent(new Event('input',{bubbles:true})); }
   showToast('大纲已清空，保存后生效');
 }
 
@@ -731,6 +735,8 @@ function bindTagPickerKeys() {
   tagPickerKeysBound = true;
   document.addEventListener('keydown', event => {
     if (!tagPickerState || event.key !== 'Escape') return;
+    // Let the top native dialog (AI settings, page selection, confirmation) handle Escape.
+    if (document.querySelector('dialog[open]')) return;
     const modal = document.getElementById('tagPickerModal');
     if (!modal || !modal.classList.contains('show')) return;
     event.preventDefault();
@@ -749,9 +755,6 @@ function onTagSearchInput(value) {
 async function confirmTagPicker() {
   const state = tagPickerState;
   if (!state || state.saving) return;
-  if(['material','note'].includes(state.resourceType)&&recognizePickerResourceFile.request){
-    showToast('附件文字正在提取，请等待完成并校对结果后再保存；也可关闭弹窗取消本次提取。');return;
-  }
   const resultPanel = document.getElementById('tagPickerResourceOcrPanel');
   if (['material', 'note'].includes(state.resourceType)
       && resultPanel?.dataset.pendingAdoption === 'true'
@@ -770,10 +773,13 @@ async function confirmTagPicker() {
   const resourceId = state.resourceId;
   const file = pendingUploadFile;
   const manual = pendingManual;
-  if(mode==='edit'&&['material','note'].includes(resourceType)
-      &&!document.getElementById('tagPickerResourceContent')?.value.trim()
-      &&!file&&(!pickerExistingFile||pendingResourceRemoveFile)){
-    showToast('请保留附件或填写正文，两者至少保留一个');return;
+  if (['material', 'note'].includes(resourceType)) {
+    if(!state.typesReady){showToast('资料类型尚未读取成功，请重试后保存');return;}
+    const content = document.getElementById('tagPickerResourceContent').value.trim();
+    if (!content && !file && (pendingResourceRemoveFile || !pickerExistingFile)) {
+      showToast('正文和附件至少保留一项'); return;
+    }
+    if (recognizePickerResourceFile.request || pickerOutlineRequest) { showToast('请等待识别或大纲生成完成后保存'); return; }
   }
   // 名字 = 用户填的部分 + 固定的后缀（后缀不是输入框，改不到）
   const nameBase = (document.getElementById('tagPickerName').value || '').trim();
@@ -827,18 +833,30 @@ async function confirmTagPicker() {
       }
       saved = await doCreateManual(nodeIds);
     } else {
+      if (['material', 'note'].includes(resourceType)) {
+        const original = state.originalRow;
+        const content = document.getElementById('tagPickerResourceContent').value.trim();
+        if (!content && pendingUploadFile && !original.file_url) {
+          const form = new FormData(); form.append('file', pendingUploadFile);
+          const response = await requestApi(`${API}/courses/${state.courseId}/${resourceType === 'note' ? 'notes' : 'materials'}/${resourceId}/file`, {method:'PUT',body:form});
+          const attached = await response.json();
+          original.file_url = attached.file_url; original.file_type = attached.file_type;
+          pickerExistingFile = {name: attached.title, type: attached.file_type, url: attached.file_url};
+          pendingUploadFile = null; pendingResourceRemoveFile = false;
+        }
+        if (content !== (original.content || '')) {
+          const response = await requestApi(`${API}/courses/${state.courseId}/${resourceType === 'note' ? 'notes' : 'materials'}/${resourceId}/content`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: content, mode: 'replace', expectedContent: original.content || '' })
+          });
+          original.content = (await response.json()).content;
+        }
+      }
       saved = await saveResourceTags(resourceType, resourceId, nodeIds, title);
+      if(saved&&['material','note'].includes(resourceType))await assignResourceTypes([{kind:resourceType,id:resourceId}],selectedPickerResourceTypes(),state.courseId);
       // 资料/笔记：顺便保存大纲与导图
       if (saved && (resourceType === 'material' || resourceType === 'note')) {
         const pathName = resourceType === 'note' ? 'notes' : 'materials';
-        const contentValue=(document.getElementById('tagPickerResourceContent')?.value||'').trim();
-        if(contentValue!==state.originalResourceContent){
-          await requestApi(`${API}/courses/${state.courseId}/${pathName}/${resourceId}/content`,{
-            method:'PUT',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({text:contentValue,mode:'replace',expectedContent:state.originalResourceContent})
-          });
-          state.originalResourceContent=contentValue;
-        }
         // 附件：先换新的，或删除原有
         if (pendingUploadFile) {
           const form = new FormData();
@@ -853,18 +871,20 @@ async function confirmTagPicker() {
           pendingResourceRemoveFile = false;
         }
         const outlineValue = (document.getElementById('tagPickerOutline')?.value || '').trim();
-        const row = currentResourceRow(resourceType, resourceId) || {};
+        const row = state.originalRow || {};
         const payload = {};
         if (outlineValue !== (row.outline || '')) payload.outline = outlineValue;
         if (pendingMindmapJson !== (row.mindmap_json || '')) payload.mindmapJson = pendingMindmapJson;
-        if (pendingMindmapImage) payload.mindmapImage = pendingMindmapImage;
+        if (pendingMindmapImage !== (row.mindmap_image || '')) payload.mindmapImage = pendingMindmapImage;
         if (Object.keys(payload).length) {
+          if (Object.hasOwn(payload, 'outline')) payload.expectedOutline = row.outline || '';
           const path = resourceType === 'note' ? 'notes' : 'materials';
-          await requestApi(`${API}/courses/${currentCourseId}/${path}/${resourceId}/mindmap`, {
+          const mapResponse = await requestApi(`${API}/courses/${currentCourseId}/${path}/${resourceId}/mindmap`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
           });
+          Object.assign(row, await mapResponse.json());
         }
         // Refresh only after the outline and map writes have completed.
         if (resourceType === 'note') await loadNotes();
@@ -892,13 +912,13 @@ async function confirmTagPicker() {
         if(!clozeResult.ok)showToast(`内容已保存，但挖空设置未保存：${clozeResult.error}。可从编辑页重新设置。`);
         else if(!clozeResult.skipped)showToast('挖空设置已保存。');
       }
+      state.saving = false;
       closeTagPicker();
+      if (currentView.type === 'resource' && currentView.resourceType === resourceType && currentView.id === savedId) {
+        await renderResourceDetailPage(resourceType, savedId);
+      }
     }
   } catch (err) {
-    if(tagPickerState===state&&['material','note'].includes(resourceType)){
-      const status=document.getElementById('tagPickerResourceExtractStatus');
-      if(status)status.textContent='保存未完成，当前输入已保留：'+(err.message||'请稍后重试');
-    }
     showToast(err.message || '保存失败，请重试');
   } finally {
     state.saving = false;

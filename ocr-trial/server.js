@@ -42,12 +42,6 @@ http.createServer((req, res) => {
   }
   if (urlPath === '/') urlPath = '/trial.html';
 
-  // Reuse the production paragraph formatter and proofreading controls.
-  if (['/shared/ocrBrowser.js', '/shared/utils.js'].includes(urlPath)) {
-    const shared = path.join(ROOT, '..', 'fronted', 'js', path.basename(urlPath));
-    return fs.readFile(shared, (err, data) => err ? send(res, 404, 'not found') : send(res, 200, data, MIME['.js']));
-  }
-
   let base = ROOT;
   if (urlPath.startsWith('/vendor/ort/')) {
     base = ORT_DIR;

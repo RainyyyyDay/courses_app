@@ -75,9 +75,9 @@ test('shared AI website settings work across entries, automatic drafts protect e
    el('coursesAiOpen').click();el('coursesAiTest').click();while(el('coursesAiTest').disabled)await new Promise(r=>setTimeout(r,10));
    check(el('coursesAiMessage').textContent.includes('成功'),'connection uses shared settings');el('coursesAiClose').click();
    await openCourse(${ids.courseId},'共享设置测试','mistakes');check(el('coursesAiOpen').getBoundingClientRect().width>0,'entry on course page');
-   await openMistakeDetail(${row.id},false);toggleMistakeAi();check(mistakeAiElement('Source').textContent.includes('DeepSeek'),'detail displays shared source');
+   await openMistakeDetail(${row.id},false);toggleMistakeAi();check(mistakeAiElement('Provider').value==='shared','detail defaults shared');
    mistakeAiElement('StudentAnswer').value='1';await requestMistakeAi();check(mistakeAiState.result?.analysis&&coursesAiSettings.status().hasKey,'detail uses shared retained Key');resetMistakeAi();
-   await openMistakeEdit();toggleMistakeAnswerAi('Edit');check(answerAiNode('Edit','Source').textContent.includes('DeepSeek'),'answer editor displays shared source');
+   await openMistakeEdit();toggleMistakeAnswerAi('Edit');check(answerAiNode('Edit','Provider').value==='shared','answer editor uses shared');
    await generateMistakeAnswerAi('Edit');check(answerAiNode('Edit','Answer').value==='2'&&el('mistakeEditAnswer').value==='2','answer draft generated, not adopted');closeMistakeEdit();
    const count=aiCalls.length;configure(true);await openMistakeCreate();el('tagPickerName').value='自动草稿${index}';el('mistakeCreateContent').value='1+1=?';el('mistakeCreateAnswer').value='2';el('mistakeCreateType').value='thinking';
    el('mistakeCreateAiStudentAnswer').value='1';mistakeCreateAiElement('Method').value='standard';changeMistakeCreateAiMethod();

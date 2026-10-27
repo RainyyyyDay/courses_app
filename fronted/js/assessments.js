@@ -52,7 +52,7 @@ function openAssessmentModal(row=null) {
   const existing=document.getElementById('assessExistingAttachment');
   existing.hidden=!row?.file_url;existing.innerHTML=row?.file_url?attachmentActionsHtml(row.file_url,row.file_type,row.title||'考核附件'):'';
   const removeButton=document.getElementById('assessFileRemove');removeButton.hidden=!row?.file_url;removeButton.disabled=false;removeButton.textContent='删除现有附件';
-  setOcrTextResult(document.getElementById('assessOcrText'),null);
+  document.getElementById('assessOcrText').value='';
   document.getElementById('assessOcrStatus').textContent='';
   document.getElementById('assessChartTransferStatus').textContent='';
   document.getElementById('assessOcrScan').disabled=!(row?.file_url);
@@ -74,7 +74,7 @@ function assessmentFileChanged(){
 
 function clearAssessmentOcrResult(){
   const text=document.getElementById('assessOcrText'),status=document.getElementById('assessOcrStatus');
-  setOcrTextResult(text,null);if(status)status.textContent='';
+  if(text)text.value='';if(status)status.textContent='';
 }
 
 function removeAssessmentFile(){
@@ -134,17 +134,15 @@ async function scanAssessmentAttachment(){
   try{
     const info=await assessmentAttachmentBlob();
     const file=info.file;
-    let text='',warnings=[],ocrResult=null;
+    let text='',warnings=[];
     if(/^text\//i.test(info.type||file.type||'')||/\.(txt|md|csv)$/i.test(file.name||''))text=await file.text();
     else{
       const result=await recognizeUploadedFile(file,message=>{status.textContent=message;},{signal:assessmentOcrController.signal});
-      ocrResult=result;
       if(result.provider==='mock')throw new Error('当前 OCR 返回模拟结果，未填入；请检查识别服务。');
       text=result.text||'';warnings=result.warnings||[];
     }
     if(!text.trim())throw new Error('没有识别到文字。');
-    if(assessmentEdit!==state)return;
-    setOcrTextResult(document.getElementById('assessOcrText'),ocrResult||{text});
+    document.getElementById('assessOcrText').value=text;
     status.textContent=warnings.join('；')||'识别完成，请校对后使用。';
   }catch(err){if(err.name!=='AbortError')status.textContent=err.message;}
   finally{if(assessmentEdit===state){button.disabled=!(document.getElementById('assessFile').files?.length||state.existingFileUrl&&!state.removeFile);button.textContent=original;}}

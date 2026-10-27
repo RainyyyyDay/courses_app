@@ -66,9 +66,7 @@ async function runBrowser() {
     const started = performance.now();
     const [result] = await ocr.predict(state.file);
     const total = ((performance.now() - started) / 1000).toFixed(2);
-    const formatted = formatOcrParagraphs({ text: result.items.map(item => item.text).join('\n'),
-      lines: result.items.map(item => ({ text: item.text, box: item.poly })), provider: 'browser' });
-    setOcrTextResult($('browserText'), formatted);
+    $('browserText').value = result.items.map((item) => item.text).join('\n');
     const providers = result.runtime?.providers?.join(', ') || backend;
     $('browserMeta').textContent = `总耗时 ${total}s · 检测 ${result.metrics.detMs.toFixed(0)}ms · 识别 ${result.metrics.recMs.toFixed(0)}ms · ${result.items.length} 行 · ${providers}`;
     setStatus('完成');
@@ -95,7 +93,7 @@ async function runServer() {
       $('serverMeta').textContent = `失败 · ${total}s`;
       return;
     }
-    setOcrTextResult($('serverText'), formatOcrParagraphs(data));
+    $('serverText').value = data.text;
     $('serverMeta').textContent = `总耗时 ${total}s · 置信度 ${Math.round((data.confidence || 0) * 100)}% · ${(data.lines || []).length} 行`;
     setStatus('完成');
     updateCer();

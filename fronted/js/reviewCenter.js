@@ -1,5 +1,5 @@
 // 课程复习中心：历史、复习选择与薄调度层。内容呈现和判断复用原控制器。
-const REVIEW_SOURCE_LABELS={plan:'考前计划复习',total:'复习',material:'资料复习',note:'笔记复习',mistake:'错题复习'};
+const REVIEW_SOURCE_LABELS={plan:'考前计划复习',total:'复习',material:'资料复习',note:'资料复习',mistake:'错题复习'};
 let reviewHistoryState=null;
 let reviewSessionDetail=null;
 let totalReviewState=null;
@@ -87,12 +87,12 @@ function reviewProgressHtml(row) {
 function reviewRecordCard(row) {return addReviewRenameAction(reviewRecordCardContent(row),row);}
 function addReviewRenameAction(html,row){return html.replace(/<\/div><\/article>$/,`<button type="button" data-review-rename="${row.id}" onclick="openReviewRename(${row.id})">重命名</button></div></article>`);}
 function reviewRecordCardContent(row) {
-  return `<article class="detail-card review-record" data-review-session="${row.id}"><h3>${escapeHtml(row.name)} <span class="material-review-badge">${reviewSessionBadge(row)}</span></h3><p>${REVIEW_SOURCE_LABELS[row.source_type]} · ${row.types.length ? row.types.map(type=>PLAN_TYPE_LABELS[type]).join(' + ') : '无可复习内容'}</p><p class="detail-meta">开始：${escapeHtml(reviewTime(row.started_at))}<br>最近活动：${escapeHtml(reviewTime(row.updated_at))}</p><p>${reviewSessionCountText(row)}</p>${reviewProgressHtml(row)}<div class="mistake-toolbar">${row.status==='completed' ? `<button onclick="repeatReviewRecord(${row.id})">再次复习</button>` : `<button onclick="resumeReviewRecord(${row.id})">继续复习</button>`}<button onclick="openReviewSessionDetail(${row.id})">查看详情</button></div></article>`;
+  return `<article class="detail-card review-record" data-review-session="${row.id}"><h3>${escapeHtml(row.name)} <span class="material-review-badge">${reviewSessionBadge(row)}</span></h3><p>${REVIEW_SOURCE_LABELS[row.source_type]} · ${row.types.length ? [...new Set(row.types.map(type=>PLAN_TYPE_LABELS[type]))].join(' + ') : '无可复习内容'}</p><p class="detail-meta">开始：${escapeHtml(reviewTime(row.started_at))}<br>最近活动：${escapeHtml(reviewTime(row.updated_at))}</p><p>${reviewSessionCountText(row)}</p>${reviewProgressHtml(row)}<div class="mistake-toolbar">${row.status==='completed' ? `<button onclick="repeatReviewRecord(${row.id})">再次复习</button>` : `<button onclick="resumeReviewRecord(${row.id})">继续复习</button>`}<button onclick="openReviewSessionDetail(${row.id})">查看详情</button></div></article>`;
 }
 // 首页使用紧凑列表，历史页和记录详情继续保留原有卡片。
 function reviewRecentRecord(row) {return addReviewRenameAction(reviewRecentRecordContent(row),row);}
 function reviewRecentRecordContent(row) {
-  return `<article class="review-recent-record" data-review-session="${row.id}"><div class="review-recent-main"><div class="review-recent-title"><h3>${escapeHtml(row.name)}</h3><span class="review-recent-state">${reviewSessionBadge(row)}</span></div><div class="review-recent-meta"><span>${REVIEW_SOURCE_LABELS[row.source_type]} · ${row.types.length ? row.types.map(type=>PLAN_TYPE_LABELS[type]).join(' + ') : '无可复习内容'}</span><span>最近活动：${escapeHtml(reviewTime(row.updated_at || row.started_at))}</span></div><div class="review-recent-progress">${reviewProgressHtml(row)}<span>${reviewSessionCountText(row)}</span></div></div><div class="review-recent-actions">${row.status==='completed' ? `<button type="button" onclick="repeatReviewRecord(${row.id})">再次复习</button>` : `<button type="button" onclick="resumeReviewRecord(${row.id})">继续复习</button>`}<button type="button" onclick="openReviewSessionDetail(${row.id})">查看详情</button></div></article>`;
+  return `<article class="review-recent-record" data-review-session="${row.id}"><div class="review-recent-main"><div class="review-recent-title"><h3>${escapeHtml(row.name)}</h3><span class="review-recent-state">${reviewSessionBadge(row)}</span></div><div class="review-recent-meta"><span>${REVIEW_SOURCE_LABELS[row.source_type]} · ${row.types.length ? [...new Set(row.types.map(type=>PLAN_TYPE_LABELS[type]))].join(' + ') : '无可复习内容'}</span><span>最近活动：${escapeHtml(reviewTime(row.updated_at || row.started_at))}</span></div><div class="review-recent-progress">${reviewProgressHtml(row)}<span>${reviewSessionCountText(row)}</span></div></div><div class="review-recent-actions">${row.status==='completed' ? `<button type="button" onclick="repeatReviewRecord(${row.id})">再次复习</button>` : `<button type="button" onclick="resumeReviewRecord(${row.id})">继续复习</button>`}<button type="button" onclick="openReviewSessionDetail(${row.id})">查看详情</button></div></article>`;
 }
 async function loadRecentReviews() {
   const courseId=currentCourseId,box=document.getElementById('reviewRecentList');if(!box)return;
@@ -286,7 +286,7 @@ async function openTotalReview() {
   if(totalReviewState?.busy)return;
   const filters=createReviewPickerFilters();
   // Match only the current large tab, never inherit its search/category/item selection.
-  const tab=currentView.type==='course'?({materials:'material',notes:'note',mistakes:'mistake'}[currentView.tab]||'material'):'material';
+  const tab=currentView.type==='course'&&currentView.tab==='mistakes'?'mistake':'material';
   totalReviewState={courseId:currentCourseId,rows:[],ids:new Set(),tab,filters,loading:true,busy:false,preview:null,returnFocus:document.activeElement,requestId:reviewRequestId()};
   restoreTotalReviewFilters();document.getElementById('totalReviewError').textContent='';
   document.getElementById('totalReviewSelector').hidden=false;document.getElementById('totalReviewPreview').hidden=true;
@@ -323,6 +323,7 @@ function rememberTotalReviewScroll() {
   const s=totalReviewState;if(s && !s.preview)s.filters[s.tab].scroll=document.getElementById('totalReviewCandidates').scrollTop;
 }
 function switchTotalReviewTab(type) {
+  if(type==='note')type='material';
   const s=totalReviewState;if(!s || s.busy || s.preview || !Object.hasOwn(s.filters,type) || s.tab===type)return;
   saveTotalReviewFilters();rememberTotalReviewScroll();s.tab=type;restoreTotalReviewFilters();renderTotalReview();
 }
@@ -336,14 +337,14 @@ function renderTotalReviewTags() {
 function filteredTotalReview() {
   const s=totalReviewState;if(!s)return [];
   saveTotalReviewFilters();const f=s.filters[s.tab],{favorite,status,category}=f,q=f.q.trim().toLowerCase();
-  return s.rows.filter(row=>row.type===s.tab && (!q || `${row.title}\n${row.content}\n${row.ocr_text || ''}`.toLowerCase().includes(q))
+  return s.rows.filter(row=>(row.type===s.tab||s.tab==='material'&&row.type==='note') && (!q || `${row.title}\n${row.content}\n${row.ocr_text || ''}`.toLowerCase().includes(q))
     && (!favorite || !!row.favorite) && (!status || row.review_status===status) && (!category || row.type!=='mistake' || row.mistake_type===category)
     && (!f.tags.size || row.nodes.some(tag=>f.tags.has(tag.id))));
 }
 function renderTotalReview() {
   const s=totalReviewState;if(!s)return;
   const rows=filteredTotalReview();
-  document.querySelectorAll('#totalReviewModules [role=tab]').forEach(button=>{const selected=button.id==='totalReviewTab-'+s.tab;button.setAttribute('aria-selected',String(selected));button.tabIndex=selected ? 0 : -1;button.disabled=s.busy;});
+  document.querySelectorAll('#totalReviewModules [role=tab]:not([hidden])').forEach(button=>{const selected=button.id==='totalReviewTab-'+s.tab;button.setAttribute('aria-selected',String(selected));button.tabIndex=selected ? 0 : -1;button.disabled=s.busy;});
   document.getElementById('totalReviewPanel').setAttribute('aria-labelledby','totalReviewTab-'+s.tab);
   document.getElementById('totalReviewListTitle').textContent=PLAN_TYPE_LABELS[s.tab]+'列表';renderTotalReviewTags();
   const list=document.getElementById('totalReviewCandidates'),scroll=s.filters[s.tab].scroll,focused=document.activeElement?.dataset.totalChoice;
@@ -355,7 +356,7 @@ function renderTotalReview() {
   if(focused)list.querySelector(`[data-total-choice="${focused}"]`)?.focus({preventScroll:true});
   const eligible=rows.filter(row=>row.reviewable),count=eligible.filter(row=>s.ids.has(row.type+':'+row.id)).length,all=document.getElementById('totalReviewSelectAll');
   all.checked=!!eligible.length && count===eligible.length;all.indeterminate=count>0 && count<eligible.length;all.disabled=s.loading || s.busy || !eligible.length;
-  const counts=['material','note','mistake'].map(type=>`${PLAN_TYPE_LABELS[type]} ${[...s.ids].filter(key=>key.startsWith(type+':')).length}`);
+  const counts=['material','mistake'].map(type=>`${PLAN_TYPE_LABELS[type]} ${[...s.ids].filter(key=>key.startsWith(type+':')||type==='material'&&key.startsWith('note:')).length}`);
   document.getElementById('totalReviewCount').textContent=`已选择 ${s.ids.size} 项`;document.getElementById('totalReviewCounts').textContent=counts.join(' · ');
   document.getElementById('totalReviewStart').disabled=s.loading || s.busy || !s.ids.size;
 }
@@ -379,7 +380,7 @@ function handleTotalReviewKey(event) {
   if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(totalReviewState.preview)closeTotalReviewPreview();else closeTotalReview();return;}
   const tabs=[...document.querySelectorAll('#totalReviewModules [role=tab]')],index=tabs.indexOf(event.target);
   if(index>=0 && ['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){
-    event.preventDefault();const next=event.key==='Home' ? 0 : event.key==='End' ? 2 : (index+(event.key==='ArrowRight' ? 1 : 2))%3;
+    event.preventDefault();const next=event.key==='Home' ? 0 : event.key==='End' ? tabs.length-1 : (index+(event.key==='ArrowRight' ? 1 : tabs.length-1))%tabs.length;
     switchTotalReviewTab(['material','note','mistake'][next]);tabs[next].focus();
   }
   trapReviewPickerFocus(event,'totalReviewModal');
@@ -470,7 +471,7 @@ function renderCenterReviewToolbar() {
   }
   const activeItems=s.session.items.filter(row=>!row.source_deleted),activePosition=activeItems.findIndex(row=>row.id===item.id);
   const context=centerWorkbenchContext(item,s.session),selection=workbenchSelection(context),activeSelection=readReviewActive(context);
-  const displayedMode=activeSelection?.viaRetry?'retry':activeSelection?.mode||selection.mode;
+  const displayedMode=activeSelection?.mode||selection.mode;
   const processed=activeItems.filter(row=>row.status!=='pending').length,shownPosition=Math.max(0,activePosition)+1;
   bar.innerHTML=`<strong>${escapeHtml(s.session.name)} · 第 ${shownPosition} / ${s.session.total} 项</strong><p>成功复习 ${s.session.passed || 0} / ${s.session.total} · 未通过 ${s.session.failed || 0} · 仅曝光 ${s.session.exposed || 0} · 跳过 ${s.session.skipped}${s.session.deleted?` · 已删除 ${s.session.deleted}`:''}</p><p class="review-current-mode">第 ${shownPosition} / ${s.session.total} 条 · 已处理 ${processed} 条 · ${PLAN_TYPE_LABELS[item.item_type]} · ${AI_REVIEW_METHODS[displayedMode]}</p><div class="mistake-toolbar"><button onclick="moveCenterReview(-1)" ${blocked || s.position===0 ? 'disabled' : ''}>上一项</button><button onclick="moveCenterReview(1)" ${blocked ? 'disabled' : ''}>下一项</button><button onclick="skipCenterReviewItem()" ${blocked || item.status!=='pending' ? 'disabled' : ''}>跳过</button><button onclick="pauseCenterReview()" ${busy ? 'disabled' : ''}>暂停，稍后继续</button></div>`;
   const active=activeSelection;
@@ -487,7 +488,7 @@ function renderCenterReviewToolbar() {
   const aiPanel=document.getElementById('resourceAiPanel');if(aiPanel)aiPanel.hidden=inlineVisible||workbenchActive;
   if(item.item_type!=='mistake')for(const id of ['materialReviewContent','materialReviewPreview']){const original=document.getElementById(id);if(original)original.hidden=inlineVisible||workbenchActive;}
   if(workbenchActive){
-    bar.insertAdjacentHTML('afterbegin',`<p>当前实际执行：${escapeHtml(AI_REVIEW_METHODS[displayedMode])} · 在本页直接作答</p>`);
+    bar.insertAdjacentHTML('afterbegin',`<p>当前实际执行：${escapeHtml(AI_REVIEW_METHODS[active.mode])} · 在本页直接作答</p>`);
     if(item.item_type==='mistake'&&mistakeDetailState?.progress){const p=mistakeDetailState.progress;document.getElementById('mistakeDetailMeta').textContent=`${MISTAKE_TYPES[p.mistakeType]} · ${AI_REVIEW_METHODS[active.mode]} · ${mistakeStatusText(p.reviewStatus)}`;}
   }
 }

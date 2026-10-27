@@ -3,6 +3,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+import hashlib
 from src.ai_mistake import Config, register
 from src.ai_deepseek_test import register as register_deepseek_test
 from src.ai_answer_draft import register as register_answer_draft
@@ -37,6 +38,20 @@ register_outline(app, dependencies=[Depends(local_only)])
 register_assessment_chart(app, dependencies=[Depends(local_only)])
 from src.ai_platform import register as register_platform
 register_platform(app, dependencies=[Depends(local_only)])
+from src.ai_vision_ocr import register as register_vision_ocr
+register_vision_ocr(app, dependencies=[Depends(local_only)])
+
+
+@app.get('/api/ai/local-health', dependencies=[Depends(local_only)])
+async def local_health():
+    """Identify this project and its routes without making a model request."""
+    from fastapi.responses import JSONResponse
+    project = str(Path(__file__).resolve().parents[1]).casefold()
+    return JSONResponse({'service': 'courses-local-ai', 'api_version': 1,
+                         'project_id': hashlib.sha256(project.encode('utf-8')).hexdigest(),
+                         'routes': sorted(path for path, methods in app.openapi()['paths'].items()
+                                          if 'post' in methods)},
+                        headers={'Cache-Control': 'no-store'})
 
 # Serve only public frontend assets, never the repository, .env or database.
 FRONTEND = Path(__file__).resolve().parents[1] / "fronted"

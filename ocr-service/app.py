@@ -184,10 +184,10 @@ def recognize_pdf(data):
             return text, lines, doc.page_count, ["使用 PDF 文本层，未运行 OCR"]
 
         lines = []
-        for page_number, page in enumerate(doc, start=1):
+        for page in doc:
             pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), colorspace=fitz.csRGB)
             image = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-            lines.extend({**line, "page": page_number} for line in recognize_image(image))
+            lines.extend(recognize_image(image))
         warning = "PDF 文本层不可用，已改用 OCR" if text else "扫描页已使用 OCR"
         return "\n".join(line["text"] for line in lines), lines, doc.page_count, [warning]
     finally:

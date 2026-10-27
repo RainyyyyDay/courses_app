@@ -84,6 +84,7 @@ async function doCreateManual(nodeIds) {
   }
   // 错题的接口历史上用 knowledgeIds，另外两个用 nodeIds，后端两个都认
   fd.append(pending.type === 'mistake' ? 'knowledgeIds' : 'nodeIds', JSON.stringify(nodeIds));
+  if(['material','note'].includes(pending.type))fd.append('typeIds',JSON.stringify(selectedPickerResourceTypes()));
 
   try {
     const res = await fetch(`${API}${cfg.url}`, { method: 'POST', body: fd });

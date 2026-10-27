@@ -9,41 +9,23 @@
 /* ========== 资料 ========== */
 let materialListRequest = 0;
 async function loadMaterials() {
-  const request = ++materialListRequest;
-  const courseId = currentCourseId;
-  const box = document.getElementById('materialList');
-  box.innerHTML = '<div class="loading-tip">加载中…</div>';
-  try {
-    const rows = await requestList(`${API}/courses/${courseId}/materials${readingBrowseQuery('materials')}`);
-    if (request !== materialListRequest || courseId !== currentCourseId) return;
-    currentMaterials = rows;
-    loadReadingBrowseTags('materials');
-    if (typeof renderMaterialReviewResume === 'function') renderMaterialReviewResume();
-    if (rows.length === 0) return box.innerHTML = '<div class="empty">暂无资料</div>';
-    box.innerHTML = rows.map(r => `
-      <div class="item-row content-card card-openable" data-material-id="${r.id}" role="link" tabindex="0"
-        aria-label="查看资料：${escapeHtml(r.title)}"
-        onclick="openReadingCard(event,'material',${r.id})"
-        onkeydown="openReadingCardKey(event,'material',${r.id})">
-        <div class="info">
-          <div class="title">${escapeHtml(r.title)}</div>
-          <span class="material-review-badge">${r.review_status === 'reviewed' ? '已复习' : '未复习'}</span>
-          <div class="meta">${r.file_url ? '📄 文件' : '✍ 手动输入'} · ${r.created_at}</div>
-          ${r.content ? `<div class="row-content">${escapeHtml(r.content)}</div>` : ''}
-          <div class="mistake-tags">${nodeChipsHtml(r)}</div>
-        </div>
-        <div class="mistake-actions">
-          ${readingFavoriteButton('materials',r)}
-          <button onclick="event.stopPropagation();openTagPicker('edit', 'material', ${r.id})">编辑</button>
-          <button onclick="event.stopPropagation();delItem('materials', ${r.id}, loadMaterials)">删除</button>
-        </div>
-      </div>
-    `).join('');
-  } catch (err) {
-    if (request !== materialListRequest || courseId !== currentCourseId) return;
-    currentMaterials = [];
-    showListError(box, err);
-  }
+ const request=++materialListRequest,courseId=currentCourseId,box=document.getElementById('materialList');box.innerHTML='<div class="loading-tip">加载中…</div>';
+ try{
+  if(resourceSelectionCourse!==courseId){resourceSelectionCourse=courseId;resourceSelection.clear();resourceTypeFilter='';}
+  const query=readingBrowseQuery('materials');
+  const [materials,notes]=await Promise.all([requestList(API+'/courses/'+courseId+'/materials'+query),requestList(API+'/courses/'+courseId+'/notes'+query),loadResourceTypes(courseId)]);
+  if(request!==materialListRequest||currentCourseId!==courseId)return;
+  currentMaterials=materials;currentNotes=notes;
+  if(resourceTypeFilter&&resourceTypeFilter!=='unclassified'&&!resourceTypeDefinitions.some(type=>String(type.id)===resourceTypeFilter))resourceTypeFilter='';
+  const all=[...materials.map(r=>({...r,resourceKind:'material'})),...notes.map(r=>({...r,resourceKind:'note'}))].sort((a,b)=>b.created_at.localeCompare(a.created_at)||b.id-a.id);
+  const rows=all.filter(row=>!resourceTypeFilter||(resourceTypeFilter==='unclassified'?!(row.resource_types||[]).length:(row.resource_types||[]).some(t=>String(t.id)===resourceTypeFilter)));
+  unifiedResourceRows=rows;loadReadingBrowseTags('materials');
+  let host=document.getElementById('resourceTypeFilters');if(!host){host=document.createElement('div');host.id='resourceTypeFilters';box.before(host);}host.innerHTML=resourceTypeFiltersHtml();
+  box.innerHTML=rows.length?rows.map(row=>{const kind=row.resourceKind,collection=kind==='note'?'notes':'materials';return `<div class="item-row content-card card-openable" data-resource-kind="${kind}" role="link" tabindex="0" aria-label="查看资料：${escapeHtml(row.title)}" onclick="openReadingCard(event,'${kind}',${row.id})" onkeydown="openReadingCardKey(event,'${kind}',${row.id})">
+   <label class="resource-select" onclick="event.stopPropagation()"><input data-resource-select type="checkbox" aria-label="选择：${escapeHtml(row.title)}" ${resourceSelection.has(kind+':'+row.id)?'checked':''} onchange="selectResource('${kind}',${row.id},this.checked)"></label>
+   <div class="info"><div class="title">${escapeHtml(row.title)}</div><div class="resource-badge-row">${resourceTypesHtml(row,true)}<span class="material-review-badge">${row.review_status==='reviewed'?'已复习':'未复习'}</span></div><div class="meta">${row.file_url?'📄 文件':'✍ 手动输入'} · ${escapeHtml(row.created_at)}</div>${row.content?'<div class="row-content">'+escapeHtml(row.content)+'</div>':''}<div class="mistake-tags">${nodeChipsHtml(row)}</div></div>
+   <div class="mistake-actions">${readingFavoriteButton(collection,row)}<button onclick="event.stopPropagation();openTagPicker('edit','${kind}',${row.id})">编辑</button><button onclick="event.stopPropagation();delItem('${collection}',${row.id},loadMaterials)">删除</button></div></div>`;}).join(''):'<div class="empty">没有符合条件的资料</div>';
+ }catch(error){if(request===materialListRequest&&courseId===currentCourseId)showListError(box,error);}
 }
 
 // 选完文件先弹标签选择器，确认后再真正上传
@@ -69,6 +51,7 @@ async function doUploadMaterial(file, nodeIds, title, content = '') {
   if (title) fd.append('title', title);
   if (content) fd.append('content', content);
   fd.append('nodeIds', JSON.stringify(nodeIds));
+  fd.append('typeIds',JSON.stringify(selectedPickerResourceTypes()));
   const outline = document.getElementById('tagPickerOutline')?.value || '';
   if (outline.trim()) fd.append('outline', outline);
   if (pendingMindmapJson) fd.append('mindmapJson', pendingMindmapJson);

@@ -1,0 +1,4 @@
+# Preserve bundled asset checksums and the integration manifest across platforms.
+modules/mindmap/** -text
+# PowerShell 5.1 requires the existing UTF-8 BOM; retain original script bytes.
+*.ps1 -text

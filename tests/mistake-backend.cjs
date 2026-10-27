@@ -36,7 +36,7 @@ function testMistakeMigrations(source, temp) {
         connection.db.exec('DROP TABLE idx_mistakes_filters');
       }
       const store = require('./db/index.js');
-      assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 27);
+      assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 26);
       if (${version} !== 0) {
         const row = store.getMistakeDetail(1);
         assert.equal(row.title, '旧错题');
@@ -51,7 +51,7 @@ function testMistakeMigrations(source, temp) {
       // 模拟可重复迁移（已有列/表），必须安全且不改数据。
       store.db.exec('PRAGMA user_version = 6');
       delete require.cache[require.resolve('./db/schema.js')]; require('./db/schema.js');
-      assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 27);
+      assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 26);
       assert.equal(JSON.stringify(store.db.prepare('SELECT * FROM mistakes').all()), snapshot);
       assert.deepEqual(store.db.prepare('PRAGMA foreign_key_check').all(), []);
       const probe = store.createMistake(1, '事务测试', '', '题目', '', [], {mistakeType:'knowledge', answerContent:'答案'});

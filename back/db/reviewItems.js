@@ -10,7 +10,7 @@
  */
 const { db } = require('./connection');
 const {limitReviewGrade}=require('./reviewAnswers');
-const { planError, planToday,planExcludedKeys } = require('./reviewPlanSchedule');
+const { planError, planToday } = require('./reviewPlanSchedule');
 const {
   PROFILES, profileFor, applyGrade, normalizeState, emptyState, isValidDate, retrievability, toDay, planOccurrences,
 } = require('./reviewScheduling');
@@ -160,9 +160,7 @@ function recordReviewItemGrade(courseId, type, id, body) {
 // 计划排期：首读初始化快照；普通刷新只合并进度，真正执行仍走 review-sessions。
 // 计划里选中的内容 + 各自记忆状态 + 计划参数（生成排期用）。
 function planScheduleParts(courseId, plan) {
-  const excluded=planExcludedKeys(plan);
-  const rows = db.prepare('SELECT DISTINCT item_type,item_id FROM review_plan_items WHERE plan_id=? AND source_deleted=0').all(plan.id)
-    .filter(row=>!excluded.has(row.item_type+':'+row.item_id));
+  const rows = db.prepare('SELECT DISTINCT item_type,item_id FROM review_plan_items WHERE plan_id=? AND source_deleted=0').all(plan.id);
   const items = rows.map(row => {
     const mistakeType = row.item_type === 'mistake'
       ? db.prepare('SELECT mistake_type FROM mistakes WHERE id=?').get(row.item_id)?.mistake_type || null
@@ -214,7 +212,7 @@ function planCompletedRows(planId) {
 }
 function planScheduleSnapshot(plan, items, live, applied) {
   const completed = applied ? planCompletedRows(plan.id) : { tasks: [], sessions: [] };
-  return { days: scheduleStructure(live.days), sourceKeys: items.map(item => item.type + ':' + item.id),excludedKeys:[...planExcludedKeys(plan)],
+  return { days: scheduleStructure(live.days), sourceKeys: items.map(item => item.type + ':' + item.id),
     unscheduled: live.unscheduled, feasibility: live.feasibility,
     generatedAt: applied ? new Date().toISOString() : null, applied,
     appliedOn: applied ? planToday() : null,
@@ -362,10 +360,9 @@ function getReviewPlanSchedule(courseId, planId) {
     : null;
   const deletedKeys = new Set(db.prepare('SELECT item_type,item_id FROM review_plan_items WHERE plan_id=? AND source_deleted=1')
     .all(plan.id).map(row => row.item_type + ':' + row.item_id));
-  const excludedKeys=planExcludedKeys(plan);
   const visibleSnapshotDays = snapshot.days.map(day => ({
     ...day,
-    items: (day.items || []).filter(item => day.date < today || (!deletedKeys.has(item.type + ':' + item.id)&&!excludedKeys.has(item.type+':'+item.id)) || snapshot.preservedResults?.[day.date+':'+item.type+':'+item.id]),
+    items: (day.items || []).filter(item => day.date < today || !deletedKeys.has(item.type + ':' + item.id)),
   })).filter(day => day.items.length);
   // 日历要用标题；同一内容可能有多个排期轮次，标题优先取内容，删除后回退到任务快照。
   const titleCache = new Map();
@@ -397,12 +394,12 @@ function getReviewPlanSchedule(courseId, planId) {
   };
   for (const day of visibleSnapshotDays) {
     for (const item of day.items) {
-      addItem(day.date, { ...item,...(snapshot.preservedResults?.[day.date+':'+item.type+':'+item.id]||{}), title: titleFor(item.type, item.id) || item.title || '' });
+      addItem(day.date, { ...item, title: titleFor(item.type, item.id) || item.title || '' });
     }
   }
   // Once a version has been applied, its preserved snapshot is the complete
   // historical calendar. Initial materialized dates must not reappear later.
-  for (const row of appliedOn ? [] : planRows.filter(item => !item.source_deleted&&!excludedKeys.has(item.item_type+':'+item.item_id))) {
+  for (const row of appliedOn ? [] : planRows.filter(item => !item.source_deleted)) {
     addItem(row.scheduled_date, {
       type: row.item_type, id: row.item_id, title: row.title_snapshot || titleFor(row.item_type, row.item_id),
       status: row.status, result: row.status === 'completed' ? 'passed' : null,
@@ -501,82 +498,12 @@ function applyReviewPlanSchedule(courseId, planId) {
     const snapshot = planScheduleSnapshot(plan, items, live, true);
     let prior = null;
     try { prior = plan.schedule_json ? JSON.parse(plan.schedule_json) : null; } catch {}
-    // Freeze the calendar exactly as the user last saw it before today. This
-    // includes direct task completions, skipped items and preserved evidence,
-    // not only sessions that can be re-attached afterwards.
-    const historyByDate = new Map(scheduleStructure(current.days
-      .filter(day => day.date < snapshot.appliedOn))
-      .map(day => [day.date, day]));
-    const planRows = db.prepare(`SELECT item_type,item_id,scheduled_date,status,estimated_minutes
-      FROM review_plan_items WHERE plan_id=? AND scheduled_date<?`).all(planId, snapshot.appliedOn);
-    for (const row of planRows) {
-      if (row.status === 'pending') continue;
-      const day = historyByDate.get(row.scheduled_date) || {
-        date: row.scheduled_date, minutes: 0, items: [],
-      };
-      if (!day.items.some(item => item.type === row.item_type && item.id === row.item_id)) {
-        day.items.push({ type: row.item_type, id: row.item_id,
-          minutes: Number(row.estimated_minutes) || 5, roundNo: 1, reason: 'repeat' });
-      }
-      historyByDate.set(day.date, day);
-    }
-    const historical = [...historyByDate.values()].sort((a, b) => a.date.localeCompare(b.date));
-    const preservedResults = Object.fromEntries(Object.entries(prior?.preservedResults || {})
-      .filter(([key]) => key.slice(0, 10) < snapshot.appliedOn));
-    for (const day of current.days.filter(item => item.date < snapshot.appliedOn)) {
-      for (const item of day.items || []) {
-        if (!item.status || item.status === 'pending') continue;
-        preservedResults[day.date + ':' + item.type + ':' + item.id] = {
-          status: item.status, result: item.result || null, exposureOnly: !!item.exposureOnly,
-        };
-      }
-    }
-    for (const row of planRows) {
-      if (row.status === 'pending') continue;
-      preservedResults[row.scheduled_date + ':' + row.item_type + ':' + row.item_id] = {
-        status: row.status, result: row.status === 'completed' ? 'passed' : null, exposureOnly: false,
-      };
-    }
-    snapshot.preservedResults = preservedResults;
+    const historical = scheduleStructure((prior?.days || []).filter(day => day.date < snapshot.appliedOn));
     const upcoming = scheduleStructure(live.days.filter(day => day.date >= snapshot.appliedOn));
     snapshot.days = [...historical, ...upcoming].sort((a, b) => a.date.localeCompare(b.date));
     db.prepare('UPDATE review_plans SET schedule_json=? WHERE id=?').run(JSON.stringify(snapshot), plan.id);
   }
   return getReviewPlanSchedule(courseId, planId);
-}
-
-// Called inside the plan-edit transaction. Rebuild only remaining work while
-// retaining past dates and already processed evidence in their original cells.
-function rebuildEditedPlanSchedule(courseId,planId,previous) {
-  const plan=db.prepare('SELECT * FROM review_plans WHERE id=? AND course_id=?').get(planId,courseId);
-  const {items,states,profile,capacity}=planScheduleParts(courseId,plan),today=planToday();
-  const floor=plan.start_date>today?plan.start_date:today;
-  const live=planOccurrences({items,states,today:floor,examDate:plan.exam_date,profile,capacity});
-  const snapshot=planScheduleSnapshot(plan,items,live,true);
-  let prior={};try{prior=JSON.parse(plan.schedule_json||'{}');}catch{}
-  const completedTasks=db.prepare("SELECT item_type,item_id,scheduled_date FROM review_plan_items WHERE plan_id=? AND status='completed'").all(planId);
-  const done=new Set(completedTasks.map(item=>item.scheduled_date+':'+item.item_type+':'+item.item_id));
-  const oldDays=previous?.days?.length?previous.days:(prior.days||[]).map(day=>({...day,items:(day.items||[]).map(item=>
-    done.has(day.date+':'+item.type+':'+item.id)?{...item,status:'completed',result:'passed'}:item)}));
-  // Expired plans may never have created a schedule snapshot. Their completed
-  // materialized tasks still provide the original date and completion evidence.
-  for(const task of completedTasks){
-    let day=oldDays.find(day=>day.date===task.scheduled_date);
-    if(!day){day={date:task.scheduled_date,items:[]};oldDays.push(day);}
-    if(!day.items.some(item=>item.type===task.item_type&&item.id===task.item_id))
-      day.items.push({type:task.item_type,id:task.item_id,status:'completed',result:'passed',minutes:5,roundNo:1});
-  }
-  const kept=oldDays.map(day=>({...day,items:(day.items||[]).filter(item=>day.date<today||item.status==='completed')})).filter(day=>day.items.length);
-  const completedKeys=new Set(kept.flatMap(day=>day.items.map(item=>day.date+':'+item.type+':'+item.id)));
-  const remaining=live.days.map(day=>({...day,items:day.items.filter(item=>!completedKeys.has(day.date+':'+item.type+':'+item.id))})).filter(day=>day.items.length);
-  const days=new Map();
-  for(const day of [...kept,...remaining]){
-    const existing=days.get(day.date)||{...day,items:[]};existing.items.push(...day.items);days.set(day.date,existing);
-  }
-  snapshot.days=scheduleStructure([...days.values()].sort((a,b)=>a.date.localeCompare(b.date)));
-  snapshot.preservedResults=Object.fromEntries(kept.flatMap(day=>day.items.filter(item=>item.status==='completed')
-    .map(item=>[day.date+':'+item.type+':'+item.id,{status:item.status,result:item.result,exposureOnly:!!item.exposureOnly}])));
-  db.prepare('UPDATE review_plans SET schedule_json=? WHERE id=?').run(JSON.stringify(snapshot),planId);
 }
 
 // 计划进度按“完整排期”统计（含后续多轮），与日历显示保持一致。
@@ -599,5 +526,5 @@ function getPlanScheduleStats(courseId, planId) {
 
 module.exports = {
   getReviewItemState, recordReviewItemGrade, recordGradeInTransaction, getReviewPlanSchedule,
-  applyReviewPlanSchedule, getPlanScheduleStats,rebuildEditedPlanSchedule,
+  applyReviewPlanSchedule, getPlanScheduleStats,
 };
