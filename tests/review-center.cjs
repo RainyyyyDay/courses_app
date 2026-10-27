@@ -7,7 +7,7 @@ const {DatabaseSync}=require('node:sqlite');
 function testReviewCenterMigration(source,temp) {
   const fixture=path.join(temp,'sessions-migration');fs.mkdirSync(fixture);fs.cpSync(path.join(source,'db'),path.join(fixture,'db'),{recursive:true});
   const schema=fs.readFileSync(path.join(source,'db/schema.js'),'utf8');
-  fs.writeFileSync(path.join(fixture,'db/schema.js'),schema.replace('CURRENT_DB_VERSION = 26','CURRENT_DB_VERSION = 12').replace('migrateReviewSessions();','').replace('migrateReviewScheduling();','').replace('migrateReviewResults();','').replace('migratePlanScheduleSnapshot();','').replace('migrateReviewModes();',''));
+  fs.writeFileSync(path.join(fixture,'db/schema.js'),schema.replace('CURRENT_DB_VERSION = 27','CURRENT_DB_VERSION = 12').replace('migrateReviewSessions();','').replace('migrateReviewScheduling();','').replace('migrateReviewResults();','').replace('migratePlanScheduleSnapshot();','').replace('migrateReviewModes();',''));
   const result=spawnSync(process.execPath,['-e',`
     const assert=require('node:assert/strict'),fs=require('node:fs'),store=require('./db/index.js'),d=store.db;
     assert.equal(d.prepare('PRAGMA user_version').get().user_version,12);
@@ -21,7 +21,7 @@ function testReviewCenterMigration(source,temp) {
     assert.equal(d.prepare('PRAGMA user_version').get().user_version,12);
     assert.equal(d.prepare("SELECT count(*) n FROM sqlite_master WHERE name='review_sessions'").get().n,0);
     d.exec('DROP TABLE idx_review_sessions_course');require('./db/schema.js');
-    assert.equal(d.prepare('PRAGMA user_version').get().user_version,26);
+    assert.equal(d.prepare('PRAGMA user_version').get().user_version,27);
     for(const t of before)assert.deepEqual(d.prepare('SELECT '+t.columns+' FROM '+t.name+' ORDER BY rowid').all(),t.rows);
     assert.equal(d.prepare('SELECT count(*) n FROM review_sessions').get().n,0,'no invented history');
     const session=store.createReviewSession(c.id,{requestId:'first',sourceType:'material',selectedItems:[{type:'material',id:m.id}]});

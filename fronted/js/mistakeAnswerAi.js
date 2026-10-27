@@ -105,7 +105,10 @@ function applyMistakeAnswerAi(prefix,target){
       node('Error').textContent='填入后你又修改了答案或解析，为保护输入不自动撤回。';return;
     }
     if(input.question_format==='choice')renderMistakeChoiceAnswerOptions(prefix,state.undo.before.existing_answer.split(',').filter(Boolean));
-    else field('Answer').value=state.undo.before.existing_answer;
+    else {
+      field('Answer').value=state.undo.before.existing_answer;
+      if(typeof courseRichText!=='undefined')courseRichText.refresh('mistake'+prefix+'Answer');
+    }
     field('Explanation').value=state.undo.before.existing_explanation;state.undo=null;
     if(prefix==='Edit')refreshMistakeEditDirty();else{updateMistakeCreateAnswerClear();updateMistakeCreateExplanationClear();}
     node('Status').textContent='已撤回上次填入，仍未保存。';node('ApplyStatus').textContent='已撤回上次填入，仍需保存。';showToast('已撤回上次填入');return;
@@ -122,7 +125,10 @@ function applyMistakeAnswerAi(prefix,target){
         node('Error').textContent='请核对选项编号和单选／多选类型，不能用草稿改写选项。';return;
       }
       renderMistakeChoiceAnswerOptions(prefix,ids);
-    }else field('Answer').value=answer;
+    }else {
+      field('Answer').value=answer;
+      if(typeof courseRichText!=='undefined')courseRichText.refresh('mistake'+prefix+'Answer');
+    }
   }
   if(fillExplanation)field('Explanation').value=explanation;
   if(fillAnswer||fillExplanation)state.undo={before:input,after:answerAiInput(prefix)};

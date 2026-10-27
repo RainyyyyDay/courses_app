@@ -22,5 +22,7 @@ const courseRichText=(()=>{
  }
  function reset(){for(const id of editors.keys())setMode(id,'edit');}
  mount('tagPickerResourceContent','正文');mount('tagPickerOutline','大纲');mount('tagPickerResourceOcrText','识别结果');
+ mount('mistakeEditContent','题目');mount('mistakeEditAnswer','答案');
+ mount('mistakeCreateContent','题目');mount('mistakeCreateAnswer','答案');
  return{render,setMode,refresh,reset};
 })();

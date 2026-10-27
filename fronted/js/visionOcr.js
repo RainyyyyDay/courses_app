@@ -18,13 +18,29 @@ function recognitionOptionsHtml(id, buttonId) {
     <p data-recognition-hint class="resource-field-hint" role="note"></p></div>`;
 }
 
+function recognitionMethodFor(buttonId) {
+  return document.querySelector(`[data-recognition-options][data-recognition-button="${buttonId}"] select`)?.value === 'vision'
+    ? 'vision'
+    : 'local';
+}
+
+function mountMistakeRecognitionOptions() {
+  for (const host of document.querySelectorAll('[data-mistake-recognition]')) {
+    if (host.querySelector('[data-recognition-options]')) continue;
+    host.innerHTML = recognitionOptionsHtml(host.dataset.methodId, host.dataset.buttonId);
+  }
+}
+
 function refreshVisionOcrOptions() {
   for (const host of document.querySelectorAll('[data-recognition-options]')) {
     const select = host.querySelector('select'), vision = select.value === 'vision';
     const availability = vision ? visionOcrAvailability() : { ready: true, message: '本地读取附件；图片及扫描页使用 Paddle OCR，公式较多时可切换为共用大模型。' };
     host.querySelector('[data-recognition-hint]').textContent = availability.message;
     const button = document.getElementById(host.dataset.recognitionButton);
-    const busy = host.dataset.recognitionButton === 'resourceTextScan' ? !!resourceTextEditor?.busy : !!recognizePickerResourceFile.request;
+    const buttonId = host.dataset.recognitionButton;
+    const busy = buttonId === 'resourceTextScan'
+      ? typeof resourceTextEditor !== 'undefined' && !!resourceTextEditor?.busy
+      : typeof recognizePickerResourceFile !== 'undefined' && !!recognizePickerResourceFile.request;
     select.disabled = busy;
     if (button) {
       button.disabled = busy || !availability.ready;
@@ -32,6 +48,8 @@ function refreshVisionOcrOptions() {
     }
   }
 }
+mountMistakeRecognitionOptions();
+refreshVisionOcrOptions();
 
 async function requestVisionOcrDocument(images,signal,onProgress){
  const credentials=coursesAiSettings.read(),controller=new AbortController(),abort=()=>controller.abort();

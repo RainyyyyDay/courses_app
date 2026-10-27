@@ -31,7 +31,7 @@ function validateMaterial(modeId,raw){
       return {id,answer,aliases,hint:text(blank.hint??'','提示',{empty:true,max:2000})};
     });
     for(const [,id]of value.prompt.matchAll(/【([A-Za-z][A-Za-z0-9_]*)】/g))if(!ids.has(id))fail(400,'题面包含未设置答案的空位');
-  }else if(modeId!=='reading')text(value.reference,'参考要点');
+  }else if(!['reading','standard'].includes(modeId))text(value.reference,'参考要点');
   if(modeId==='contrast'){
     for(const key of ['objects','dimensions']){
       if(!Array.isArray(raw[key])||raw[key].length<(key==='objects'?2:1)||raw[key].length>20)fail(400,'请填写至少两个对比对象及一个对比维度');
