@@ -1232,18 +1232,23 @@ body.mistake-review-open { overflow: hidden; }
 }
 
 /* 复习完成弹窗：正确率 100% 时整页飘一层彩带，彩带在弹窗卡片后面，不挡内容。 */
-.mistake-complete { position: relative; z-index: 1; text-align: center; }
-.mistake-complete h3 { font-size: 19px; line-height: 1.5; margin-bottom: 10px; padding:0 28px; }
+.mistake-complete { position: relative; z-index: 1; width:min(620px,calc(100vw - 24px)); max-width:620px; min-width:0; text-align: center; }
+.mistake-complete h3 { font-size:clamp(16px,3.7vw,19px); line-height: 1.5; margin-bottom: 10px; padding:0 22px; white-space:nowrap; }
+.mistake-complete h3.is-long { white-space:normal; }
 .mistake-complete > .tag-sheet-close { position:absolute;top:12px;right:12px; }
 .mistake-complete p { margin: 0 0 16px; color: #5b6273; font-size: 14px; line-height: 1.6; }
-.mistake-complete .modal-actions { justify-content: center; flex-wrap: wrap; }
+.mistake-complete .modal-actions { display:flex; justify-content:center; flex-wrap:nowrap; width:100%; gap:8px; }
 .mistake-complete .modal-actions button {
-  padding: 10px 16px; border: 1px solid #d7dae3; border-radius: 8px;
+  flex:1 1 0; min-width:0; padding:10px 12px; border:1px solid #d7dae3; border-radius:8px;
   background: #f3f4f8; color: #333; font: inherit; cursor: pointer;
 }
 .mistake-complete .modal-actions button:hover { background: #e8eaf1; }
 .mistake-complete .modal-actions button.btn-primary { background: #4a6cf7; border-color: #4a6cf7; color: #fff; }
 .mistake-complete .modal-actions button.btn-primary:hover { filter: brightness(1.06); }
+@media(max-width:480px){
+  .mistake-complete { width:calc(100vw - 24px); padding:18px 14px; }
+  .mistake-complete h3 { padding:0 8px; font-size:14px; }
+}
 
 .review-answers-preview {
   width:min(900px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:0;margin:auto;

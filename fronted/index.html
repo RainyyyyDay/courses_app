@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>课内</title>
-  <link rel="stylesheet" href="style.css?v=20261026-mindmap-2" />
+  <link rel="stylesheet" href="style.css?v=20261027-complete-actions-2" />
 <link rel="stylesheet" href="/mindmap/vendor/katex/katex.min.css">
 <link rel="stylesheet" href="/mindmap/css/node-content.css">
 <link rel="stylesheet" href="css/resource-rich-text.css?v=20261026-rich-1">
@@ -617,7 +617,7 @@
       <div class="modal-actions">
         <button type="button" id="reviewCompleteReplay" onclick="replayReviewComplete()">再来一遍</button>
         <button type="button" id="mistakeCompletePreview" onclick="openReviewCompletePreview()" hidden>查看作答预览</button>
-        <button type="button" class="btn-primary" onclick="startNewReviewComplete()">开始新复习</button>
+        <button type="button" id="reviewCompleteStartNew" class="btn-primary" onclick="startNewReviewComplete()">开始新复习</button>
       </div>
     </div>
   </div>
@@ -1324,7 +1324,7 @@
       <div class="modal-actions"><button type="button" class="btn-cancel" onclick="closeCreationReviewSuggestion()">关闭</button><button type="button" id="creationModeAdviceRetry" onclick="retryCreationReviewSuggestion()" hidden>重新读取</button><button type="button" class="btn-primary" id="creationModeAdviceAnalyze" onclick="analyzeCreationReviewAdvice()" hidden>分析复习方式</button><button type="button" class="btn-primary" id="creationModeAdviceAdopt" onclick="adoptCreationReviewSuggestion()" hidden>采用建议</button></div>
     </footer>
   </dialog>
-  <script src="js/mistakeQueue.js?v=20261026-unified-1"></script>
+  <script src="js/mistakeQueue.js?v=20261027-complete-actions-2"></script>
   <script src="js/courseSearch.js"></script>
   <script src="js/reviewPicker.js?v=20261026-unified-1"></script>
   <script src="js/reviewPlans.js?v=20261026-unified-1"></script>

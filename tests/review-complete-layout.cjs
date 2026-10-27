@@ -4,6 +4,22 @@ const fs=require('node:fs');
 const path=require('node:path');
 const {fixture}=require('./temp-backend-fixture.cjs');
 const {runBrowser}=require('./browser-driver.cjs');
+const vm=require('node:vm');
+
+test('completion action mode switches plan and free-review buttons',()=>{
+  const elements={
+    reviewCompleteReplay:{classList:{values:new Set(),toggle(name,on){on?this.values.add(name):this.values.delete(name);}},textContent:''},
+    reviewCompleteStartNew:{hidden:false},
+  };
+  const context=vm.createContext({document:{getElementById:id=>elements[id]||null}});
+  vm.runInContext(fs.readFileSync(path.resolve(__dirname,'../fronted/js/mistakeQueue.js'),'utf8'),context);
+  context.configureReviewCompleteActions('plan');
+  assert.equal(elements.reviewCompleteStartNew.hidden,true);
+  assert.equal(elements.reviewCompleteReplay.classList.values.has('btn-primary'),true);
+  context.configureReviewCompleteActions('total');
+  assert.equal(elements.reviewCompleteStartNew.hidden,false);
+  assert.equal(elements.reviewCompleteReplay.classList.values.has('btn-primary'),false);
+});
 
 test('completion actions stay on one row and plan mode removes free review',{timeout:120000},async()=>{
   await fixture(async({ids,temp,serve,base})=>{

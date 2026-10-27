@@ -26,9 +26,14 @@ function totalReviewCompleteBrowserScenario() {
       check(reviewCompleteSummary({ items: [{ item_type: 'mistake' }, { item_type: 'note' }, { item_type: 'note' }, { item_type: 'material' }] })
         === '1 道错题、2 篇笔记、1 份资料', 'completion summary lists selected categories only');
       check(document.getElementById('mistakeCompleteTitle').textContent.includes('恭喜你！你成功复习了 2 份资料'), 'complete title lists selected category');
+      const titleRange=document.createRange();titleRange.selectNodeContents(document.getElementById('mistakeCompleteTitle'));
+      check(new Set([...titleRange.getClientRects()].map(rect=>Math.round(rect.top))).size===1,'short completion title stays on one line');
       check(!document.getElementById('mistakeCompleteTitle').textContent.includes('0 '), 'complete title omits unselected categories');
       check(document.getElementById('mistakeCompleteText').textContent.includes('全部通过'), 'complete text reports perfect round');
       check(typeof mistakeConfettiLayerState === 'function' && mistakeConfettiLayerState() !== 'none', 'confetti effect runs for perfect total review');
+      const totalActions=[...document.querySelectorAll('#mistakeCompleteModal .modal-actions button')].filter(button=>!button.hidden);
+      check(totalActions.length===3&&!document.getElementById('reviewCompleteStartNew').hidden,'non-plan completion retains start-new-review');
+      check(new Set(totalActions.map(button=>Math.round(button.getBoundingClientRect().top))).size===1,'non-plan completion actions stay on one row');
       if (location.hash !== '#totalCompleteOnly') {
         document.getElementById('reviewCompleteClose').click();
         await waitUntil(() => !document.getElementById('mistakeCompleteModal').classList.contains('show'), 'complete modal cancel');

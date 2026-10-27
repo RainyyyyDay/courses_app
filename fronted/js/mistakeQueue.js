@@ -518,6 +518,19 @@ async function startMistakeCompleteConfetti(perfect) {
   mistakeConfettiLayer = 'css';
 }
 let reviewCompleteState = null;
+function setReviewCompleteTitle(text) {
+  const title=document.getElementById('mistakeCompleteTitle');
+  if(!title)return;
+  title.textContent=text;
+  title.classList.toggle('is-long',text.length>24);
+}
+function configureReviewCompleteActions(type) {
+  const plan = type === 'plan';
+  const replay = document.getElementById('reviewCompleteReplay');
+  const startNew = document.getElementById('reviewCompleteStartNew');
+  if (replay) replay.classList.toggle('btn-primary', plan);
+  if (startNew) startNew.hidden = plan;
+}
 function reviewCompleteSummary(session) {
   const counts = { mistake: 0, note: 0, material: 0 };
   for (const item of session?.items || []) {
@@ -537,14 +550,13 @@ async function openReviewCompleteModal(session, options={}) {
   if(typeof configureReviewCompletePreview==='function')configureReviewCompletePreview(session,options);
   const summary = reviewCompleteSummary(session);
   const perfect = Number(session.total) > 0 && session.passed === session.total;
-  document.getElementById('mistakeCompleteTitle').textContent = perfect
-    ? `恭喜你！你成功复习了 ${summary || '所有所选题'}`
-    : '本轮复习完成';
+  setReviewCompleteTitle(perfect ? `恭喜你！你成功复习了 ${summary || '所有所选题'}` : '本轮复习完成');
   document.getElementById('mistakeCompleteText').textContent = perfect
     ? `本轮共 ${session.total} 项，全部通过。`
     : `本轮共 ${session.total} 项${summary ? `：${summary}` : ''}。通过 ${session.passed || 0} 项，未通过 ${session.failed || 0} 项，仅阅读曝光 ${session.exposed || 0} 项，跳过 ${session.skipped || 0} 项。`;
   const replay=document.getElementById('reviewCompleteReplay');
   if(replay)replay.textContent=reviewCompleteState.type==='plan'&&!perfect?'继续复习':'再来一遍';
+  configureReviewCompleteActions(reviewCompleteState.type);
   box.classList.add('show');
   document.body.classList.add('mistake-review-open');
   document.getElementById('mistakeCompleteTitle').focus();
@@ -561,9 +573,10 @@ async function openMistakeCompleteModal() {
   reviewCompleteState = { type: 'mistake', session, sessionId: session?.id || mistakeQueue?.sessionId || null };
   if(typeof configureReviewCompletePreview==='function')configureReviewCompletePreview(session);
   const replay=document.getElementById('reviewCompleteReplay');if(replay)replay.textContent='再来一遍';
+  configureReviewCompleteActions('mistake');
   const score = await mistakeQueueRoundScore();
   const perfect = !!score && score.correct === score.total;
-  document.getElementById('mistakeCompleteTitle').textContent = perfect ? '恭喜你！你成功复习了所有所选题' : '本轮复习完成';
+  setReviewCompleteTitle(perfect ? '恭喜你！你成功复习了所有所选题' : '本轮复习完成');
   document.getElementById('mistakeCompleteText').textContent = score
     ? `本轮 ${score.total} 道题，答对 ${score.correct} 道，正确率 ${Math.round(score.correct / score.total * 100)}%。${perfect ? '' : '答错或不记得的题目仍为未复习，可以再来一遍。'}`
     : '判断结果已保存。答错或不记得的题目仍为未复习。';
