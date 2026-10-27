@@ -12,6 +12,10 @@ function mistakeCreateBrowserScenario() {
       await waitUntil(() => document.getElementById('tagPickerModal').classList.contains('show')
         && !document.getElementById('tagPickerTree').textContent.includes('加载中'), 'mistake create modal');
       check(document.querySelectorAll('#tagPickerMistakeFields .edit-card').length === 5, 'create modal uses type/stem/options/answer/explanation cards');
+      check(document.getElementById('mistakeCreateQuestionRecognitionMethod')
+        && document.getElementById('mistakeCreateAnswerRecognitionMethod'), 'create question and answer expose both recognition methods');
+      check(document.getElementById('mistakeCreateContent').previousElementSibling?.classList.contains('course-text-mode')
+        && document.getElementById('mistakeCreateAnswer').previousElementSibling?.classList.contains('course-text-mode'), 'create question and answer expose source/preview controls');
       check(document.getElementById('tagPickerNameHeading').style.display === 'flex'
         && document.getElementById('tagPickerMistakeTypeField').style.display === 'flex'
         && document.getElementById('tagPickerNameHeading').textContent.includes('名称与分类'), 'name and category share one card');

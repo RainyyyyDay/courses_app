@@ -88,6 +88,13 @@ async function renderMistakeDetailPage(mistakeId, review = false) {
   }
 }
 
+function renderMistakeRichText(id, value, empty = '') {
+  const host = document.getElementById(id);
+  if (!host) return;
+  if (typeof courseRichText !== 'undefined') courseRichText.render(host, value, empty);
+  else host.textContent = value || empty;
+}
+
 function renderMistakeDetail(mistake, review = false) {
   document.getElementById('mistakeDetailFormat').innerHTML = review ? '' : mistakeFormatHtml(mistake);
   document.getElementById('mistakeDetailPreparation').innerHTML='';
@@ -110,7 +117,7 @@ function renderMistakeDetail(mistake, review = false) {
   document.getElementById('mistakeEditError').textContent = '';
   if (typeof closeMistakeEdit === 'function' && mistakeEditPending) closeMistakeEdit();
   if (!review) {
-    document.getElementById('mistakeAnswerText').textContent = mistake.answer_content || (mistake.answer_image_url ? '' : '尚未填写答案');
+    renderMistakeRichText('mistakeAnswerText', mistake.answer_content, mistake.answer_image_url ? '' : '尚未填写答案');
     const answerFileBox = document.getElementById('mistakeDetailAnswerFile');
     answerFileBox.innerHTML = mistakeAttachmentHtml('答案附件', mistake.answer_image_url, mistake.answer_file_type);
     answerFileBox.style.display = mistake.answer_image_url ? 'block' : 'none';
@@ -133,7 +140,7 @@ function renderMistakeDetail(mistake, review = false) {
   const errBox = document.getElementById('mistakeDetailImageError');
   const fileBox = document.getElementById('mistakeDetailFile');
   document.getElementById('mistakeDetailSectionTitle').textContent = '题目';
-  document.getElementById('mistakeDetailContent').textContent = mistake.content || mistake.ocr_text || '';
+  renderMistakeRichText('mistakeDetailContent', mistake.content || mistake.ocr_text || '');
   img.style.display = 'none'; img.removeAttribute('src'); errBox.style.display = 'none';
   fileBox.style.display = 'none'; fileBox.innerHTML = '';
   if (!mistake.image_url) return;
@@ -208,6 +215,7 @@ function syncMistakeEditNameExt(file) {
 function openMistakeEdit(row = mistakeDetailState?.row) {
   if (!row) return;
   if (mistakeEditPending?.saving) return;
+  if (typeof courseRichText !== 'undefined') courseRichText.reset();
   if (typeof closeCreationReviewSuggestion === 'function') closeCreationReviewSuggestion();
   if(typeof resetMistakeAnswerAi==='function')resetMistakeAnswerAi('Edit');
   ++mistakeEditRequest;
@@ -413,7 +421,7 @@ async function recognizeMistakeEditFile(kind) {
     }
     const result = await recognizeUploadedFile(file, (message) => {
       if (button) button.textContent = message;
-    });
+    }, { recognitionMethod: recognitionMethodFor(isQuestion ? 'mistakeEditQuestionOcrBtn' : 'mistakeEditAnswerOcrBtn') });
     const textBox = document.getElementById(isQuestion ? 'mistakeEditQuestionOcrText' : 'mistakeEditAnswerOcrText');
     const panel = document.getElementById(isQuestion ? 'mistakeEditQuestionOcrPanel' : 'mistakeEditAnswerOcrPanel');
     const meta = document.getElementById(isQuestion ? 'mistakeEditQuestionOcrMeta' : 'mistakeEditAnswerOcrMeta');
@@ -437,6 +445,7 @@ async function recognizeMistakeEditFile(kind) {
     showToast(err.message);
   } finally {
     if (button) { button.disabled = false; button.textContent = original; }
+    refreshVisionOcrOptions();
   }
 }
 
@@ -459,6 +468,7 @@ function applyMistakeEditOcr(target, mode = 'replace') {
     const content = document.getElementById('mistakeEditContent');
     if (!content) return;
     content.value = mode === 'append' && content.value.trim() ? `${content.value.trim()}\n\n${text}` : text;
+    if (typeof courseRichText !== 'undefined') courseRichText.refresh('mistakeEditContent');
     refreshMistakeEditDirty();
     showToast(mode === 'append' ? '已追加到题干' : '已替换题干');
     return;
@@ -500,6 +510,7 @@ function fillMistakeEditAnswerFromOcr(text) {
   }
   const answer = document.getElementById('mistakeEditAnswer');
   if (answer) answer.value = payload;
+  if (typeof courseRichText !== 'undefined') courseRichText.refresh('mistakeEditAnswer');
   refreshMistakeEditDirty();
   showToast(answerText ? '已填入答案（只取“答案：”之后的内容）' : '没有找到“答案：”标记，已填入整段识别文字');
 }

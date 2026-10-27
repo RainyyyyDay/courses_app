@@ -1,7 +1,7 @@
 /* One manual editor and attempt UI for cloze/open-answer/reading; existing choice and standard stay intact. */
 let reviewWorkbench=null;
 const wb=name=>document.getElementById('reviewWb'+name);
-const WORKBENCH_REQUIREMENTS={cloze:'填写完整原文，选中文字创建空位，答案自动记录',self_explain:'讲解任务、参考要点及可选评分量规',contrast:'至少两个比较对象、比较维度、关键异同与核对要点',reading:'阅读正文或片段',standard:'任务与参考答案或核对要点'};
+const WORKBENCH_REQUIREMENTS={cloze:'填写完整原文，选中文字创建空位，答案自动记录',self_explain:'讲解任务、参考要点及可选评分量规',contrast:'至少两个比较对象、比较维度、关键异同与核对要点',reading:'阅读正文或片段',standard:'复习原文'};
 function reviewModeSelectionKey(s){return `review-mode-selection:${s.courseId}:${s.sessionItemId}:${s.type}:${s.id}`;}
 const reviewModeSelections=new Map();
 function rememberReviewModeSelection(s,mode){
@@ -43,7 +43,7 @@ function workbenchMaterialMissing(mode,m={}){
       if(!has(b.answer)||!b.answer.replace(/[\s\u3000，。；：、,.!?！？；：""''（）()\[\]【】]/g,''))missing.push('空位 '+(b.id||'未编号')+' 的有效答案');
     }
     for(const [,id]of (m.prompt||'').matchAll(/【([A-Za-z][A-Za-z0-9_]*)】/g))if(!ids.has(id))missing.push('空位 '+id+' 的答案设置');
-  }else if(mode!=='reading'&&!has(m.reference))missing.push('参考答案或核对要点');
+  }else if(!['reading','standard'].includes(mode)&&!has(m.reference))missing.push('参考答案或核对要点');
   if(mode==='contrast'){
     if((m.objects||[]).filter(has).length<2)missing.push('至少两个比较对象');
     if(!(m.dimensions||[]).some(has))missing.push('至少一个比较维度');
@@ -274,7 +274,7 @@ function addReviewBlank(){
 function removeReviewBlank(button){if(typeof rememberClozeEdit==='function')rememberClozeEdit();const row=button.closest('.review-blank'),id=row.querySelector('[data-blank="id"]').value,answer=row.querySelector('[data-blank="answer"]').value;wb('Prompt').value=wb('Prompt').value.split('【'+id+'】').join(answer);row.remove();updateWorkbenchPreparation();}
 function readWorkbenchMaterial(){
   const s=reviewWorkbench;
-  return {prompt:wb('Prompt').value,reference:wb('Reference')?.value||'',rubric:wb('Rubric')?.value||'',
+  return {prompt:wb('Prompt').value,reference:wb('Reference')?.value||s.standardReference||'',rubric:wb('Rubric')?.value||s.standardRubric||'',
     objects:(wb('Objects')?.value||'').split('\n').map(v=>v.trim()).filter(Boolean),dimensions:(wb('Dimensions')?.value||'').split('\n').map(v=>v.trim()).filter(Boolean),
     blanks:s.mode==='cloze'?[...wb('Blanks').querySelectorAll('.review-blank')].map(row=>Object.fromEntries(['id','answer','aliases','hint'].map(key=>{const v=row.querySelector('[data-blank="'+key+'"]').value;return [key,key==='aliases'?v.split('\n').map(x=>x.trim()).filter(Boolean):v];}))):[]};
 }
@@ -320,10 +320,13 @@ async function loadReviewWorkbenchMode(mode,explicit=true){
     }else{
       const draft=mistakeStorageGet(reviewWorkbenchKey(s)+':draft');
       const saved=data.material||{prompt:s.sourceText||'',reference:s.referenceText||'',rubric:'',blanks:[]};const m=draft||saved;
-      wb('Editor').innerHTML=(draft?'<p class="mistake-ai-note">已恢复本浏览器未确认草稿，尚未覆盖正式材料。</p>':'')+(mode==='cloze'?clozeEditorHtml(m):wbInput('任务 / 阅读正文','Prompt',m.prompt,5))
-        +(mode==='cloze'?'':mode==='reading'?'':wbInput('参考要点 / 关键异同','Reference',m.reference)+wbInput('核对标准 / 评分量规','Rubric',m.rubric))
+      const standardOriginal=mode==='standard';
+      s.standardReference=standardOriginal?m.reference||'':'';
+      s.standardRubric=standardOriginal?m.rubric||'':'';
+      wb('Editor').innerHTML=(draft?'<p class="mistake-ai-note">已恢复本浏览器未确认草稿，尚未覆盖正式材料。</p>':'')+(mode==='cloze'?clozeEditorHtml(m):wbInput(standardOriginal?'复习原文（可保留 AI 识别文本）':'任务 / 阅读正文','Prompt',m.prompt,5))
+        +(mode==='cloze'||mode==='reading'||standardOriginal?'':wbInput('参考要点 / 关键异同','Reference',m.reference)+wbInput('核对标准 / 评分量规','Rubric',m.rubric))
         +(mode==='contrast'?wbInput('对比对象（每行一个，至少两个）','Objects',(m.objects||[]).join('\n'))+wbInput('对比维度（每行一个）','Dimensions',(m.dimensions||[]).join('\n')):'')
-        +reviewMaterialAiGeneratorHtml(mode);
+        +(standardOriginal?'<p class="ai-help">标准复习只保留原文，复习时选择“清楚 / 模糊 / 不记得”；无需填写参考要点或评分量规。</p>':reviewMaterialAiGeneratorHtml(mode));
       refreshWorkbenchAiAvailability();
       wb('Actions').innerHTML=s.sessionItemId?'<button data-save-start onclick="saveWorkbenchMaterial(true)">保存材料并开始本轮复习</button>':'<button onclick="saveWorkbenchMaterial()">确认并保存正式材料</button>';
       if(mode==='cloze')initClozeEditor();

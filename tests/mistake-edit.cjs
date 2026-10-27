@@ -50,6 +50,16 @@ function mistakeEditBrowserScenario(data) {
       && document.getElementById('mistakeEditContent').value === row.content
       && document.getElementById('mistakeEditAnswer').value === row.answer_content
       && document.getElementById('mistakeEditExplanation').value === row.explanation, 'all original fields populated');
+    check(document.getElementById('mistakeEditQuestionRecognitionMethod')
+      && document.getElementById('mistakeEditAnswerRecognitionMethod'), 'question and answer expose both recognition methods');
+    check(document.getElementById('mistakeEditContent').previousElementSibling?.classList.contains('course-text-mode')
+      && document.getElementById('mistakeEditAnswer').previousElementSibling?.classList.contains('course-text-mode'), 'question and answer expose source/preview controls');
+    const editQuestionSource=document.getElementById('mistakeEditContent').value;
+    document.getElementById('mistakeEditContent').value='Rich $x^2$';
+    courseRichText.setMode('mistakeEditContent','preview');
+    check(document.getElementById('mistakeEditContentPreview').querySelector('.katex'), 'edit question preview renders math');
+    courseRichText.reset();
+    document.getElementById('mistakeEditContent').value=editQuestionSource;
     const modal = document.getElementById('mistakeEditModal');
     const tree = document.getElementById('mistakeEditTagTree');
     const body = document.getElementById('mistakeEditBody');

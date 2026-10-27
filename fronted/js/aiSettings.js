@@ -47,6 +47,7 @@ const coursesAiSettings = (() => {
   const node=id=>document.getElementById('coursesAi'+id);
   const status=()=>({provider,preset:selectedPreset,model,baseUrl,retain,auto,configured,hasKey:!!key,connectionState,epoch,calls,outputTokens,drafts:drafts.size});
   const realReady=()=>provider==='platform'?configured&&platformState.available:provider!=='mock'&&!!key;
+  const connectedReady=()=>realReady()&&connectionState==='passed';
   async function checkPlatform(){
     const version=epoch,controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
     try{
@@ -220,8 +221,8 @@ const coursesAiSettings = (() => {
     if(node('Test').disabled)return;
     if(provider==='platform'){
       node('Test').disabled=true;
-      try{await checkPlatform();message='平台配置就绪；本次仅检查配置，未调用模型或验证模型连接。';}
-      catch(err){message=err.message;}
+      try{await checkPlatform();connectionState='passed';message='平台配置就绪；本次仅检查配置，未调用模型或验证模型连接。';}
+      catch(err){connectionState='failed';message=err.message;}
       finally{node('Test').disabled=false;refresh();if(typeof refreshReviewMethodApiAvailability==='function')refreshReviewMethodApiAvailability();}
       return;
     }
@@ -250,7 +251,7 @@ const coursesAiSettings = (() => {
         else message='未能完成与本地 AI 接口的通信。请检查服务是否运行，以及浏览器网络面板中的本次请求；不会回退 Mock。';
       }
     }
-    finally{if(credentials)credentials.apiKey='';release();clearTimeout(timer);node('Test').disabled=false;node('Test').textContent='测试连接';refresh();}
+    finally{if(credentials)credentials.apiKey='';release();clearTimeout(timer);node('Test').disabled=false;node('Test').textContent='测试连接';refresh();if(typeof refreshReviewMethodApiAvailability==='function')refreshReviewMethodApiAvailability();}
   }
   function captureCreation(){
     if(!auto)return null;
@@ -343,5 +344,5 @@ const coursesAiSettings = (() => {
   // Host calls this on verified login/logout/account switch. It supplies no browser-trusted identity.
   addEventListener('courses-ai-identity-changed',clear);
   if(document.readyState==='loading')addEventListener('DOMContentLoaded',mount,{once:true});else mount();
-  return Object.freeze({status,label,describe,configure,read,track,valid,clear,open,openDrafts,captureCreation,afterCreated,identityChanged:clear,realReady,placeInHeader});
+  return Object.freeze({status,label,describe,configure,read,track,valid,clear,open,openDrafts,captureCreation,afterCreated,identityChanged:clear,realReady,connectedReady,placeInHeader});
 })();

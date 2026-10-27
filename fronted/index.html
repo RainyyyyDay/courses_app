@@ -702,6 +702,7 @@
               <button type="button" class="edit-btn" id="mistakeEditQuestionOcrBtn" style="display:none;" onclick="recognizeMistakeEditFile('question')">识别文字</button>
             </div>
             <input type="file" id="mistakeEditQuestionUpload" style="display:none" onchange="chooseMistakeEditQuestionFile(this)" />
+            <div data-mistake-recognition data-method-id="mistakeEditQuestionRecognitionMethod" data-button-id="mistakeEditQuestionOcrBtn"></div>
             <textarea id="mistakeEditContent" rows="4" placeholder="题目内容" oninput="refreshMistakeEditDirty()"></textarea>
             <section id="mistakeEditQuestionOcrPanel" class="mistake-ocr-panel" style="display:none;">
               <div class="mistake-ocr-head"><b>识别结果</b><span>先人工校对，再填入</span></div>
@@ -763,6 +764,7 @@
                 <button type="button" class="edit-btn" id="mistakeEditAnswerOcrBtn" style="display:none;" onclick="recognizeMistakeEditFile('answer')">识别答案文字</button>
               </div>
               <input type="file" id="mistakeEditAnswerUpload" style="display:none" onchange="chooseMistakeEditAnswerFile(this)" />
+              <div data-mistake-recognition data-method-id="mistakeEditAnswerRecognitionMethod" data-button-id="mistakeEditAnswerOcrBtn"></div>
               <textarea id="mistakeEditAnswer" rows="4" placeholder="参考答案" oninput="refreshMistakeEditDirty()"></textarea>
               <section id="mistakeEditAnswerOcrPanel" class="mistake-ocr-panel" style="display:none;">
                 <div class="mistake-ocr-head"><b>答案识别结果</b><span>校对后填入答案</span></div>
@@ -963,6 +965,7 @@
                 <button type="button" class="edit-btn edit-btn-danger" id="mistakeCreateQuestionRemove" style="display:none;" onclick="clearMistakeCreateFile()"><span class="edit-btn-icon">🗑</span>移除附件</button>
               </div>
               <input type="file" id="mistakeCreateQuestionUpload" style="display:none" onchange="chooseMistakeCreateFile(this)" />
+              <div data-mistake-recognition data-method-id="mistakeCreateQuestionRecognitionMethod" data-button-id="mistakeCreateOcrBtn"></div>
               <textarea id="mistakeCreateContent" rows="4" placeholder="题目 / 题干内容（也可以只上传附件）" oninput="updateMistakeCreateContentClear()"></textarea>
               <section id="mistakeCreateOcrPanel" class="mistake-ocr-panel" style="display:none;">
                 <div class="mistake-ocr-head"><b>识别结果</b><span>请先人工校对，再填入对应字段</span></div>
@@ -1015,6 +1018,7 @@
                 <button type="button" class="edit-btn edit-btn-danger" id="mistakeCreateAnswerRemove" style="display:none;" onclick="clearMistakeAnswerFile()">移除附件</button>
               </div>
               <input type="file" id="mistakeCreateAnswerUpload" style="display:none" onchange="chooseMistakeAnswerFile(this)" />
+              <div data-mistake-recognition data-method-id="mistakeCreateAnswerRecognitionMethod" data-button-id="mistakeCreateAnswerOcrBtn"></div>
               <section id="mistakeCreateAnswerOcrPanel" class="mistake-ocr-panel" style="display:none;">
                 <div class="mistake-ocr-head"><b>答案识别结果</b><span>校对后点“填入答案”</span></div>
                 <textarea id="mistakeCreateAnswerOcrText" rows="5"></textarea>
@@ -1239,7 +1243,7 @@
   <script src="js/state.js"></script>
   <script src="js/utils.js?v=20261026-unified-1"></script>
   <script src="js/ai.js?v=20261026-unified-1"></script>
-  <script src="js/aiSettings.js?v=20261026-header-service-2"></script>
+  <script src="js/aiSettings.js?v=20261027-connected-ai-1"></script>
 
   <script src="js/attachmentPreview.js?v=20261026-unified-1"></script>
 
@@ -1256,11 +1260,11 @@
   <script src="js/assessments.js?v=20261026-unified-1"></script>
   <script src="js/assessmentCharts.js?v=20261026-unified-1"></script>
   <script src="js/ocrBrowser.js?v=20261026-unified-1"></script>
-  <script src="js/visionOcr.js?v=20261026-unified-1"></script>
+  <script src="js/visionOcr.js?v=20261027-mistake-rich-1"></script>
   <script src="js/mindmapEmbed.js?v=20261026-mindmap-2"></script>
   <script src="js/outlineMap.js?v=20261026-mindmap-2"></script>
   <script src="js/officeText.js?v=20261026-unified-1"></script>
-  <script src="js/mistakes.js?v=20261026-unified-1"></script>
+  <script src="js/mistakes.js?v=20261027-mistake-rich-1"></script>
 
   <!-- 录入流程：手动输入 + 选标签 -->
   <script src="js/manualEntry.js?v=20261026-unified-1"></script>
@@ -1275,13 +1279,13 @@
   <script src="js/resourceText.js?v=20261026-unified-1"></script>
   <script src="js/materialReview.js?v=20261026-unified-1"></script>
   <script src="js/noteReview.js"></script>
-  <script src="js/mistakeDetail.js?v=20261026-unified-1"></script>
+  <script src="js/mistakeDetail.js?v=20261027-mistake-rich-1"></script>
   <script src="js/mistakeAi.js?v=20261026-unified-1"></script>
-  <script src="js/mistakeAnswerAi.js?v=20261026-unified-1"></script>
+  <script src="js/mistakeAnswerAi.js?v=20261027-mistake-rich-1"></script>
   <script src="js/resourceAi.js?v=20261026-unified-1"></script>
-  <script src="js/reviewMethodChoice.js?v=20261026-unified-1"></script>
+  <script src="js/reviewMethodChoice.js?v=20261027-connected-ai-1"></script>
   <script src="js/clozeEditor.js?v=20261026-unified-1"></script>
-  <script src="js/reviewWorkbench.js?v=20261026-unified-1"></script>
+  <script src="js/reviewWorkbench.js?v=20261027-standard-original-1"></script>
   <script src="js/reviewFeedback.js?v=20261026-unified-1"></script>
   <script src="js/reviewMaterialAi.js?v=20261026-unified-1"></script>
   <dialog id="mistakeAiDialog" aria-labelledby="mistakeAiDialogTitle" oncancel="event.preventDefault();resetMistakeAi()" onclick="if(event.target===this)resetMistakeAi()">
@@ -1338,7 +1342,7 @@
   <script src="/mindmap/vendor/katex/katex.min.js"></script>
   <script src="/mindmap/js/math-completion.js"></script>
   <script src="/mindmap/js/node-content.js"></script>
-  <script src="js/resourceRichText.js?v=20261026-rich-1"></script>
+  <script src="js/resourceRichText.js?v=20261027-mistake-rich-1"></script>
   <!-- 入口：放最后，它负责绑定事件并启动 -->
   <script src="app.js"></script>
 </body>
