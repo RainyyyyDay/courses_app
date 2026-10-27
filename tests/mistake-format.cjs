@@ -21,7 +21,7 @@ async function fixture(run,{legacy=true,setupBackend}={}){
     delete env.NODE_OPTIONS;delete env.NPM_CONFIG_NODE_OPTIONS;
     if(setupBackend)await setupBackend({back,temp,env});
     const schemaPath=path.join(back,'db/schema.js'),schema=fs.readFileSync(schemaPath,'utf8');
-    if(legacy)fs.writeFileSync(schemaPath,schema.replace('CURRENT_DB_VERSION = 26','CURRENT_DB_VERSION = 17').replace('migrateQuestionFormatConfirmation();','').replace('migrateReviewEvidence();','').replace('migrateReviewArtifacts();',''));
+    if(legacy)fs.writeFileSync(schemaPath,schema.replace('CURRENT_DB_VERSION = 27','CURRENT_DB_VERSION = 17').replace('migrateQuestionFormatConfirmation();','').replace('migrateReviewEvidence();','').replace('migrateReviewArtifacts();',''));
     const seed=spawnSync(process.execPath,['-e',`
       const d=require('./db/index.js');const c=d.createCourse('题型隔离测试');
       if(${legacy}){
@@ -69,7 +69,7 @@ async function fixture(run,{legacy=true,setupBackend}={}){
 
 test('v17 migration and HTTP confirmation protect review/history; actual format edits retain history',async()=>fixture(async({ids,api,read,snapshot,before,restart})=>{
   const prefix='/courses/'+ids.courseId+'/mistakes',get=id=>api('GET','/mistakes/'+id),patch=(id,body,status)=>api('PATCH',prefix+'/'+id,body,status);
-  assert.equal(read(db=>db.prepare('PRAGMA user_version').get().user_version),26);
+  assert.equal(read(db=>db.prepare('PRAGMA user_version').get().user_version),27);
   const migrated=snapshot();
   for(const [table,rows]of Object.entries(before))assert.deepEqual(migrated[table].map(row=>Object.fromEntries(Object.keys(rows[0]||{}).map(key=>[key,row[key]]))),rows.map(row=>({...row})),'migration preserves existing columns: '+table);
   for(const row of await api('GET',prefix))assert.equal(row.question_format_confirmed,0,'all legacy formats pending, including structured choices');

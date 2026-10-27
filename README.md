@@ -84,7 +84,7 @@ npm start --prefix back
 
 后端默认监听 3000 端口。可访问 [课程接口](http://localhost:3000/api/courses) 检查服务状态。
 
-首次启动会创建 `back/data/app.db`，并插入示例课程；已有数据库会自动执行结构迁移。数据库模块当前支持版本 26；v8 新增资料复习状态，v9 新增笔记复习状态，v10 增加独立收藏字段，v11 增加错题答案附件，v12 新增考前计划及任务表，v13 新增复习会话及项目表，v26 新增考核构成图表。升级保留旧内容、附件、标签、计划及复习状态；计划任务和单次会话状态均独立于内容状态。不补造旧历史，旧浏览器队列保留继续入口。收藏接口见 [资料与笔记收藏接口](docs/reading-favorites-api.md)，计划 API 见 [考前复习计划](docs/review-plans-api.md)，会话与总复习见 [复习中心](docs/review-center.md)，考核图表见 [考核构成饼图](docs/assessment-grade-chart.md)。
+首次启动会创建 `back/data/app.db`，并插入示例课程；已有数据库会自动执行结构迁移。数据库模块当前支持版本 27；v8 新增资料复习状态，v9 新增笔记复习状态，v10 增加独立收藏字段，v11 增加错题答案附件，v12 新增考前计划及任务表，v13 新增复习会话及项目表，v26 新增考核构成图表。升级保留旧内容、附件、标签、计划及复习状态；计划任务和单次会话状态均独立于内容状态。不补造旧历史，旧浏览器队列保留继续入口。收藏接口见 [资料与笔记收藏接口](docs/reading-favorites-api.md)，计划 API 见 [考前复习计划](docs/review-plans-api.md)，会话与总复习见 [复习中心](docs/review-center.md)，考核图表见 [考核构成饼图](docs/assessment-grade-chart.md)。
 
 ### 前端与一键启动
 
