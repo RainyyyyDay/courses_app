@@ -49,7 +49,7 @@ function testReviewPlanMigrations(source,temp) {
         d.exec('DROP TABLE idx_review_plans_course');
       }
       require('./db/schema.js');
-        assert.equal(d.prepare('PRAGMA user_version').get().user_version,27,'single startup reaches v27');
+      assert.equal(d.prepare('PRAGMA user_version').get().user_version,27,'single startup reaches v27');
       for(const s of snapshots) assert.deepEqual(d.prepare('SELECT '+s.columns+' FROM '+s.name+' ORDER BY rowid').all(),s.rows);
       const p=store.createReviewPlan(c.id,{name:'plan',startDate:'2026-10-16',examDate:'2026-10-28',selectedItems:[{type:'material',id:m.id}]});
       const before=JSON.stringify(store.getReviewPlan(c.id,p.id));

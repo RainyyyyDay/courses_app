@@ -1,4 +1,5 @@
 // All database and API writes run against a temporary copy, never the user's database.
+require('./schema-version.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
