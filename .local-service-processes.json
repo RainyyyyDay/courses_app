@@ -1,0 +1,18 @@
+﻿{
+    "project_id":  "3a5b6a0b06ad0c822ec0dc7a386a44e856e50fe92adbac17081206e787256c99",
+    "website":  {
+                    "id":  44276,
+                    "started":  "639286668474333116",
+                    "executable":  "D:\\Node.js\\node.exe"
+                },
+    "aiWorker":  {
+                     "id":  32428,
+                     "started":  "639286662121598375",
+                     "executable":  "C:\\Users\\LENOVO\\anaconda3\\python.exe"
+                 },
+    "aiRunner":  {
+                     "id":  36336,
+                     "started":  "639286662117859060",
+                     "executable":  "C:\\Users\\LENOVO\\anaconda3\\python.exe"
+                 }
+}
